@@ -159,17 +159,13 @@ const PerformanceDashboard = () => {
   return (
     <div
       className="
-       top-10
-    min-h-[100dvh]
-    h-[100dvh]
-    bg-[#FFF7F2]
-   
-    overflow-hidden
+    h-full
+    w-full
     flex
     flex-col
-    fixed
-    inset-0
-    w-full
+    bg-gray-50
+    rounded-2xl
+    overflow-hidden
   "
     >
       {/* ================= FIXED TOP SECTION ================= */}

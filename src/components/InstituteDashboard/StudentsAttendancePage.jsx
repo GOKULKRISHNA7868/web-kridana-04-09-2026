@@ -510,12 +510,12 @@ const StudentsAttendancePage = () => {
   };
 
   return (
-    <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
+    <div className="h-full w-full bg-gray-50 rounded-2xl overflow-hidden flex flex-col">
       {/* ================= FIXED HEADER ================= */}
-      <div className="shrink-0 fixed left-0 right-0 top-[56px] z-40 bg-white border-b shadow-sm">
-        <div className="px-3 py-3">
+      <div className="shrink-0 bg-white border-b shadow-sm sticky top-0 z-20">
+        <div className="px-4 py-4 md:px-8 md:py-6">
           {/* BACK + TITLE */}
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-2 min-w-0">
               <h1 className="text-lg font-bold text-[#FF6A00] truncate">
                 Attendance
@@ -532,7 +532,7 @@ const StudentsAttendancePage = () => {
           </div>
 
           {/* SUMMARY */}
-          <div className="grid grid-cols-3 gap-2 mt-3 mb-3">
+          <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-4 mt-3 mb-3">
             {[
               ["Total", summary.totalStudents],
               ["Present", summary.presentToday],
@@ -540,7 +540,7 @@ const StudentsAttendancePage = () => {
             ].map(([label, val]) => (
               <div
                 key={label}
-                className="bg-orange-50 rounded-xl p-2 text-center"
+                className="bg-orange-50 rounded-2xl p-4 shadow-sm text-center"
               >
                 <div className="text-xs text-gray-500">{label}</div>
                 <div className="font-bold text-[#FF6A00]">{val}</div>
@@ -549,7 +549,7 @@ const StudentsAttendancePage = () => {
           </div>
 
           {/* SEARCH */}
-          <div className="flex gap-2 mb-3">
+          <div className="flex flex-col md:flex-row gap-3 mb-5">
             <div className="flex flex-1 items-center border rounded-full px-3">
               <Search size={16} />
               <input
@@ -569,11 +569,11 @@ const StudentsAttendancePage = () => {
           </div>
 
           {/* FILTERS */}
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
             <select
               value={selectedSession}
               onChange={(e) => setSelectedSession(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm min-w-[120px]"
+              className="border rounded-lg px-3 py-2 text-sm w-full"
             >
               <option value="">Session</option>
               {SESSIONS.map((s) => (
@@ -584,7 +584,7 @@ const StudentsAttendancePage = () => {
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm min-w-[120px]"
+              className="border rounded-lg px-3 py-2 text-sm w-full"
             >
               <option value="">Branch</option>
               {branches.map((b) => (
@@ -621,7 +621,7 @@ const StudentsAttendancePage = () => {
       </div>
 
       {/* ================= SCROLL STUDENTS ONLY ================= */}
-      <div className="flex-1 pt-[210px] pb-[90px] overflow-hidden">
+      <div className="flex-1 overflow-hidden">
         <div
           ref={scrollRef}
           className="h-full overflow-y-auto px-3 py-3 space-y-3 scroll-smooth"
@@ -737,7 +737,7 @@ const StudentsAttendancePage = () => {
       {/* EXPORT MODAL */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-4 w-[90%] space-y-3">
+          <div className="bg-white rounded-xl p-4w-[90%] space-y-3">
             <h2 className="font-semibold">Export Attendance</h2>
 
             <input

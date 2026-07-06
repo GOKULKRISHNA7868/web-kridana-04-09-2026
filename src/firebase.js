@@ -4,13 +4,13 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 import { getAnalytics, isSupported } from "firebase/analytics";
 const firebaseConfig = {
-  apiKey: "AIzaSyAJeWiaQaq2sRK8ouaG7lTU5we2FgY-TXs",
-  authDomain: "kridana-975e1.firebaseapp.com",
-  projectId: "kridana-975e1",
-  storageBucket: "kridana-975e1.firebasestorage.app",
-  messagingSenderId: "778934528785",
-  appId: "1:778934528785:web:d35e1002f676e71d787ab0",
-  measurementId: "G-6GJX89X0Q2",
+  apiKey: "AIzaSyDlmh88tHoBWtZL1Y69sRtgp-cnW-xglEs",
+  authDomain: "testing-kridana.firebaseapp.com",
+  projectId: "testing-kridana",
+  storageBucket: "testing-kridana.firebasestorage.app",
+  messagingSenderId: "778865160582",
+  appId: "1:778865160582:web:bdbd05366d1474b717fc07",
+  measurementId: "G-TWJ54WX0HN",
 };
 
 const app = initializeApp(firebaseConfig);

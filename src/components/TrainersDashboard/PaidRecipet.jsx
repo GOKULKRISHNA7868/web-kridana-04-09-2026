@@ -124,14 +124,13 @@ const PaymentHistory = () => {
   return (
     <div
       className="
-      fixed
-      top-10
-      bottom-16
-      left-0
-      right-0
+      h-full
+      w-full
       flex
       flex-col
       bg-gray-100
+      rounded-2xl
+      shadow-sm
       overflow-hidden
     "
     >

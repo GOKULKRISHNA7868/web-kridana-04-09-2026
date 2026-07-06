@@ -374,281 +374,317 @@ const InstituteDashboard = () => {
   }, [user]);
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col md:flex-row bg-gray-700 fixed inset-0">
-      {/* MOBILE TOPBAR */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-black z-[60] flex items-center justify-between px-4 py-3">
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="text-white text-2xl"
-        >
-          ☰
-        </button>
+    <div className="fixed inset-0 bg-gray-100 md:bg-gray-200 md:pt-16">
+      <div className="flex h-full flex-col md:flex-row overflow-hidden">
+        {/* MOBILE TOPBAR */}
+        <div className="md:hidden fixed top-0 left-0 right-0 bg-black z-[60] flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="text-white text-2xl"
+          >
+            ☰
+          </button>
 
-        <h2 className="text-orange-500 font-bold">
-          {institute?.instituteName || "Dashboard"}
-        </h2>
-      </div>
+          <h2 className="text-orange-500 font-bold">
+            {institute?.instituteName || "Dashboard"}
+          </h2>
+        </div>
 
-      {/* LEFT SIDEBAR */}
-      <aside
-        className={`
-    fixed md:relative top-0 left-0
-    h-screen w-72 max-w-[80vw]
-    bg-gray-700 p-3
-    flex flex-col
+        {/* LEFT SIDEBAR */}
+        <aside
+          className={`
+    fixed md:sticky
+    top-0 md:top-16
+    left-0
+    h-screen md:h-full
+    w-72 xl:w-80
+    shrink-0
+    bg-gray-700
+    border-r border-gray-600
     z-[100]
-    overflow-hidden
     transform transition-transform duration-300
     ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
     md:translate-x-0
   `}
-      >
-        <div className="md:hidden flex justify-end mb-3">
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="text-white text-2xl"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto pr-1">
-          {/* ===== INSTITUTE CARD ===== */}
-          {/* ===== INSTITUTE CARD ===== */}
-          <div className="bg-black rounded-xl px-4 py-3 flex items-center gap-4 mb-3">
-            {/* PROFILE IMAGE */}
-            <div className="flex-shrink-0">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-orange-400 shadow-md">
-                {institute?.profileImageUrl ? (
-                  <img
-                    src={institute.profileImageUrl}
-                    alt="profile"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                    <span className="text-orange-400 font-bold text-lg sm:text-xl">
-                      {institute?.instituteName?.charAt(0)?.toUpperCase() ||
-                        "I"}
-                    </span>
-                  </div>
-                )}
+        >
+          <div className="md:hidden flex justify-end mb-3">
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="text-white text-2xl"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="h-full overflow-y-auto pr-2">
+            {/* ===== INSTITUTE CARD ===== */}
+            {/* ===== INSTITUTE CARD ===== */}
+            <div className="bg-black rounded-2xl px-5 py-4 flex items-center gap-4 mb-4 shadow-lg">
+              {/* PROFILE IMAGE */}
+              <div className="flex-shrink-0">
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-orange-400 shadow-md">
+                  {institute?.profileImageUrl ? (
+                    <img
+                      src={institute.profileImageUrl}
+                      alt="profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                      <span className="text-orange-400 font-bold text-lg sm:text-xl">
+                        {institute?.instituteName?.charAt(0)?.toUpperCase() ||
+                          "I"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* INSTITUTE NAME */}
+              <div className="flex-1 min-w-0">
+                <h2 className="text-orange-500 font-bold text-base sm:text-lg md:text-xl break-words text-center md:text-left leading-snug">
+                  {institute?.instituteName || "Institute Name"}
+                </h2>
               </div>
             </div>
 
-            {/* INSTITUTE NAME */}
-            <div className="flex-1 min-w-0">
-              <h2 className="text-orange-500 font-bold text-base sm:text-lg md:text-xl break-words text-center md:text-left leading-snug">
-                {institute?.instituteName || "Institute Name"}
-              </h2>
+            {/* ===== MENU CARD ===== */}
+            <div className="bg-black rounded-2xl p-4 mb-4 shadow-lg">
+              {sidebarSections.map((section) => (
+                <div key={section.title}>
+                  {/* MAIN MENU */}
+                  <button
+                    onClick={() => {
+                      if (section.title === "Dashboard") {
+                        setActiveMenu("Dashboard");
+                        setSidebarOpen(false); // ✅ ADD THIS
+                      } else {
+                        toggleMenu(section.title);
+                      }
+                    }}
+                    className="
+w-full
+flex
+items-center
+justify-between
+px-4
+py-3
+rounded-xl
+text-white
+transition
+duration-200
+hover:bg-gray-800
+"
+                  >
+                    <div className="flex items-center gap-3">
+                      {getIcon(section.icon)}
+                      {section.title}
+                    </div>
+
+                    {section.items.length > 0 &&
+                      (openMenu === section.title ? (
+                        <FaChevronDown />
+                      ) : (
+                        <FaChevronRight />
+                      ))}
+                  </button>
+
+                  {/* DROPDOWN ITEMS */}
+                  {openMenu === section.title && (
+                    <div className="ml-8 mt-1 space-y-1">
+                      {section.items.map((item) => (
+                        <button
+                          key={item}
+                          onClick={() => {
+                            setActiveMenu(item);
+                            setOpenMenu(null);
+                            setSidebarOpen(false);
+                          }}
+                          className="
+block
+w-full
+text-left
+px-3
+py-2
+rounded-lg
+text-gray-300
+hover:bg-gray-800
+hover:text-orange-500
+transition
+"
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* ===== SETTINGS CARD ===== */}
+            <div className="bg-black rounded-2xl p-4 shadow-lg">
+              <h3 className="text-white font-bold text-lg mb-3">Settings</h3>
+
+              <button
+                onClick={() => setActiveMenu("Terms & Conditions")}
+                className={`block w-full text-left py-2 ${
+                  activeMenu === "Terms & Conditions"
+                    ? "text-orange-500 font-semibold"
+                    : "text-white hover:text-orange-400"
+                }`}
+              >
+                Terms & Conditions
+              </button>
+
+              <button
+                onClick={() => setActiveMenu("Privacy Policy")}
+                className={`block w-full text-left py-2 ${
+                  activeMenu === "Privacy Policy"
+                    ? "text-orange-500 font-semibold"
+                    : "text-white hover:text-orange-400"
+                }`}
+              >
+                Privacy Policy
+              </button>
+              <button
+                onClick={() => setActiveMenu("ResetPassword")}
+                className={`block w-full text-left py-2 ${
+                  activeMenu === "ResetPassword"
+                    ? "text-orange-500 font-semibold"
+                    : "text-white hover:text-orange-400"
+                }`}
+              >
+                Reset Password
+              </button>
+
+              <button
+                onClick={() => signOut(auth)}
+                className="block w-full text-left py-2 text-white hover:text-red-400"
+              >
+                Logout
+              </button>
+            </div>
+            <div className="bg-black rounded-xl p-4 mt-3">
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="w-full text-left text-red-500 hover:text-red-400 font-semibold flex items-center gap-2"
+              >
+                <img src="/delete-icon.png" alt="delete" className="w-5 h-5" />
+                <span>Delete Account</span>
+              </button>
             </div>
           </div>
+        </aside>
 
-          {/* ===== MENU CARD ===== */}
-          <div className="bg-black rounded-xl p-3 mb-3">
-            {sidebarSections.map((section) => (
-              <div key={section.title}>
-                {/* MAIN MENU */}
-                <button
-                  onClick={() => {
-                    if (section.title === "Dashboard") {
-                      setActiveMenu("Dashboard");
-                      setSidebarOpen(false); // ✅ ADD THIS
-                    } else {
-                      toggleMenu(section.title);
-                    }
-                  }}
-                  className="w-full flex items-center justify-between px-4 py-2 text-white hover:bg-gray-800 rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    {getIcon(section.icon)}
-                    {section.title}
-                  </div>
-
-                  {section.items.length > 0 &&
-                    (openMenu === section.title ? (
-                      <FaChevronDown />
-                    ) : (
-                      <FaChevronRight />
-                    ))}
-                </button>
-
-                {/* DROPDOWN ITEMS */}
-                {openMenu === section.title && (
-                  <div className="ml-8 mt-1 space-y-1">
-                    {section.items.map((item) => (
-                      <button
-                        key={item}
-                        onClick={() => {
-                          setActiveMenu(item);
-                          setOpenMenu(null);
-                          setSidebarOpen(false);
-                        }}
-                        className="block w-full text-left px-3 py-2 text-gray-300 hover:text-orange-500"
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* ===== SETTINGS CARD ===== */}
-          <div className="bg-black rounded-xl p-4">
-            <h3 className="text-white font-bold text-lg mb-3">Settings</h3>
-
-            <button
-              onClick={() => setActiveMenu("Terms & Conditions")}
-              className={`block w-full text-left py-2 ${
-                activeMenu === "Terms & Conditions"
-                  ? "text-orange-500 font-semibold"
-                  : "text-white hover:text-orange-400"
-              }`}
-            >
-              Terms & Conditions
-            </button>
-
-            <button
-              onClick={() => setActiveMenu("Privacy Policy")}
-              className={`block w-full text-left py-2 ${
-                activeMenu === "Privacy Policy"
-                  ? "text-orange-500 font-semibold"
-                  : "text-white hover:text-orange-400"
-              }`}
-            >
-              Privacy Policy
-            </button>
-            <button
-              onClick={() => setActiveMenu("ResetPassword")}
-              className={`block w-full text-left py-2 ${
-                activeMenu === "ResetPassword"
-                  ? "text-orange-500 font-semibold"
-                  : "text-white hover:text-orange-400"
-              }`}
-            >
-              Reset Password
-            </button>
-
-            <button
-              onClick={() => signOut(auth)}
-              className="block w-full text-left py-2 text-white hover:text-red-400"
-            >
-              Logout
-            </button>
-          </div>
-          <div className="bg-black rounded-xl p-4 mt-3">
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="w-full text-left text-red-500 hover:text-red-400 font-semibold flex items-center gap-2"
-            >
-              <img src="/delete-icon.png" alt="delete" className="w-5 h-5" />
-              <span>Delete Account</span>
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <main
-        ref={mainContentRef}
-        className="
-    flex-1
-    h-screen
-    max-w-full
-    overflow-hidden
-    bg-white
-    mt-14 md:mt-0
-    md:ml-0
-  "
-      >
-        <div
+        <main
+          ref={mainContentRef}
           className="
+flex-1
+min-w-0
+h-full
+bg-gray-100
+mt-14
+md:mt-0
+overflow-hidden
+"
+        >
+          <div
+            className="
       h-full
       overflow-y-auto
       overflow-x-hidden
-      px-4 sm:px-6 md:px-10 py-6 md:py-8
-      w-full max-w-full
+      w-full
+     max-w-[1600px]
+      mx-auto
+      px-4
+      sm:px-6
+      md:px-8
+      lg:px-10
+      xl:px-12
+      py-6
+      md:py-8
     "
-          style={{
-            WebkitOverflowScrolling: "touch",
-            overscrollBehavior: "contain",
-          }}
-        >
-          {renderMainContent()}
-        </div>
-      </main>
+            style={{
+              WebkitOverflowScrolling: "touch",
+              overscrollBehavior: "contain",
+            }}
+          >
+            {renderMainContent()}
+          </div>
+        </main>
 
-      {/* DELETE CONFIRM MODAL */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-          <div className="bg-white w-[600px] rounded-lg p-8 relative text-center">
-            <button
-              onClick={() => setShowDeleteModal(false)}
-              className="absolute top-4 right-4 text-2xl"
-            >
-              ✕
-            </button>
-
-            <h2 className="text-3xl font-bold text-red-600 mb-4">
-              Delete Account ?
-            </h2>
-
-            <p className="text-gray-600 mb-2">
-              Are you sure you want delete your account ?
-            </p>
-
-            <p className="text-gray-500 mb-2">
-              This action cannot be undone and all your data will be permanently
-              removed after 60 days
-            </p>
-
-            <p className="text-green-600 mb-6 font-medium">
-              You can re-activate your account within 60 days
-            </p>
-
-            <div className="flex justify-center gap-4">
+        {/* DELETE CONFIRM MODAL */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+            <div className="bg-white w-[95%] max-w-xl rounded-lg p-8 relative text-center">
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="px-6 py-2 bg-gray-300 rounded-md"
+                className="absolute top-4 right-4 text-2xl"
               >
-                Cancel
+                ✕
               </button>
-              <button
-                onClick={handleDeleteAccount}
-                className="px-6 py-2 bg-red-600 text-white rounded-md"
-              >
-                Delete Account
-              </button>
+
+              <h2 className="text-3xl font-bold text-red-600 mb-4">
+                Delete Account ?
+              </h2>
+
+              <p className="text-gray-600 mb-2">
+                Are you sure you want delete your account ?
+              </p>
+
+              <p className="text-gray-500 mb-2">
+                This action cannot be undone and all your data will be
+                permanently removed after 60 days
+              </p>
+
+              <p className="text-green-600 mb-6 font-medium">
+                You can re-activate your account within 60 days
+              </p>
+
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-6 py-2 bg-gray-300 rounded-md"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  className="px-6 py-2 bg-red-600 text-white rounded-md"
+                >
+                  Delete Account
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      {/* DELETE SUCCESS MODAL */}
-      {showDeletedSuccess && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-          <div className="bg-white w-[900px] h-[500px] rounded-lg relative flex flex-col items-center justify-center">
-            <button
-              onClick={() => {
-                setShowDeletedSuccess(false);
-                navigate("/");
-              }}
-              className="absolute top-6 right-6 text-3xl"
-            >
-              ✕
-            </button>
+        )}
+        {/* DELETE SUCCESS MODAL */}
+        {showDeletedSuccess && (
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+            <div className="bg-white w-[95%] max-w-3xl min-h-[450px] rounded-lg relative flex flex-col items-center justify-center">
+              <button
+                onClick={() => {
+                  setShowDeletedSuccess(false);
+                  navigate("/");
+                }}
+                className="absolute top-6 right-6 text-3xl"
+              >
+                ✕
+              </button>
 
-            <img
-              src="/delete-success.png"
-              alt="deleted"
-              className="w-64 mb-8"
-            />
+              <img
+                src="/delete-success.png"
+                alt="deleted"
+                className="w-64 mb-8"
+              />
 
-            <h2 className="text-3xl font-semibold text-black text-center">
-              Your Account has been deleted successfully
-            </h2>
+              <h2 className="text-3xl font-semibold text-black text-center">
+                Your Account has been deleted successfully
+              </h2>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

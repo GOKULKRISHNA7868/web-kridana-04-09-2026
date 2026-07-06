@@ -413,10 +413,10 @@ const StudentsAttendancePage = () => {
     setShowExportModal(false);
   };
   return (
-    <div className="fixed inset-0 top-[60px] bottom-[64px] md:bottom-0 bg-gradient-to-b from-orange-50 via-white to-gray-50 overflow-hidden flex flex-col">
-      {/* HEADER CARD */}
-      <div className="px-4 pt-4 pb-3 bg-white/90 backdrop-blur-md border-b border-orange-100 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
+    <div className="h-full w-full bg-gray-50 rounded-2xl overflow-hidden flex flex-col">
+      {/* ================= FIXED HEADER ================= */}
+      <div className="shrink-0 bg-white border-b shadow-sm sticky top-0 z-20">
+        <div className="px-4 py-4 md:px-8 md:py-6">
           {/* TITLE */}
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-800">

@@ -355,9 +355,28 @@ const FeesDetailsPage = () => {
     </div>
   );
   return (
-    <div className="fixed inset-0 top-[60px] bg-gray-50 overflow-hidden flex flex-col overscroll-none">
+    <div
+      className="
+    h-full
+    w-full
+    flex
+    flex-col
+    bg-gray-50
+    rounded-2xl
+    overflow-hidden
+  "
+    >
       {/* ================= FIXED TOP HEADER ================= */}
-      <div className="shrink-0 bg-white border-b shadow-sm z-30">
+      <div
+        className="
+    sticky
+    top-0
+    z-20
+    bg-white
+    border-b
+    shadow-sm
+  "
+      >
         <div className="p-4 space-y-4">
           {/* TITLE */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">

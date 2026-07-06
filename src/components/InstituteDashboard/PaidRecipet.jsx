@@ -183,33 +183,50 @@ const PaymentHistory = () => {
   return (
     <div
       className="
-      fixed
-      top-10
-      bottom-16
-      left-0
-      right-0
+      h-full
+      w-full
       flex
       flex-col
       bg-gray-100
+      rounded-2xl
+      shadow-sm
       overflow-hidden
     "
     >
       {/* FIXED HEADER */}
-      <div className="flex-shrink-0 bg-gray-100 border-b p-3">
-        <h1 className="text-2xl font-bold mb-4">Payment History</h1>
+      <div className="flex-shrink-0 bg-white border-b px-4 py-4 md:px-8 md:py-6">
+        <h1 className="text-xl md:text-3xl font-bold mb-5">Payment History</h1>
 
         <div className="flex flex-col gap-3">
           <input
             type="text"
             placeholder="Search by student name..."
-            className="border p-2 rounded w-full"
+            className="
+w-full
+border
+rounded-xl
+px-4
+py-3
+focus:outline-none
+focus:ring-2
+focus:ring-orange-400
+"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
 
           <input
             type="month"
-            className="border p-2 rounded w-full"
+            className="
+w-full
+border
+rounded-xl
+px-4
+py-3
+focus:outline-none
+focus:ring-2
+focus:ring-orange-400
+"
             value={monthFilter}
             onChange={(e) => setMonthFilter(e.target.value)}
           />
@@ -218,24 +235,36 @@ const PaymentHistory = () => {
       {/* SCROLLABLE PAYMENT LIST */}
       <div
         className="
-        flex-1
-        overflow-y-auto
-        px-3
-        sm:px-4
-        md:px-6
-        pb-28
-      "
+flex-1
+overflow-y-auto
+px-4
+md:px-8
+py-5
+"
       >
         {filtered.length === 0 ? (
-          <div className="text-center py-10 text-gray-500">
+          <div className="flex items-center justify-center h-64 text-gray-500 text-lg">
             No payments found ❌
           </div>
         ) : (
           <div className="grid gap-5 py-4">
             {filtered.map((p) => (
-              <div key={p.id} className="bg-white p-5 rounded-xl shadow">
+              <div
+                key={p.id}
+                className="
+bg-white
+rounded-2xl
+border
+border-gray-200
+shadow-sm
+hover:shadow-md
+transition
+p-5
+md:p-6
+"
+              >
                 {/* HEADER */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div>
                     <h2 className="text-base sm:text-lg md:text-xl font-semibold text-green-600">
                       ₹{p.totalAmount}
@@ -254,7 +283,7 @@ const PaymentHistory = () => {
                 <hr className="my-3" />
 
                 {/* DETAILS */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 text-sm">
                   <p>
                     <b>Student:</b> {p.studentName}
                   </p>
@@ -299,7 +328,18 @@ const PaymentHistory = () => {
                     return (
                       <div
                         key={i}
-                        className="flex flex-col sm:flex-row justify-between gap-1 sm:gap-2 text-xs sm:text-sm border-b py-2"
+                        className="
+flex
+flex-col
+md:flex-row
+md:justify-between
+md:items-center
+gap-3
+border-b
+last:border-0
+py-3
+text-sm
+"
                       >
                         <div>
                           <p>
@@ -311,7 +351,9 @@ const PaymentHistory = () => {
                           </p>
                         </div>
 
-                        <span className="font-medium">₹{item.amount}</span>
+                        <span className="font-semibold text-green-600 whitespace-nowrap">
+                          ₹{item.amount}
+                        </span>
                       </div>
                     );
                   })}
