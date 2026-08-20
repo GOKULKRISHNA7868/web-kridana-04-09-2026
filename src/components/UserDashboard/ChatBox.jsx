@@ -1,6 +1,21 @@
-import React, { useState, useEffect } from "react";
-import { MoreVertical, Smile, Send, Mic, ArrowLeft } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { MoreVertical, Smile, Send, Mic, ArrowLeft, Search, BellOff, Bell, Info, X } from "lucide-react";
 import { db, auth } from "../../firebase";
+import { Capacitor } from "@capacitor/core";
+
+import { LocalNotifications } from "@capacitor/local-notifications";
+import { App } from "@capacitor/app";
+import ChatMuteMenuItems from "../chat/ChatMuteMenuItems";
+import { getChatDayKey, getChatDayLabel } from "../../utils/chatDayLabel";
+import {
+  ensureChatNotifications,
+  isChatMuted,
+  isConversationMuted,
+  loadNotificationSettings,
+  setActiveChatId,
+  setConversationMute,
+  setGlobalMute,
+} from "../../utils/chatNotifications";
 import {
   collection,
   doc,
@@ -16,27 +31,55 @@ import {
   orderBy,
   serverTimestamp,
   arrayRemove,
+  Timestamp,
 } from "firebase/firestore";
+import { Check, CheckCheck } from "lucide-react";
 import { onAuthStateChanged } from "firebase/auth";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { LocalNotifications } from "@capacitor/local-notifications";
-import { useRef } from "react";
+
 const ChatBox = () => {
   const [activeTab, setActiveTab] = useState("chats");
   const [screen, setScreen] = useState("chat");
   const [showMenu, setShowMenu] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  const [messageSearch, setMessageSearch] = useState("");
+  const [incomingBanner, setIncomingBanner] = useState(null);
+  const [isMuted, setIsMuted] = useState(isChatMuted);
+  const [conversationMuted, setConversationMuted] = useState(false);
   const [user, setUser] = useState(null);
   const [instituteId, setInstituteId] = useState(null);
   const notifiedRequests = useRef(new Set());
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [messages, setMessages] = useState([]);
-  const notificationAudio = useRef(
-    new Audio(
-      "https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg",
-    ),
-  );
+  const [upcomingClasses, setUpcomingClasses] = useState([]);
+  const [showUpcomingPopup, setShowUpcomingPopup] = useState(false);
+  const appState = useRef(true);
+  const [selectedMessages, setSelectedMessages] = useState([]);
+  const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const longPressTimer = useRef(null);
+  const longPressTriggered = useRef(false);
+  const touchStartPosition = useRef({ x: 0, y: 0 });
+
+  // Prevent the same message from being processed repeatedly
+  const notifiedMessages = useRef(new Set());
+
+  // Pending notification data per chat
+  const pendingNotifications = useRef(new Map());
+
+  // Timer used to combine messages arriving close together
+  const notificationTimers = useRef(new Map());
+
+  // Stable notification ID for each chat
+  const notificationIds = useRef(new Map());
+
   const previousRequestCount = useRef(0);
   const [activeChat, setActiveChat] = useState(null);
   const [activeChatName, setActiveChatName] = useState("");
@@ -50,16 +93,41 @@ const ChatBox = () => {
   const location = useLocation();
   const [recentChats, setRecentChats] = useState([]);
   const initialChatName = location.state?.chatName || "Chat";
-  const [selectedChat, setSelectedChat] = useState(null);
+
   const [showFriendModal, setShowFriendModal] = useState(false);
   const [showRequestsModal, setShowRequestsModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [chatFilter, setChatFilter] = useState("all");
   const [searchEmail, setSearchEmail] = useState("");
   const [searchedUser, setSearchedUser] = useState([]);
-
   const [friendRequests, setFriendRequests] = useState([]);
   const [friends, setFriends] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const initializedNotificationChats = useRef(new Set());
+  const activeChatRef = useRef(null);
+  const mutedRef = useRef(isMuted);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+    setActiveChatId(activeChat?.id || null);
+  }, [activeChat]);
+
+  useEffect(() => {
+    return () => setActiveChatId(null);
+  }, []);
+
+  useEffect(() => {
+    mutedRef.current = isMuted;
+  }, [isMuted]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadNotificationSettings(user.uid).then(() => {
+      setIsMuted(isChatMuted());
+      setConversationMuted(isConversationMuted(activeChat?.id));
+    });
+  }, [user, activeChat?.id]);
+
   const getValidImage = (url, name) => {
     if (!url)
       return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
@@ -68,6 +136,203 @@ const ChatBox = () => {
     return url;
   };
 
+  const updatePresence = async (online) => {
+    if (!auth.currentUser) return;
+
+    try {
+      await setDoc(
+        doc(db, "presence", auth.currentUser.uid),
+        {
+          online,
+          lastSeen: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    } catch (e) {
+      console.log(e);
+    }
+  };
+  useEffect(() => {
+    if (!user) return;
+
+    const handleAppState = ({ isActive }) => {
+      appState.current = isActive;
+
+      if (isActive) {
+        updatePresence(true);
+      } else {
+        updatePresence(false);
+      }
+    };
+
+    updatePresence(true);
+
+    const listener = App.addListener("appStateChange", handleAppState);
+
+    return () => {
+      updatePresence(false);
+      listener.remove();
+    };
+  }, [user]);
+  useEffect(() => {
+    if (!user || !instituteId) return;
+
+    const fetchUpcomingClasses = async () => {
+      try {
+        const snap = await getDocs(
+          collection(db, "institutes", instituteId, "timetable"),
+        );
+
+        const now = new Date();
+        const next24 = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+        const classes = [];
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+
+          if (!data.start) return;
+
+          const start = data.start.toDate();
+
+          // only next 24 hours
+          if (start >= now && start <= next24) {
+            // Show only for students in this class
+            if (
+              data.students?.includes(user.uid) ||
+              data.trainerId === user.uid
+            ) {
+              classes.push({
+                id: docSnap.id,
+                ...data,
+                start,
+              });
+            }
+          }
+        });
+
+        classes.sort((a, b) => a.start - b.start);
+
+        setUpcomingClasses(classes);
+      } catch (err) {
+        console.log(err);
+      }
+    };
+
+    fetchUpcomingClasses();
+  }, [user, instituteId]);
+  useEffect(() => {
+    if (!user) return;
+
+    const beforeUnload = () => {
+      navigator.sendBeacon(
+        "/",
+        JSON.stringify({
+          uid: user.uid,
+        }),
+      );
+
+      updatePresence(false);
+    };
+
+    window.addEventListener("beforeunload", beforeUnload);
+
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [user]);
+  useEffect(() => {
+    if (!friends.length) return;
+
+    const unsubscribers = [];
+
+    friends.forEach((friend) => {
+      const unsub = onSnapshot(doc(db, "presence", friend.uid), (snap) => {
+        if (!snap.exists()) return;
+
+        setOnlineUsers((prev) => ({
+          ...prev,
+          [friend.uid]: snap.data(),
+        }));
+      });
+
+      unsubscribers.push(unsub);
+    });
+
+    return () => {
+      unsubscribers.forEach((u) => u());
+    };
+  }, [friends]);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      return;
+    }
+
+    let listener;
+
+    const setup = async () => {
+      try {
+        listener = await LocalNotifications.addListener(
+          "localNotificationActionPerformed",
+          (notification) => {
+            const chatId = notification.notification?.extra?.chatId;
+
+            if (chatId) {
+              navigate(
+                `/components/UserDashboard/ChatBox?chatId=${encodeURIComponent(chatId)}`,
+              );
+            } else {
+              navigate("/components/UserDashboard/ChatBox");
+            }
+          },
+        );
+      } catch (error) {
+        console.error("Notification action listener failed:", error);
+      }
+    };
+
+    setup();
+
+    return () => {
+      listener?.remove();
+    };
+  }, [navigate]);
+
+  /* ================= INCOMING BANNER ================= */
+
+  useEffect(() => {
+    const handler = (event) => {
+      const detail = event.detail || {};
+      if (!detail.chatId) return;
+      if (activeChatRef.current?.id === detail.chatId) return;
+      setIncomingBanner(detail);
+      window.setTimeout(() => setIncomingBanner(null), 4000);
+    };
+    window.addEventListener("kridana-incoming-chat", handler);
+    return () => window.removeEventListener("kridana-incoming-chat", handler);
+  }, []);
+
+  /* Hardware / swipe-back: close chat before leaving page */
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let handle;
+    const setup = async () => {
+      handle = await App.addListener("backButton", () => {
+        if (activeChatRef.current) {
+          setActiveChat(null);
+          setActiveChatName("");
+          setMessages([]);
+          setSelectedMessages([]);
+        } else {
+          navigate(-1);
+        }
+      });
+    };
+    setup();
+    return () => handle?.remove();
+  }, [navigate]);
+
+  useEffect(() => {
+    ensureChatNotifications();
+  }, []);
   /* ================= AUTH + INSTITUTE ================= */
   /* ================= AUTH + INSTITUTE (FIXED) ================= */
   useEffect(() => {
@@ -129,6 +394,8 @@ const ChatBox = () => {
           "students",
           "trainerstudents",
           "institutes",
+          "trainers",
+          "InstituteTrainers",
         ];
 
         for (const col of collections) {
@@ -239,24 +506,31 @@ const ChatBox = () => {
 
       setFriendRequests(requests);
 
-      setFriendRequests(requests);
-
       for (const request of requests) {
         if (!notifiedRequests.current.has(request.id)) {
           notifiedRequests.current.add(request.id);
 
-          await LocalNotifications.schedule({
-            notifications: [
-              {
-                id: Date.now(),
-                title: "New Friend Request",
-                body: `${request.fromName} sent you a friend request`,
-                schedule: {
-                  at: new Date(Date.now() + 100),
+          if (!appState.current && Capacitor.isNativePlatform()) {
+            const {
+              getChatChannelId,
+              chatNotificationId,
+              ensureChatNotifications,
+            } = await import("../../utils/chatNotifications");
+            await ensureChatNotifications();
+            await LocalNotifications.schedule({
+              notifications: [
+                {
+                  id: chatNotificationId(request.id),
+                  title: "New connection request",
+                  body: `${request.senderName} wants to connect`,
+                  channelId: getChatChannelId(),
+                  extra: {
+                    type: "friendRequest",
+                  },
                 },
-              },
-            ],
-          });
+              ],
+            });
+          }
         }
       }
     });
@@ -309,8 +583,11 @@ const ChatBox = () => {
 
           const reqSnap = await getDocs(reqQuery);
 
+          let requestId = null;
+
           if (!reqSnap.empty) {
             requestStatus = reqSnap.docs[0].data().status;
+            requestId = reqSnap.docs[0].id;
           }
 
           results.push({
@@ -318,6 +595,7 @@ const ChatBox = () => {
             name: d.name || `${d.firstName || ""} ${d.lastName || ""}`.trim(),
             photo: d.profileImageUrl || d.studentPhotoUrl || "",
             requestStatus,
+            requestId,
           });
         }
       }
@@ -403,8 +681,25 @@ const ChatBox = () => {
 
     setShowRequestsModal(false);
   };
+  const declineRequest = async (request) => {
+    try {
+      await updateDoc(doc(db, "friendRequests", request.id), {
+        status: "declined",
+        declinedAt: serverTimestamp(),
+      });
+
+      // Remove it from the current list immediately
+      setFriendRequests((prev) => prev.filter((r) => r.id !== request.id));
+    } catch (error) {
+      console.error("Error declining request:", error);
+    }
+  };
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setListLoading(false);
+      return;
+    }
+    setListLoading(true);
 
     const getUserInfo = async (uid) => {
       // USERS
@@ -537,17 +832,20 @@ const ChatBox = () => {
       );
 
       setRecentChats(merged);
+      setListLoading(false);
     });
 
     return () => unsub();
   }, [user, friends]);
   useEffect(() => {
-    if (!chatId) return; // 🔥 prevents crash
+    const params = new URLSearchParams(location.search);
+    const fromQuery = params.get("chatId") || chatId;
+    if (!fromQuery) return;
 
-    setActiveChat({ id: chatId, type: "individual" });
+    setActiveChat({ id: fromQuery, type: "individual" });
     setActiveChatName(initialChatName);
     setScreen("chat");
-  }, [chatId]);
+  }, [chatId, location.search, initialChatName]);
   /* ================= USERS ================= */
   useEffect(() => {
     if (!instituteId) return;
@@ -619,16 +917,63 @@ const ChatBox = () => {
   /* ================= MESSAGES ================= */
   useEffect(() => {
     if (!activeChat?.id) return;
+    setMessages([]);
+    setMessagesLoading(true);
 
-    const q = query(
+    const chatRef = doc(db, "chats", activeChat.id);
+
+    const unsubChat = onSnapshot(chatRef, (chatSnap) => {
+      if (!chatSnap.exists()) return;
+
+      const chatData = chatSnap.data();
+
+      const reminder = chatData.systemReminder;
+
+      setMessages((prev) => {
+        const normalMessages = prev.filter((m) => m.type !== "classReminder");
+
+        if (!reminder) return normalMessages;
+
+        return [
+          {
+            id: "system-reminder",
+            text: reminder.text,
+            type: "classReminder",
+            senderId: "SYSTEM",
+            createdAt: reminder.createdAt,
+          },
+          ...normalMessages,
+        ];
+      });
+    });
+
+    const msgQuery = query(
       collection(db, "chats", activeChat.id, "messages"),
       orderBy("createdAt", "asc"),
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+    const unsubMessages = onSnapshot(msgQuery, (snap) => {
+      const msgs = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      }));
+
+      setMessages((prev) => {
+        const reminder = prev.find((m) => m.type === "classReminder");
+
+        if (reminder) {
+          return [reminder, ...msgs];
+        }
+
+        return msgs;
+      });
+      setMessagesLoading(false);
     });
 
-    return () => unsub();
+    return () => {
+      unsubChat();
+      unsubMessages();
+    };
   }, [activeChat]);
 
   const isAdmin = () => {
@@ -659,9 +1004,14 @@ const ChatBox = () => {
     setActiveChat({
       id: chatId,
       type: "individual",
+      uid: friend.uid,
     });
 
     setActiveChatName(friend.name);
+    setUnreadCounts((prev) => ({
+      ...prev,
+      [chatId]: 0,
+    }));
   };
 
   /* ================= GROUP RENAME ================= */
@@ -706,25 +1056,34 @@ const ChatBox = () => {
 
   /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
-    if (!text.trim() || !activeChat?.id || !user) return;
+    const message = text.trim();
 
-    const msgRef = collection(db, "chats", activeChat.id, "messages");
+    if (!message || !activeChat?.id || !user || sending) return;
 
-    await addDoc(msgRef, {
-      text: text.trim(),
-      senderId: user.uid,
-      createdAt: serverTimestamp(),
-      readBy: [user.uid], // ✅ read receipt
-    });
-
-    await updateDoc(doc(db, "chats", activeChat.id), {
-      lastMessage: text.trim(),
-      lastAt: serverTimestamp(),
-    });
-
+    setSending(true);
     setText("");
-  };
 
+    try {
+      const msgRef = collection(db, "chats", activeChat.id, "messages");
+
+      await addDoc(msgRef, {
+        text: message,
+        senderId: user.uid,
+        createdAt: serverTimestamp(),
+        readBy: [user.uid],
+      });
+
+      await updateDoc(doc(db, "chats", activeChat.id), {
+        lastMessage: message,
+        lastAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error(err);
+      setText(message);
+    } finally {
+      setSending(false);
+    }
+  };
   /* ================= AUTO READ ================= */
   useEffect(() => {
     if (!activeChat?.id || !user) return;
@@ -736,11 +1095,17 @@ const ChatBox = () => {
       for (let m of msgs.docs) {
         const data = m.data();
         if (!data.readBy?.includes(user.uid)) {
-          await updateDoc(doc(db, "chats", activeChat.id, "messages", m.id), {
-            readBy: [...(data.readBy || []), user.uid],
-          });
+          if (!data.readBy?.includes(user.uid)) {
+            await updateDoc(doc(db, "chats", activeChat.id, "messages", m.id), {
+              readBy: [...new Set([...(data.readBy || []), user.uid])],
+            });
+          }
         }
       }
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [activeChat.id]: 0,
+      }));
     };
 
     markRead();
@@ -765,7 +1130,9 @@ const ChatBox = () => {
         let unread = 0;
         msgs.forEach((m) => {
           const data = m.data();
-          if (!data.readBy?.includes(user.uid)) unread++;
+          if (data.senderId !== user.uid && !data.readBy?.includes(user.uid)) {
+            unread++;
+          }
         });
 
         counts[chatId] = unread;
@@ -775,6 +1142,107 @@ const ChatBox = () => {
     });
 
     return () => unsub();
+  }, [user, instituteId]);
+  /* ================= AUTO CLASS REMINDER ================= */
+
+  useEffect(() => {
+    if (!user || !instituteId) return;
+
+    const checkUpcomingClasses = async () => {
+      try {
+        const timetableRef = collection(
+          db,
+          "institutes",
+          instituteId,
+          "timetable",
+        );
+
+        const timetableSnap = await getDocs(timetableRef);
+
+        const now = new Date();
+        const next24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+        for (const classDoc of timetableSnap.docs) {
+          const data = classDoc.data();
+
+          if (!data.start) continue;
+
+          const classStart = data.start.toDate();
+
+          // Only upcoming within next 24 hrs
+          if (
+            classStart >= now &&
+            classStart <= next24Hours &&
+            !data.reminderSent
+          ) {
+            const students = data.students || [];
+
+            // Message Text
+            const reminderMessage = `📢 Upcoming Class Reminder
+
+Class : ${data.title}
+Category : ${data.category}
+Sub Category : ${data.subCategory}
+Trainer : ${data.trainerName}
+Branch : ${data.branch}
+
+Date : ${classStart.toLocaleDateString()}
+
+Time :
+${classStart.toLocaleTimeString([], {
+  hour: "2-digit",
+  minute: "2-digit",
+})}
+
+Please attend your class on time.`;
+
+            for (const studentId of students) {
+              const chatId = [studentId, data.trainerId].sort().join("_");
+
+              const chatRef = doc(db, "chats", chatId);
+
+              const chatSnap = await getDoc(chatRef);
+
+              if (!chatSnap.exists()) {
+                await setDoc(chatRef, {
+                  type: "individual",
+                  instituteId,
+                  members: [studentId, data.trainerId],
+                  createdAt: serverTimestamp(),
+                  lastMessage: reminderMessage,
+                  lastAt: serverTimestamp(),
+                });
+              }
+
+              await updateDoc(chatRef, {
+                systemReminder: {
+                  text: reminderMessage,
+                  createdAt: serverTimestamp(),
+                  classId: classDoc.id,
+                  type: "classReminder",
+                },
+                lastAt: serverTimestamp(),
+              });
+            }
+
+            // Prevent duplicate reminders
+            await updateDoc(classDoc.ref, {
+              reminderSent: true,
+              reminderSentAt: serverTimestamp(),
+            });
+          }
+        }
+      } catch (e) {
+        console.log(e);
+      }
+    };
+
+    checkUpcomingClasses();
+
+    // check every 15 minutes
+    const interval = setInterval(checkUpcomingClasses, 15 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, [user, instituteId]);
 
   /* ================= CREATE GROUP ================= */
@@ -849,18 +1317,241 @@ const ChatBox = () => {
   const filteredFriends = friends.filter((friend) =>
     friend.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+  const visibleMessages = messageSearch.trim()
+    ? messages.filter((m) =>
+        String(m.text || "")
+          .toLowerCase()
+          .includes(messageSearch.trim().toLowerCase()),
+      )
+    : messages;
+  const orderedMessages = [...visibleMessages].sort((a, b) => {
+    if (a.type === "classReminder") return -1;
+    if (b.type === "classReminder") return 1;
+    return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+  });
+  const resendFriendRequest = async (person) => {
+    if (person.requestId) {
+      await updateDoc(doc(db, "friendRequests", person.requestId), {
+        status: "pending",
+        createdAt: serverTimestamp(),
+        declinedAt: null,
+      });
+    } else {
+      await sendFriendRequest(person);
+    }
+
+    alert("Friend request resent.");
+  };
+  const formatMessageTime = (timestamp) => {
+    if (!timestamp?.toDate) return "";
+
+    return timestamp.toDate().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+  /* ================= MESSAGE SELECTION ================= */
+  /* ================= MULTIPLE MESSAGE SELECTION ================= */
+
+  const isMessageSelectable = (message) => {
+    return (
+      user &&
+      message.senderId === user.uid &&
+      message.type !== "classReminder" &&
+      message.senderId !== "SYSTEM"
+    );
+  };
+
+  const isMessageSelected = (messageId) => {
+    return selectedMessages.some((m) => m.id === messageId);
+  };
+
+  const toggleMessageSelection = (message) => {
+    if (!isMessageSelectable(message)) return;
+
+    setSelectedMessages((prev) => {
+      const alreadySelected = prev.some((m) => m.id === message.id);
+
+      if (alreadySelected) {
+        return prev.filter((m) => m.id !== message.id);
+      }
+
+      return [...prev, message];
+    });
+
+    setShowMessageMenu(false);
+  };
+
+  /* ================= LONG PRESS ================= */
+
+  const startMessageLongPress = (e, message) => {
+    if (!isMessageSelectable(message)) return;
+
+    // Prevent browser context menu on mobile
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+
+    longPressTriggered.current = false;
+
+    clearTimeout(longPressTimer.current);
+
+    if (e.touches?.length) {
+      touchStartPosition.current = {
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY,
+      };
+    }
+
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+
+      toggleMessageSelection(message);
+    }, 600);
+  };
+
+  const moveMessageLongPress = (e) => {
+    if (!e.touches?.length) return;
+
+    const touch = e.touches[0];
+
+    const dx = touch.clientX - touchStartPosition.current.x;
+
+    const dy = touch.clientY - touchStartPosition.current.y;
+
+    // If user is scrolling, cancel long press
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+      clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const endMessageLongPress = () => {
+    clearTimeout(longPressTimer.current);
+  };
+
+  /* ================= DESKTOP RIGHT CLICK ================= */
+
+  const handleMessageContextMenu = (e, message) => {
+    if (!isMessageSelectable(message)) {
+      e.preventDefault();
+      return;
+    }
+
+    e.preventDefault();
+
+    toggleMessageSelection(message);
+  };
+
+  /* ================= MESSAGE TAP ================= */
+
+  const handleMessageTap = (message) => {
+    // If selection mode is active,
+    // tapping your own messages selects/deselects them.
+    if (selectedMessages.length > 0) {
+      if (isMessageSelectable(message)) {
+        toggleMessageSelection(message);
+      }
+
+      return;
+    }
+
+    // Normal message tap does nothing
+  };
+
+  /* ================= DELETE SELECTED ================= */
+
+  const deleteSelectedMessages = async () => {
+    if (!user || !activeChat?.id || selectedMessages.length === 0) {
+      return;
+    }
+
+    // Security check before deletion
+    const messagesToDelete = selectedMessages.filter(
+      (message) =>
+        message.senderId === user.uid && message.type !== "classReminder",
+    );
+
+    if (messagesToDelete.length === 0) {
+      setSelectedMessages([]);
+      setShowDeleteConfirm(false);
+      return;
+    }
+
+    try {
+      await Promise.all(
+        messagesToDelete.map((message) =>
+          deleteDoc(doc(db, "chats", activeChat.id, "messages", message.id)),
+        ),
+      );
+
+      /*
+       * Update chat preview after deleting messages.
+       * Find the newest remaining message.
+       */
+      const remainingSnapshot = await getDocs(
+        query(
+          collection(db, "chats", activeChat.id, "messages"),
+          orderBy("createdAt", "desc"),
+        ),
+      );
+
+      if (!remainingSnapshot.empty) {
+        const latestMessage = remainingSnapshot.docs[0].data();
+
+        await updateDoc(doc(db, "chats", activeChat.id), {
+          lastMessage: latestMessage.text || "Message",
+          lastAt: latestMessage.createdAt || serverTimestamp(),
+        });
+      } else {
+        await updateDoc(doc(db, "chats", activeChat.id), {
+          lastMessage: "",
+          lastAt: serverTimestamp(),
+        });
+      }
+
+      setSelectedMessages([]);
+      setShowMessageMenu(false);
+      setShowDeleteConfirm(false);
+    } catch (error) {
+      console.error("Error deleting selected messages:", error);
+
+      alert("Unable to delete messages. Please try again.");
+    }
+  };
   return (
     <div
       className="
+  page-content
   flex
   h-[100dvh]
-  md:h-[60vh]
   w-full
+  max-w-lg
+  mx-auto
+  md:max-w-none
   bg-[#f3f3f3]
   overflow-hidden
   md:rounded-xl
+  relative
 "
     >
+      {incomingBanner && (
+        <button
+          type="button"
+          onClick={() => {
+            setActiveChat({ id: incomingBanner.chatId, type: "individual" });
+            setActiveChatName(incomingBanner.senderName);
+            setIncomingBanner(null);
+          }}
+          className="absolute top-3 left-3 right-3 z-[80] bg-white rounded-2xl shadow-lg border border-orange-100 px-4 py-3 text-left"
+        >
+          <p className="text-sm font-semibold text-gray-900">
+            {incomingBanner.senderName}
+          </p>
+          <p className="text-xs text-gray-500 truncate mt-0.5">
+            {incomingBanner.text}
+          </p>
+        </button>
+      )}
       {/* ================= CHAT LIST ================= */}
       <div
         className={`
@@ -991,42 +1682,28 @@ const ChatBox = () => {
                     {person.requestStatus === "pending" ? (
                       <button
                         disabled
-                        className="
-                  bg-yellow-500
-                  text-white
-                  px-3 py-2
-                  rounded-lg
-                  text-sm
-                  shrink-0
-                "
+                        className="bg-yellow-500 text-white px-3 py-2 rounded-lg text-sm shrink-0"
                       >
                         Pending
                       </button>
                     ) : person.requestStatus === "accepted" ? (
                       <button
                         disabled
-                        className="
-                  bg-green-600
-                  text-white
-                  px-3 py-2
-                  rounded-lg
-                  text-sm
-                  shrink-0
-                "
+                        className="bg-green-600 text-white px-3 py-2 rounded-lg text-sm shrink-0"
                       >
                         Connected
+                      </button>
+                    ) : person.requestStatus === "declined" ? (
+                      <button
+                        onClick={() => resendFriendRequest(person)}
+                        className="bg-red-500 text-white px-3 py-2 rounded-lg text-sm shrink-0"
+                      >
+                        Resend Request
                       </button>
                     ) : (
                       <button
                         onClick={() => sendFriendRequest(person)}
-                        className="
-                  bg-green-500
-                  text-white
-                  px-3 py-2
-                  rounded-lg
-                  text-sm
-                  shrink-0
-                "
+                        className="bg-green-500 text-white px-3 py-2 rounded-lg text-sm shrink-0"
                       >
                         Connect
                       </button>
@@ -1071,43 +1748,73 @@ overflow-y-auto
                 </button>
               </div>
 
-              {friendRequests.map((req) => (
-                <div
-                  key={req.id}
-                  className="flex items-center justify-between border-b py-3"
-                >
-                  <div>
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={getValidImage(req.senderPhoto, req.senderName)}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
+              {friendRequests.length === 0 ? (
+                <div className="py-10 px-4 text-center">
+                  <p className="text-base font-semibold text-gray-800">
+                    No connection requests
+                  </p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    When someone wants to connect with you, their request will
+                    show up here.
+                  </p>
+                </div>
+              ) : (
+                friendRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="flex items-center justify-between border-b py-3"
+                  >
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={getValidImage(req.senderPhoto, req.senderName)}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
 
-                      <div>
-                        <p className="font-medium">{req.senderName}</p>
+                        <div>
+                          <p className="font-medium">{req.senderName}</p>
 
-                        <p className="text-xs text-gray-500">
-                          {req.senderRole}
-                        </p>
+                          <p className="text-xs text-gray-500">
+                            {req.senderRole}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <button
-                    onClick={() => acceptRequest(req)}
-                    className="bg-green-500 text-white px-3 py-2 rounded-lg"
-                  >
-                    Accept
-                  </button>
-                </div>
-              ))}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => acceptRequest(req)}
+                        className="bg-green-500 text-white px-3 py-2 rounded-lg"
+                      >
+                        Accept
+                      </button>
+
+                      <button
+                        onClick={() => declineRequest(req)}
+                        className="bg-red-500 text-white px-3 py-2 rounded-lg"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
         <div className="px-4 pt-5 pb-3 flex-shrink-0">
           <div className="flex items-center gap-3 mb-2">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                if (activeChat) {
+                  setActiveChat(null);
+                  setActiveChatName("");
+                  setMessages([]);
+                  setSelectedMessages([]);
+                } else {
+                  navigate(-1);
+                }
+              }}
               className="
         w-10
         h-10
@@ -1254,8 +1961,65 @@ overflow-y-auto
         {/* CHAT LIST */}
         {/* CHAT LIST */}
         <div className="flex-1 overflow-y-auto px-3 pb-6 min-h-0">
-          {/* Existing Chats */}
-          {chatFilter !== "friends" && filteredChats.length > 0 && (
+          {listLoading ? (
+            <div className="space-y-3 pt-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="bg-white rounded-3xl px-4 py-4 flex items-center gap-4 animate-pulse"
+                >
+                  <div className="w-14 h-14 rounded-full bg-gray-200" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-1/2 bg-gray-200 rounded-full" />
+                    <div className="h-3 w-3/4 bg-gray-100 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {!listLoading && upcomingClasses.length > 0 && (
+            <div className="mb-3">
+              <button
+                onClick={() => setShowUpcomingPopup(true)}
+                className="
+        relative
+        w-full
+        overflow-hidden
+        rounded-2xl
+        bg-gradient-to-r
+        from-orange-500
+        to-orange-600
+        text-white
+        shadow-md
+        py-3
+        px-4
+      "
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-xl">📅</div>
+
+                  <div className="flex-1 overflow-hidden">
+                    <div className="whitespace-nowrap animate-animate-marquee font-medium">
+                      {upcomingClasses.map((cls) => (
+                        <span key={cls.id} className="mr-16">
+                          {cls.title} • {cls.start.toLocaleDateString()} •{" "}
+                          {cls.start.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <span className="text-xs bg-white/20 px-3 py-1 rounded-full">
+                    View
+                  </span>
+                </div>
+              </button>
+            </div>
+          )}
+          {chatFilter !== "friends" && !listLoading && filteredChats.length > 0 && (
             <>
               <p className="px-2 mb-3 text-xs font-semibold text-gray-500 uppercase">
                 Recent Chats
@@ -1268,9 +2032,16 @@ overflow-y-auto
                     setActiveChat({
                       id: chat.id,
                       type: chat.type,
+                      uid: chat.uid,
                     });
 
                     setActiveChatName(chat.displayName);
+
+                    // Remove unread badge immediately
+                    setUnreadCounts((prev) => ({
+                      ...prev,
+                      [chat.id]: 0,
+                    }));
                   }}
                   className="bg-white rounded-3xl px-4 py-4 mb-3 flex items-center gap-4 shadow-sm cursor-pointer"
                 >
@@ -1278,6 +2049,10 @@ overflow-y-auto
                     src={getValidImage(chat.photo, chat.displayName)}
                     className="w-14 h-14 rounded-full object-cover"
                   />
+
+                  {chat.uid && onlineUsers[chat.uid]?.online && (
+                    <span className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></span>
+                  )}
 
                   <div className="flex-1">
                     <h3 className="font-semibold">{chat.displayName}</h3>
@@ -1326,6 +2101,10 @@ overflow-y-auto
                         src={getValidImage(friend.photo, friend.name)}
                         className="w-14 h-14 rounded-full object-cover"
                       />
+
+                      {onlineUsers[friend.uid]?.online && (
+                        <span className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></span>
+                      )}
                     </div>
 
                     <div>
@@ -1337,6 +2116,20 @@ overflow-y-auto
                   </div>
                 ))}
               </>
+            )}
+          {!listLoading &&
+            filteredChats.length === 0 &&
+            (chatFilter === "friends" ? filteredFriends.length === 0 : true) &&
+            chatFilter !== "friends" && (
+              <div className="text-center py-16 px-6">
+                <p className="text-sm font-semibold text-gray-700">
+                  No chats yet
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Connect with a friend or open a trainer/institute chat to get
+                  started.
+                </p>
+              </div>
             )}
         </div>
       </div>
@@ -1372,9 +2165,10 @@ overflow-y-auto
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
-                setSelectedChat(null);
                 setActiveChat(null);
+                setActiveChatName("");
                 setMessages([]);
+                setSelectedMessages([]);
               }}
               className="md:hidden text-xl"
             >
@@ -1395,32 +2189,187 @@ overflow-y-auto
                 {activeChatName || "Chat"}
               </h2>
 
-              <p className="text-xs text-green-500">Online</p>
+              <p
+                className={`text-xs ${
+                  activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                    ? "text-green-500"
+                    : "text-gray-400"
+                }`}
+              >
+                {activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                  ? "Online"
+                  : onlineUsers[activeChat?.uid]?.lastSeen?.toDate
+                  ? `Last seen ${onlineUsers[activeChat.uid].lastSeen
+                      .toDate()
+                      .toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}`
+                  : "Offline"}
+              </p>
             </div>
           </div>
 
-          <MoreVertical size={20} className="cursor-pointer" />
+          <div className="relative">
+            <button
+              onClick={() => {
+                if (selectedMessages.length > 0) {
+                  setShowMessageMenu((prev) => !prev);
+                  setShowChatMenu(false);
+                } else {
+                  setShowChatMenu((prev) => !prev);
+                  setShowMessageMenu(false);
+                }
+              }}
+              className={`
+      w-10
+      h-10
+      rounded-full
+      flex
+      items-center
+      justify-center
+      transition
+      ${
+        selectedMessages.length > 0
+          ? "bg-orange-50 text-orange-600"
+          : "text-gray-500"
+      }
+    `}
+              aria-label="Chat options"
+            >
+              <MoreVertical size={21} />
+            </button>
+
+            {showChatMenu && selectedMessages.length === 0 && (
+              <div className="absolute right-0 top-11 z-[100] w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+                <button
+                  onClick={() => {
+                    setShowChatSearch(true);
+                    setShowChatMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                >
+                  <Search size={16} />
+                  Search messages
+                </button>
+                <ChatMuteMenuItems
+                  conversationMuted={conversationMuted}
+                  globalMuted={isMuted}
+                  onToggleConversation={async () => {
+                    if (!user || !activeChat?.id) return;
+                    const next = !conversationMuted;
+                    setConversationMuted(next);
+                    setShowChatMenu(false);
+                    await setConversationMute(user.uid, activeChat.id, next);
+                  }}
+                  onToggleGlobal={async () => {
+                    if (!user) return;
+                    const next = !isMuted;
+                    setIsMuted(next);
+                    setShowChatMenu(false);
+                    await setGlobalMute(user.uid, next);
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    setShowChatMenu(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                >
+                  <Info size={16} />
+                  Chat info
+                </button>
+              </div>
+            )}
+
+            {selectedMessages.length > 0 && showMessageMenu && (
+              <div
+                className="
+          absolute
+          right-0
+          top-11
+          z-[100]
+          w-48
+          bg-white
+          rounded-2xl
+          shadow-2xl
+          border
+          border-gray-100
+          overflow-hidden
+        "
+              >
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <p className="text-xs text-gray-400">
+                    {selectedMessages.length} selected
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowMessageMenu(false);
+                    setShowDeleteConfirm(true);
+                  }}
+                  className="
+            w-full
+            flex
+            items-center
+            gap-3
+            px-4
+            py-3
+            text-left
+            text-red-600
+            hover:bg-red-50
+            active:bg-red-100
+            text-sm
+            font-semibold
+          "
+                >
+                  <span className="text-lg">🗑️</span>
+
+                  <span>
+                    Delete{" "}
+                    {selectedMessages.length > 1
+                      ? `${selectedMessages.length} messages`
+                      : "message"}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* MESSAGES */}
-        <div
-          className="
-          flex-1
-          overflow-y-auto
-          px-4
-          py-5
-          space-y-4
-          min-h-0
-          pb-[130px]
-        "
-        >
-          <div className="flex justify-center">
-            <div className="bg-white text-gray-400 text-xs px-4 py-1 rounded-full shadow-sm">
-              Today
-            </div>
+        {showChatSearch && (
+          <div className="px-3 py-2 bg-white border-b border-gray-100 flex items-center gap-2">
+            <Search size={16} className="text-gray-400" />
+            <input
+              value={messageSearch}
+              onChange={(e) => setMessageSearch(e.target.value)}
+              placeholder="Search in this chat"
+              className="flex-1 min-h-[40px] text-sm outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setShowChatSearch(false);
+                setMessageSearch("");
+              }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+            >
+              <X size={14} />
+            </button>
           </div>
+        )}
 
-          {messages.length === 0 && activeChat && (
+        {/* MESSAGES */}
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col-reverse overscroll-contain">
+          <div className="px-4 py-5 pb-[50px] space-y-4">
+          {messagesLoading && (
+            <div className="flex justify-center py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-200 border-t-[#FF6B00]" />
+            </div>
+          )}
+
+          {messages.length === 0 && activeChat && !messagesLoading && (
             <div className="flex justify-center mt-8">
               <div className="bg-white rounded-3xl p-6 shadow-sm max-w-sm text-center">
                 <img
@@ -1438,47 +2387,188 @@ overflow-y-auto
             </div>
           )}
 
-          {messages.map((m) => {
-            const sender = users.find((u) => u.uid === m.senderId);
+          {orderedMessages.map((m, index) => {
+              const sender =
+                m.senderId === "SYSTEM"
+                  ? { name: "Class Reminder" }
+                  : users.find((u) => u.uid === m.senderId);
 
-            const isMine = m.senderId === user?.uid;
+              const isMine = m.senderId === user?.uid;
 
-            return (
-              <div
-                key={m.id}
-                className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-              >
+              const canSelect =
+                isMine && m.type !== "classReminder" && m.senderId !== "SYSTEM";
+
+              const isSelected = isMessageSelected(m.id);
+              const showDay =
+                getChatDayKey(m.createdAt) !==
+                getChatDayKey(orderedMessages[index - 1]?.createdAt);
+
+              return (
+                <React.Fragment key={m.id}>
+                  {showDay && (
+                    <div className="flex justify-center py-1">
+                      <span className="bg-white text-gray-500 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
+                        {getChatDayLabel(m.createdAt) || "Today"}
+                      </span>
+                    </div>
+                  )}
                 <div
                   className={`
-                  max-w-[78%]
-                  px-4
-                  py-3
-                  text-sm
-                  shadow-sm
-                  ${
-                    isMine
-                      ? "bg-[#FFE2CF] rounded-2xl rounded-tr-sm"
-                      : "bg-white rounded-2xl rounded-tl-sm"
-                  }
-                `}
+          flex
+          ${isMine ? "justify-end" : "justify-start"}
+          relative
+          transition-all
+          duration-150
+        `}
+                  onContextMenu={(e) => handleMessageContextMenu(e, m)}
+                  onTouchStart={(e) => {
+                    if (canSelect) {
+                      startMessageLongPress(e, m);
+                    }
+                  }}
+                  onTouchMove={moveMessageLongPress}
+                  onTouchEnd={endMessageLongPress}
+                  onTouchCancel={endMessageLongPress}
+                  onMouseDown={(e) => {
+                    if (e.button === 0 && canSelect) {
+                      longPressTimer.current = setTimeout(() => {
+                        longPressTriggered.current = true;
+
+                        toggleMessageSelection(m);
+                      }, 600);
+                    }
+                  }}
+                  onMouseUp={endMessageLongPress}
+                  onMouseLeave={endMessageLongPress}
+                  onClick={() => {
+                    if (!longPressTriggered.current) {
+                      handleMessageTap(m);
+                    }
+
+                    longPressTriggered.current = false;
+                  }}
                 >
-                  {!isMine && (
-                    <p className="text-[11px] font-semibold text-[#FF6B00] mb-1">
-                      {sender?.name || "User"}
-                    </p>
+                  {/* Selection background */}
+                  {isSelected && (
+                    <div
+                      className="
+              absolute
+              -inset-2
+              rounded-3xl
+              bg-orange-100/70
+              pointer-events-none
+            "
+                    />
                   )}
 
-                  <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                  <div
+                    className={`
+            relative
+            max-w-[78%]
+            px-4
+            py-3
+            text-sm
+            shadow-sm
+            select-none
+            transition-all
+            duration-150
 
-                  <div className="flex justify-end mt-1">
-                    <span className="text-[10px] text-gray-400">
-                      {m.readBy?.length > 1 && isMine ? "✓✓" : ""}
-                    </span>
+            ${
+              m.type === "classReminder"
+                ? "bg-blue-50 border border-blue-300 rounded-2xl"
+                : isMine
+                ? "bg-[#FFE2CF] rounded-2xl rounded-tr-sm"
+                : "bg-white rounded-2xl rounded-tl-sm"
+            }
+
+            ${
+              isSelected
+                ? "ring-2 ring-orange-500 ring-offset-2 scale-[0.98]"
+                : ""
+            }
+          `}
+                  >
+                    {/* Sender */}
+                    {!isMine && (
+                      <p
+                        className="
+                text-[11px]
+                font-semibold
+                text-[#FF6B00]
+                mb-1
+              "
+                      >
+                        {m.type === "classReminder"
+                          ? "📅 Upcoming Class"
+                          : sender?.name || "User"}
+                      </p>
+                    )}
+
+                    {/* Message */}
+                    <p
+                      className="
+              whitespace-pre-wrap
+              break-words
+            "
+                    >
+                      {m.text}
+                    </p>
+
+                    {/* Time + read status */}
+                    <div
+                      className="
+              flex
+              justify-end
+              items-center
+              gap-1
+              mt-2
+            "
+                    >
+                      <span
+                        className="
+                text-[10px]
+                text-gray-500
+              "
+                      >
+                        {formatMessageTime(m.createdAt)}
+                      </span>
+
+                      {isMine && (m.readBy?.length || 0) > 1 ? (
+                        <CheckCheck size={15} className="text-blue-500" />
+                      ) : (
+                        isMine && <Check size={15} className="text-gray-400" />
+                      )}
+                    </div>
+
+                    {/* Selected check */}
+                    {isSelected && (
+                      <div
+                        className="
+                absolute
+                -top-2
+                -right-2
+                w-6
+                h-6
+                rounded-full
+                bg-orange-500
+                text-white
+                flex
+                items-center
+                justify-center
+                text-xs
+                font-bold
+                shadow-md
+              "
+                      >
+                        ✓
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
+                </React.Fragment>
+              );
+            })}
+          </div>
         </div>
 
         {/* INPUT BAR */}
@@ -1522,6 +2612,7 @@ overflow-y-auto
 
             <button
               onClick={sendMessage}
+              disabled={sending || !text.trim()}
               className="
               w-14
               h-12
@@ -1532,13 +2623,263 @@ overflow-y-auto
               justify-center
               shadow-lg
               shrink-0
+              disabled:opacity-50
             "
             >
-              <Send size={20} className="text-white" />
+              {sending ? (
+                <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              ) : (
+                <Send size={20} className="text-white" />
+              )}
             </button>
           </div>
         </div>
       </div>
+      {showUpcomingPopup && (
+        <div className="fixed inset-0 bg-black/40 z-[999] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-lg max-h-[80vh] overflow-hidden shadow-2xl">
+            <div className="bg-orange-500 text-white px-6 py-4 flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold">Upcoming Classes</h2>
+                <p className="text-sm opacity-90">Next scheduled sessions</p>
+              </div>
+
+              <button
+                onClick={() => setShowUpcomingPopup(false)}
+                className="text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[65vh] p-5 space-y-4">
+              {upcomingClasses.map((cls) => (
+                <div
+                  key={cls.id}
+                  className="
+              border
+              border-orange-100
+              rounded-2xl
+              p-4
+              hover:shadow-md
+              transition
+            "
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className="font-semibold text-lg">{cls.title}</h3>
+
+                      <p className="text-sm text-gray-500">
+                        {cls.category}
+                        {cls.subCategory && ` • ${cls.subCategory}`}
+                      </p>
+                    </div>
+
+                    <div className="bg-orange-100 text-orange-600 px-3 py-1 rounded-full text-xs font-semibold">
+                      Upcoming
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
+                    <div>
+                      <p className="text-gray-400">Trainer</p>
+
+                      <p className="font-medium">{cls.trainerName}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-gray-400">Branch</p>
+
+                      <p className="font-medium">{cls.branch}</p>
+                    </div>
+
+                    <div>
+                      <p className="text-gray-400">Date</p>
+
+                      <p className="font-medium">
+                        {cls.start.toLocaleDateString()}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-gray-400">Time</p>
+
+                      <p className="font-medium">
+                        {cls.start.toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ================= DELETE MESSAGE CONFIRMATION ================= */}
+
+      {showDeleteConfirm && (
+        <div
+          className="
+      fixed
+      inset-0
+      z-[2000]
+      bg-black/50
+      backdrop-blur-[2px]
+      flex
+      items-end
+      sm:items-center
+      justify-center
+      p-0
+      sm:p-4
+    "
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="
+        bg-white
+        w-full
+        sm:max-w-sm
+        rounded-t-3xl
+        sm:rounded-3xl
+        p-6
+        shadow-2xl
+      "
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Icon */}
+            <div className="flex justify-center mb-4">
+              <div
+                className="
+            w-16
+            h-16
+            rounded-full
+            bg-red-50
+            flex
+            items-center
+            justify-center
+            text-2xl
+          "
+              >
+                🗑️
+              </div>
+            </div>
+
+            {/* Title */}
+            <h2
+              className="
+          text-lg
+          font-bold
+          text-gray-900
+          text-center
+        "
+            >
+              Delete{" "}
+              {selectedMessages.length === 1
+                ? "message?"
+                : `${selectedMessages.length} messages?`}
+            </h2>
+
+            {/* Description */}
+            <p
+              className="
+          text-sm
+          text-gray-500
+          text-center
+          mt-2
+          leading-relaxed
+        "
+            >
+              Are you sure you want to delete{" "}
+              {selectedMessages.length === 1
+                ? "this message"
+                : `these ${selectedMessages.length} messages`}
+              ?
+              <br />
+              This action cannot be undone.
+            </p>
+
+            {/* Selected messages preview */}
+            <div
+              className="
+          mt-4
+          bg-gray-50
+          rounded-2xl
+          p-3
+          max-h-28
+          overflow-y-auto
+          space-y-2
+        "
+            >
+              {selectedMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className="
+                bg-white
+                rounded-xl
+                px-3
+                py-2
+                border
+                border-gray-100
+              "
+                >
+                  <p
+                    className="
+                  text-xs
+                  text-gray-600
+                  whitespace-pre-wrap
+                  break-words
+                "
+                  >
+                    {message.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Buttons */}
+            <div
+              className="
+          grid
+          grid-cols-2
+          gap-3
+          mt-5
+        "
+            >
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="
+            h-12
+            rounded-xl
+            bg-gray-100
+            text-gray-700
+            font-semibold
+            active:scale-[0.98]
+          "
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={deleteSelectedMessages}
+                className="
+            h-12
+            rounded-xl
+            bg-red-500
+            text-white
+            font-semibold
+            active:scale-[0.98]
+            shadow-sm
+          "
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { CheckCircle, Lock, ChevronLeft } from "lucide-react";
+import {
+  CheckCircle,
+  Lock,
+  ChevronLeft,
+  Copy,
+  ExternalLink,
+} from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -13,7 +19,7 @@ export default function TrainerPaymentSelection() {
   const [selected, setSelected] = useState("upi");
   const [utr, setUtr] = useState("");
   const [loading, setLoading] = useState(false);
-
+  const [copied, setCopied] = useState(false);
   const [student, setStudent] = useState(null);
   const [trainer, setTrainer] = useState(null);
   const [kyc, setKyc] = useState(null);
@@ -136,7 +142,21 @@ export default function TrainerPaymentSelection() {
       setLoading(false);
     }
   };
+  const upiId = kyc?.upiId || "9113831872@okbizaxis";
+  const upiName = kyc?.upiHolderName || "Trainer";
 
+  const copyUPI = async () => {
+    try {
+      await navigator.clipboard.writeText(upiId);
+      setCopied(true);
+
+      setTimeout(() => {
+        setCopied(false);
+      }, 2000);
+    } catch (err) {
+      console.log(err);
+    }
+  };
   // 🔥 UPI SUBMIT (FIXED → NOW GOES TO SAVE FLOW)
   const handleUTRSubmit = () => {
     if (!utr) return alert("Enter UTR");
@@ -178,33 +198,85 @@ export default function TrainerPaymentSelection() {
         >
           <h2 className="font-semibold">UPI Payment</h2>
 
-          {selected === "upi" && (
-            <div className="mt-4 text-center">
-              {/* ✅ SAFE QR */}
+          <div className="mt-5 bg-white border rounded-2xl p-4 flex flex-col items-center">
+            {/* QR Code */}
+            <div className="bg-white border rounded-2xl shadow-sm p-3">
               <img
-                className="mx-auto w-44 h-44"
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
-                  `upi://pay?pa=${kyc?.upiId || "9113831872@okbizaxis"}&pn=${
-                    kyc?.upiHolderName || "Trainer"
-                  }&am=${totalAmount}&cu=INR`,
+                className="w-48 h-48 sm:w-56 sm:h-56 object-contain"
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+                  `upi://pay?pa=${upiId}&pn=${upiName}&am=${totalAmount}&cu=INR`,
                 )}`}
+                alt="UPI QR"
               />
-
-              <input
-                className="w-full mt-3 border p-2 rounded"
-                placeholder="Enter UTR"
-                value={utr}
-                onChange={(e) => setUtr(e.target.value)}
-              />
-
-              <button
-                onClick={handleUTRSubmit}
-                className="w-full mt-3 bg-orange-500 text-white py-2 rounded"
-              >
-                Submit UTR
-              </button>
             </div>
-          )}
+
+            <p className="mt-4 font-semibold text-base">
+              Scan & Pay ₹{totalAmount}
+            </p>
+
+            {/* Open UPI */}
+            <a
+              href={`upi://pay?pa=${upiId}&pn=${upiName}&am=${totalAmount}&cu=INR`}
+              className="mt-4 w-full bg-green-600 hover:bg-green-700 active:scale-[0.98] transition text-white py-3 rounded-xl font-semibold flex justify-center items-center gap-2"
+            >
+              <ExternalLink size={18} />
+              Open Any UPI App
+            </a>
+
+            {/* UPI ID */}
+            <div className="w-full mt-4">
+              <p className="text-xs text-gray-500 mb-2">UPI ID</p>
+
+              <div className="flex gap-2">
+                <div className="flex-1 bg-orange-50 border border-orange-100 rounded-xl px-3 py-3 overflow-hidden">
+                  <p className="font-semibold text-sm break-all">{upiId}</p>
+                </div>
+
+                <button
+                  onClick={copyUPI}
+                  className="bg-orange-500 hover:bg-orange-600 active:scale-95 transition text-white rounded-xl px-4 flex items-center gap-2"
+                >
+                  <Copy size={18} />
+                  <span className="hidden sm:inline">
+                    {copied ? "Copied" : "Copy"}
+                  </span>
+                </button>
+              </div>
+
+              {copied && (
+                <p className="text-green-600 text-xs mt-2 font-medium">
+                  ✓ UPI ID copied successfully
+                </p>
+              )}
+            </div>
+
+            {/* Receiver */}
+            <div className="w-full mt-4 bg-orange-50 border border-orange-100 rounded-xl p-3">
+              <p className="text-xs text-gray-500">Receiver Name</p>
+
+              <p className="font-semibold text-sm mt-1 break-all">{upiName}</p>
+            </div>
+
+            {/* UTR */}
+            <input
+              className="mt-5 w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-orange-500"
+              placeholder="Enter UTR Number"
+              value={utr}
+              onChange={(e) =>
+                setUtr(
+                  e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase(),
+                )
+              }
+            />
+
+            <button
+              onClick={handleUTRSubmit}
+              disabled={loading}
+              className="mt-4 w-full bg-orange-500 hover:bg-orange-600 active:scale-[0.98] transition text-white py-3 rounded-xl font-semibold disabled:opacity-60"
+            >
+              {loading ? "Processing..." : "Submit UTR"}
+            </button>
+          </div>
         </div>
 
         {/* OR */}

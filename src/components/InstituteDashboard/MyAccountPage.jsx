@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { db } from "../../firebase";
 import {
   doc,
@@ -15,22 +15,32 @@ import {
 
 import { serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
-import { User, Users, ImageUp } from "lucide-react";
+import {
+  User,
+  Users,
+  Search,
+  Plus,
+  ArrowUpRight,
+  ArrowDownRight,
+  Circle,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import AccountPageShell from "./MyAccount/AccountPageShell";
+import { CATEGORIES, SUB_CATEGORY_MAP } from "./MyAccount/sportCategories";
 
 const MyAccountPage = ({ setActiveMenu }) => {
   const { user } = useAuth();
 
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState("edit");
-
+  const [activeTab, setActiveTab] = useState("management");
+  const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const [profile, setProfile] = useState({
     fullName: "",
     email: "",
     phone: "",
     bio: "",
-    profileImage: "", // ✅ added
+    profileImage: "", // added
   });
 
   const [media, setMedia] = useState([]);
@@ -61,298 +71,13 @@ const MyAccountPage = ({ setActiveMenu }) => {
   const [showEditStudentModal, setShowEditStudentModal] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [sports, setSports] = useState([]);
-  const categories = [
-    "Martial Arts",
-    "Team Ball Sports",
-    "Racket Sports",
-    "Fitness",
-    "Target & Precision Sports",
-    "Equestrian Sports",
-    "Adventure & Outdoor Sports",
-    "Ice Sports",
-    "Aquatic Sports",
-    "Wellness",
-    "Dance",
-  ];
+  const [branches, setBranches] = useState([]);
+  const categories = CATEGORIES;
+  const subCategoryMap = SUB_CATEGORY_MAP;
 
-  const subCategoryMap = {
-    "Martial Arts": [
-      "Karate",
-      "Kung Fu",
-      "Krav Maga",
-      "Muay Thai",
-      "Taekwondo",
-      "Judo",
-      "Brazilian Jiu-Jitsu",
-      "Aikido",
-      "Jeet Kune Do",
-      "Capoeira",
-      "Sambo",
-      "Silat",
-      "Kalaripayattu",
-      "Hapkido",
-      "Wing Chun",
-      "Shaolin",
-      "Ninjutsu",
-      "Kickboxing",
-      "Boxing",
-      "Wrestling",
-      "Shorinji Kempo",
-      "Kyokushin",
-      "Goju-ryu",
-      "Shotokan",
-      "Wushu",
-      "Savate",
-      "Lethwei",
-      "Bajiquan",
-      "Hung Gar",
-      "Praying Mantis Kung Fu",
-    ],
-    "Team Ball Sports": [
-      "Football / Soccer",
-      "Basketball",
-      "Handball",
-      "Rugby",
-      "Futsal",
-      "Field Hockey",
-      "Lacrosse",
-      "Gaelic Football",
-      "Volleyball",
-      "Beach Volleyball",
-      "Sepak Takraw",
-      "Roundnet (Spikeball)",
-      "Netball",
-      "Cricket",
-      "Baseball",
-      "Softball",
-      "Wheelchair Rugby",
-      "Dodgeball",
-      "Korfball",
-    ],
-    "Racket Sports": [
-      "Tennis",
-      "Table Tennis",
-      "Badminton",
-      "Squash",
-      "Racquetball",
-      "Padel",
-      "Pickleball",
-      "Platform Tennis",
-      "Real Tennis",
-      "Soft Tennis",
-      "Frontenis",
-      "Speedminton (Crossminton)",
-      "Paddle Tennis (POP Tennis)",
-      "Speed-ball",
-      "Chaza",
-      "Totem Tennis (Swingball)",
-      "Matkot",
-      "Jombola",
-    ],
-    Fitness: [
-      "Gym Workout",
-      "Weight Training",
-      "Bodybuilding",
-      "Powerlifting",
-      "CrossFit",
-      "Calisthenics",
-      "Circuit Training",
-      "HIIT",
-      "Functional Training",
-      "Core Training",
-      "Mobility Training",
-      "Stretching",
-      "Resistance Band Training",
-      "Kettlebell Training",
-      "Boot Camp Training",
-      "Spinning",
-      "Step Fitness",
-      "Pilates",
-      "Yoga",
-    ],
-    "Target & Precision Sports": [
-      "Archery",
-      "Golf",
-      "Bowling",
-      "Darts",
-      "Snooker",
-      "Pool",
-      "Billiards",
-      "Target Shooting",
-      "Clay Pigeon Shooting",
-      "Air Rifle Shooting",
-      "Air Pistol Shooting",
-      "Croquet",
-      "Petanque",
-      "Bocce",
-      "Lawn Bowls",
-      "Carom Billiards",
-      "Nine-Pin Bowling",
-      "Disc Golf",
-      "Kubb",
-      "Pitch and Putt",
-      "Shove Ha’penny",
-      "Toad in the Hole",
-      "Bat and Trap",
-      "Boccia",
-      "Gateball",
-    ],
-    "Equestrian Sports": [
-      "Horse Racing",
-      "Barrel Racing",
-      "Rodeo",
-      "Mounted Archery",
-      "Tent Pegging",
-    ],
-    "Adventure & Outdoor Sports": [
-      "Rock Climbing",
-      "Mountaineering",
-      "Trekking",
-      "Hiking",
-      "Mountain Biking",
-      "Sandboarding",
-      "Orienteering",
-      "Obstacle Course Racing",
-      "Skydiving",
-      "Paragliding",
-      "Hang Gliding",
-      "Parachuting",
-      "Hot-air Ballooning",
-      "Skiing",
-      "Snowboarding",
-      "Ice Climbing",
-      "Heli-skiing",
-      "Bungee Jumping",
-      "BASE Jumping",
-      "Canyoning",
-      "Kite Buggy",
-      "Zorbing",
-      "Zip Lining",
-    ],
-    "Aquatic Sports": [
-      "Swimming",
-      "Water Polo",
-      "Surfing",
-      "Scuba Diving",
-      "Snorkeling",
-      "Freediving",
-      "Kayaking",
-      "Canoeing",
-      "Rowing",
-      "Sailing",
-      "Windsurfing",
-      "Kite Surfing",
-      "Jet Skiing",
-      "Wakeboarding",
-      "Water Skiing",
-      "Stand-up Paddleboarding",
-      "Whitewater Rafting",
-      "Dragon Boat Racing",
-      "Artistic Swimming",
-      "Open Water Swimming",
-    ],
-    "Ice Sports": [
-      "Ice Skating",
-      "Figure Skating",
-      "Ice Hockey",
-      "Speed Skating",
-      "Ice Dance",
-      "Synchronized Skating",
-      "Curling",
-      "Broomball",
-      "Bobsleigh",
-      "Skiboarding",
-      "Ice Dragon Boat Racing",
-      "Ice Cross Downhill",
-    ],
-    Wellness: [
-      "Yoga & Meditation",
-      "Spa & Relaxation",
-      "Mental Wellness",
-      "Fitness",
-      "Nutrition",
-      "Traditional & Alternative Therapies",
-      "Rehabilitation",
-      "Lifestyle Coaching",
-    ],
-    Dance: [
-      "Bharatanatyam",
-      "Kathak",
-      "Kathakali",
-      "Kuchipudi",
-      "Odissi",
-      "Mohiniyattam",
-      "Manipuri",
-      "Sattriya",
-      "Chhau",
-      "Yakshagana",
-      "Lavani",
-      "Ghoomar",
-      "Kalbelia",
-      "Garba",
-      "Dandiya Raas",
-      "Bhangra",
-      "Bihu",
-      "Dollu Kunitha",
-      "Theyyam",
-      "Ballet",
-      "Contemporary",
-      "Hip Hop",
-      "Breakdance",
-      "Jazz Dance",
-      "Tap Dance",
-      "Modern Dance",
-      "Street Dance",
-      "House Dance",
-      "Locking",
-      "Popping",
-      "Krumping",
-      "Waacking",
-      "Voguing",
-      "Salsa",
-      "Bachata",
-      "Merengue",
-      "Cha-Cha",
-      "Rumba",
-      "Samba",
-      "Paso Doble",
-      "Jive",
-      "Tango",
-      "Waltz",
-      "Foxtrot",
-      "Quickstep",
-      "Flamenco",
-      "Irish Stepdance",
-      "Scottish Highland Dance",
-      "Morris Dance",
-      "Hula",
-      "Maori Haka",
-      "African Tribal Dance",
-      "Zumba",
-      "K-Pop Dance",
-      "Shuffle Dance",
-      "Electro Dance",
-      "Pole Dance",
-      "Ballroom Dance",
-      "Line Dance",
-      "Square Dance",
-      "Folk Dance",
-      "Contra Dance",
-    ],
-  };
+
   /* ================= FETCH PROFILE ================= */
-  useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user?.uid) return;
 
-      const ref = doc(db, "institutes", user.uid);
-      const snap = await getDoc(ref);
-
-      if (snap.exists()) setProfile(snap.data());
-    };
-
-    fetchProfile();
-  }, [user]);
   useEffect(() => {
     if (editingStudent) {
       setSports(editingStudent.sports || []);
@@ -370,6 +95,36 @@ const MyAccountPage = ({ setActiveMenu }) => {
     };
 
     fetchMedia();
+  }, [user]);
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const fetchBranches = async () => {
+      console.log("Logged in institute:", user.uid);
+
+      const q = query(
+        collection(db, "students"),
+        where("instituteId", "==", user.uid),
+      );
+
+      const snap = await getDocs(q);
+
+      console.log("Students Found:", snap.size);
+
+      snap.docs.forEach((doc) => {
+        console.log(doc.id, doc.data().branch, doc.data().instituteId);
+      });
+
+      const uniqueBranches = [
+        ...new Set(snap.docs.map((doc) => doc.data().branch).filter(Boolean)),
+      ];
+
+      console.log("Branches:", uniqueBranches);
+
+      setBranches(uniqueBranches);
+    };
+
+    fetchBranches();
   }, [user]);
   useEffect(() => {
     if (activeTab !== "management" || !user?.uid) return;
@@ -537,6 +292,22 @@ const MyAccountPage = ({ setActiveMenu }) => {
   }, [activeTab, user]);
   const handleUpdateStudent = async () => {
     if (!editingStudent) return;
+    let updatedBranches = [...branches];
+
+    const newBranch = editingStudent.branch.trim();
+
+    if (
+      newBranch &&
+      !updatedBranches.some((b) => b.toLowerCase() === newBranch.toLowerCase())
+    ) {
+      updatedBranches.push(newBranch);
+
+      await updateDoc(doc(db, "institutes", user.uid), {
+        branches: updatedBranches,
+      });
+
+      setBranches(updatedBranches);
+    }
 
     try {
       await updateDoc(doc(db, "students", editingStudent.id), {
@@ -598,7 +369,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
         throw new Error(result.error?.message || "Cloudinary upload failed");
       }
 
-      setUploadMsg("✅ Upload Successful!");
+      setUploadMsg("Upload Successful!");
       return result.secure_url;
     } catch (err) {
       console.error("Cloudinary Upload Error:", err);
@@ -663,7 +434,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
         bio: profile.bio || "",
       });
 
-      alert("Profile Saved ✅");
+      alert("Profile Saved");
     } catch (error) {
       console.error("Save error:", error);
     }
@@ -879,213 +650,228 @@ const MyAccountPage = ({ setActiveMenu }) => {
   };
 
   return (
-    <div className="px-4 sm:px-6 md:px-8 lg:px-10 py-6 bg-[#FAFAFA] min-h-screen">
-      {/* HEADER */}
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
-        {/* TITLE */}
-        <div>
-          <h1 className="text-3xl font-bold text-black">My Account</h1>
-          <p className="text-orange-500 text-sm">
-            Manage your team, and customers
-          </p>
-        </div>
-
-        {/* PROFILE IMAGE */}
-        <div className="flex items-center gap-4">
-          {profile.profileImageUrl ? (
-            <img
-              src={profile.profileImageUrl}
-              className="w-24 h-24 rounded-xl object-cover border shadow"
-            />
-          ) : (
-            <div className="w-24 h-24 bg-gray-200 rounded-xl flex items-center justify-center">
-              <User size={40} />
+    <AccountPageShell wide fill>
+    <div className="h-full min-h-0 flex flex-col bg-[#F4F6FB] rounded-2xl overflow-hidden">
+      <div className="shrink-0 bg-white/95 backdrop-blur-md border-b border-orange-100 shadow-sm z-20">
+        <div className="px-3 py-2.5 sm:px-5 sm:py-3 md:px-6">
+          <div className="flex items-center justify-between gap-3 animate-moreFadeUp">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-[#FF6A00] truncate">
+                My Account
+              </h1>
+              <p className="text-[10px] sm:text-xs text-gray-400 truncate">
+                Manage your team and customers
+              </p>
             </div>
-          )}
 
-          <div className="flex flex-col gap-1">
-            <label className="cursor-pointer bg-orange-500 text-white px-3 py-1 rounded text-sm text-center">
-              Change
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleProfileUpload}
-              />
-            </label>
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {profile.profileImageUrl ? (
+                <img
+                  src={profile.profileImageUrl}
+                  alt="Profile"
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl object-cover border border-orange-100 shadow-sm"
+                />
+              ) : (
+                <div className="w-10 h-10 sm:w-11 sm:h-11 bg-orange-50 rounded-xl flex items-center justify-center border border-orange-100">
+                  <User size={18} className="text-orange-400" />
+                </div>
+              )}
 
-            {(profile.profileImage || profile.profileImageUrl) && (
-              <button
-                onClick={removeProfileImage}
-                className="text-red-500 text-sm"
-              >
-                Remove
-              </button>
-            )}
+              <div className="flex flex-col gap-0.5">
+                <label className="cursor-pointer bg-[#FF6A00] text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium text-center active:scale-95 transition">
+                  Change
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleProfileUpload}
+                  />
+                </label>
+
+                {(profile.profileImage || profile.profileImageUrl) && (
+                  <button
+                    type="button"
+                    onClick={removeProfileImage}
+                    className="text-red-500 text-[10px] sm:text-xs font-medium"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2.5 grid grid-cols-2 gap-1 p-1 rounded-xl bg-gray-100">
+            <button
+              type="button"
+              onClick={() => setActiveTab("management")}
+              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                activeTab === "management"
+                  ? "bg-white text-[#FF6A00] shadow-sm"
+                  : "text-gray-500"
+              }`}
+            >
+              <Users size={15} /> Management
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("customers")}
+              className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                activeTab === "customers"
+                  ? "bg-white text-[#FF6A00] shadow-sm"
+                  : "text-gray-500"
+              }`}
+            >
+              <Users size={15} /> Customers
+            </button>
           </div>
         </div>
       </div>
 
-      {/* TABS */}
-      <div className="flex flex-wrap gap-4 sm:gap-8 border-b pb-2 mb-6 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab("management")}
-          className={`flex items-center gap-2 pb-2 border-b-2 ${
-            activeTab === "management"
-              ? "text-orange-500 border-orange-500 font-semibold"
-              : "text-gray-600 border-transparent"
-          }`}
-        >
-          <Users size={18} /> Management
-        </button>
-
-        <button
-          onClick={() => setActiveTab("customers")}
-          className={`flex items-center gap-2 pb-2 border-b-2 ${
-            activeTab === "customers"
-              ? "text-orange-500 border-orange-500 font-semibold"
-              : "text-gray-600 border-transparent"
-          }`}
-        >
-          <Users size={18} /> Customers
-        </button>
-      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-3 sm:px-5 md:px-6 py-3 pb-5">
 
       {/* PROFILE CARD */}
 
       {/* MANAGEMENT TAB */}
 
       {activeTab === "management" && (
-        <div className="bg-white border rounded-lg p-6 shadow-sm">
-          {/* HEADER */}
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <h2 className="text-orange-500 text-lg font-semibold">
+        <div className="animate-moreFadeUp">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-semibold text-[#FF6A00]">
                 Team Management
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-[11px] sm:text-xs text-gray-500">
                 Manage your instructors and staff members
               </p>
             </div>
 
             <button
+              type="button"
               onClick={() => setActiveMenu("Management Details")}
-              className="bg-orange-500 text-white px-4 py-2 rounded-md font-medium"
+              className="shrink-0 inline-flex items-center gap-1 bg-[#FF6A00] text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-sm active:scale-95 transition"
             >
-              + Add Employee
+              <Plus size={14} /> Add Employee
             </button>
           </div>
 
-          {/* CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl">
-            {trainers.map((trainer) => (
-              <div
-                key={trainer.id}
-                className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm"
-              >
-                {/* TOP ROW */}
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-lg font-semibold text-black">
-                      {trainer.firstName} {trainer.lastName}
-                    </h3>
-
-                    <p className="text-orange-600 text-sm mt-1 font-medium">
-                      {trainer.designation}
-                    </p>
-                  </div>
-
-                  {/* ACTION BUTTONS */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleEditTrainer(trainer)}
-                      className="w-8 h-8 rounded-full bg-orange-100 hover:bg-orange-200 flex items-center justify-center"
-                    >
-                      <img
-                        src="/edit-icon.png"
-                        alt="Edit"
-                        className="w-4 h-4 object-contain"
-                      />
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setTrainerToDelete(trainer);
-                        setShowTrainerDeleteModal(true);
-                      }}
-                      className="w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 flex items-center justify-center"
-                    >
-                      <img
-                        src="/delete-icon.png"
-                        alt="Delete"
-                        className="w-4 h-4 object-contain"
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* CONTACT */}
-                <div className="mt-3 text-sm text-black space-y-1">
-                  <p className="flex items-center gap-2">
-                    <img
-                      src="/email-icon.png"
-                      alt="email"
-                      className="w-4 h-4"
-                    />
-                    {trainer.email || "—"}
-                  </p>
-
-                  <p className="flex items-center gap-2">
-                    <img src="/call-icon.png" alt="phone" className="w-4 h-4" />
-                    {trainer.phone}
-                  </p>
-                </div>
-
-                {/* DESCRIPTION */}
-                <p className="text-gray-500 text-sm mt-3 leading-relaxed">
-                  {trainer.experience}
-                </p>
-
-                {/* ACHIEVEMENTS */}
-                {trainer.achievements?.length > 0 && (
-                  <div className="mt-3">
-                    <p className="font-semibold text-sm flex items-center gap-2">
-                      Achievements ({trainer.achievements.length})
-                    </p>
-
-                    <ul className="ml-5 mt-1 list-disc text-sm text-gray-700">
-                      {trainer.achievements.map((item, index) => (
-                        <li key={index}>{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* FOOTER */}
-                <div className="mt-5 pt-4 border-t text-xs text-gray-500">
-                  Joined Date :{" "}
-                  {trainer.createdAt?.toDate?.().toLocaleDateString()}
-                </div>
+          {trainers.length === 0 ? (
+            <div className="bg-white border border-gray-100 rounded-2xl p-8 text-center shadow-sm">
+              <div className="mx-auto w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center mb-3">
+                <Users size={22} className="text-orange-400" />
               </div>
-            ))}
-          </div>
+              <p className="text-sm font-semibold text-gray-800">No team members yet</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Add your first employee to start managing staff.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+              {trainers.map((trainer) => (
+                <div
+                  key={trainer.id}
+                  className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-5 shadow-sm active:scale-[0.99] transition"
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                        {trainer.firstName} {trainer.lastName}
+                      </h3>
+
+                      <p className="text-[#FF6A00] text-xs sm:text-sm mt-0.5 font-medium truncate">
+                        {trainer.designation}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleEditTrainer(trainer)}
+                        className="w-8 h-8 rounded-full bg-orange-50 hover:bg-orange-100 flex items-center justify-center active:scale-95 transition"
+                      >
+                        <img
+                          src="/edit-icon.png"
+                          alt="Edit"
+                          className="w-4 h-4 object-contain"
+                        />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrainerToDelete(trainer);
+                          setShowTrainerDeleteModal(true);
+                        }}
+                        className="w-8 h-8 rounded-full bg-red-50 hover:bg-red-100 flex items-center justify-center active:scale-95 transition"
+                      >
+                        <img
+                          src="/delete-icon.png"
+                          alt="Delete"
+                          className="w-4 h-4 object-contain"
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-xs sm:text-sm text-gray-700 space-y-1.5">
+                    <p className="flex items-center gap-2 min-w-0">
+                      <img
+                        src="/email-icon.png"
+                        alt="email"
+                        className="w-4 h-4 shrink-0"
+                      />
+                      <span className="truncate">{trainer.email || "—"}</span>
+                    </p>
+
+                    <p className="flex items-center gap-2">
+                      <img src="/call-icon.png" alt="phone" className="w-4 h-4 shrink-0" />
+                      {trainer.phone}
+                    </p>
+                  </div>
+
+                  <p className="text-gray-500 text-xs sm:text-sm mt-3 leading-relaxed line-clamp-3">
+                    {trainer.experience}
+                  </p>
+
+                  {trainer.achievements?.length > 0 && (
+                    <div className="mt-3">
+                      <p className="font-semibold text-xs sm:text-sm text-gray-800">
+                        Achievements ({trainer.achievements.length})
+                      </p>
+
+                      <ul className="ml-4 mt-1 list-disc text-xs sm:text-sm text-gray-600">
+                        {trainer.achievements.map((item, index) => (
+                          <li key={index}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <div className="mt-4 pt-3 border-t border-gray-100 text-[11px] text-gray-400">
+                    Joined Date :{" "}
+                    {trainer.createdAt?.toDate?.().toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {/* EDIT TRAINER MODAL */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white w-[95%] sm:w-[700px] rounded-2xl shadow-xl overflow-hidden">
-            <div className="max-h-[75vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white w-full sm:w-[95%] max-w-[700px] rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[88dvh] flex flex-col animate-slideUp sm:animate-moreFadeUp">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {/* HEADER */}
-              <div className="flex items-center justify-between px-6 py-4 border-b">
-                <h2 className="text-xl font-semibold text-gray-800">
+              <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b sticky top-0 bg-white z-10">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-800">
                   Edit Management Details
                 </h2>
 
                 <button
-                  onClick={() => setShowEditModal(false)} // ✅ FIXED
+                  onClick={() => setShowEditModal(false)} // FIXED
                   className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 transition"
                   title="Close"
                 >
@@ -1094,7 +880,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
               </div>
 
               {/* FORM */}
-              <div className="p-6 max-h-[75vh] overflow-y-auto space-y-8">
+              <div className="p-4 sm:p-6 space-y-6 sm:space-y-8">
                 <div className="flex items-center gap-4 mb-4">
                   {editingTrainer?.profileImageUrl ? (
                     <img
@@ -1541,12 +1327,18 @@ const MyAccountPage = ({ setActiveMenu }) => {
               </div>
 
               {/* FOOTER */}
-              <div className="flex justify-end gap-4 px-6 py-4 border-t">
-                <button onClick={() => setShowEditModal(false)}>Cancel</button>
+              <div className="flex justify-end gap-3 px-4 sm:px-6 py-3.5 border-t bg-white sticky bottom-0">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100"
+                >
+                  Cancel
+                </button>
 
                 <button
                   onClick={handleUpdateTrainer}
-                  className="bg-orange-500 text-white px-6 py-2 rounded-md"
+                  className="bg-[#FF6A00] text-white px-5 py-2 rounded-xl text-sm font-medium active:scale-95 transition"
                 >
                   Save
                 </button>
@@ -1556,9 +1348,9 @@ const MyAccountPage = ({ setActiveMenu }) => {
         </div>
       )}
       {showTrainerDeleteModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white w-[90%] sm:w-[400px] rounded-2xl shadow-xl p-6">
-            <h2 className="text-center font-semibold text-lg mb-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white w-full sm:w-[90%] max-w-[400px] rounded-t-3xl sm:rounded-2xl shadow-2xl p-5 sm:p-6 animate-slideUp sm:animate-moreFadeUp">
+            <h2 className="text-center font-semibold text-base sm:text-lg mb-4">
               Please Provide the reason for deleting the details
             </h2>
 
@@ -1567,24 +1359,26 @@ const MyAccountPage = ({ setActiveMenu }) => {
             <input
               value={deleteReason}
               onChange={(e) => setDeleteReason(e.target.value)}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 mt-2 mb-6"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 mt-2 mb-6 bg-gray-50 outline-none focus:border-orange-400"
             />
 
-            <div className="flex justify-center gap-4">
+            <div className="flex justify-center gap-3">
               <button
+                type="button"
                 onClick={() => {
                   setShowTrainerDeleteModal(false);
                   setDeleteReason("");
                   setTrainerToDelete(null);
                 }}
-                className="bg-gray-300 px-6 py-2 rounded-md"
+                className="bg-gray-100 text-gray-700 px-6 py-2.5 rounded-xl text-sm font-medium"
               >
                 Cancel
               </button>
 
               <button
+                type="button"
                 onClick={confirmDeleteTrainer}
-                className="bg-red-500 text-white px-6 py-2 rounded-md"
+                className="bg-red-500 text-white px-6 py-2.5 rounded-xl text-sm font-medium active:scale-95 transition"
               >
                 Delete
               </button>
@@ -1594,98 +1388,95 @@ const MyAccountPage = ({ setActiveMenu }) => {
       )}
 
       {activeTab === "customers" && (
-        <div className="bg-white border rounded-lg p-6 shadow-sm">
-          {/* ===== SUMMARY CARDS ===== */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-            <div className="border border-orange-200 rounded-lg p-4 bg-[#FFFDF9]">
-              <p className="text-sm text-gray-500">Active Customers</p>
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-orange-500 text-lg font-semibold">
+        <div className="animate-moreFadeUp">
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-white border border-orange-100 rounded-xl p-2.5 sm:p-3 shadow-sm">
+              <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                Active
+              </p>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-[#FF6A00] text-base sm:text-lg font-bold">
                   {activeCount}
                 </span>
-                <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center">
-                  ↗
+                <div className="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center">
+                  <ArrowUpRight size={12} className="text-orange-500" />
                 </div>
               </div>
             </div>
-
-            <div className="border border-orange-200 rounded-lg p-4 bg-[#FFFDF9]">
-              <p className="text-sm text-gray-500">Left Customers</p>
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-orange-500 text-lg font-semibold">
+            <div className="bg-white border border-orange-100 rounded-xl p-2.5 sm:p-3 shadow-sm">
+              <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                Left
+              </p>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-[#FF6A00] text-base sm:text-lg font-bold">
                   {leftCount}
                 </span>
-                <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center">
-                  ↘
+                <div className="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center">
+                  <ArrowDownRight size={12} className="text-orange-500" />
                 </div>
               </div>
             </div>
-
-            <div className="border border-orange-200 rounded-lg p-4 bg-[#FFFDF9]">
-              <p className="text-sm text-gray-500">New (30 days)</p>
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-orange-500 text-lg font-semibold">
+            <div className="bg-white border border-orange-100 rounded-xl p-2.5 sm:p-3 shadow-sm">
+              <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                New 30d
+              </p>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-[#FF6A00] text-base sm:text-lg font-bold">
                   {newCount}
                 </span>
-                <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center">
-                  ●
+                <div className="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center">
+                  <Circle size={10} className="text-orange-500 fill-orange-500" />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* HEADER */}
-          {/* HEADER */}
-          <div className="flex justify-between items-start mb-5">
-            <div>
-              <h2 className="text-orange-500 text-lg font-semibold">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-semibold text-[#FF6A00]">
                 Customer Management
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-[11px] sm:text-xs text-gray-500">
                 Track and manage your customers
               </p>
             </div>
 
             <button
+              type="button"
               onClick={() => setActiveMenu("Add Customers")}
-              className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-md font-medium"
+              className="shrink-0 inline-flex items-center gap-1 bg-[#FF6A00] text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-sm active:scale-95 transition"
             >
-              + Add Customer
+              <Plus size={14} /> Add
             </button>
           </div>
 
-          {/* SEARCH + FILTER ROW */}
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-4">
-            {/* SEARCH BOX */}
-            <div className="relative w-full md:w-[320px]">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
               <input
                 type="text"
                 placeholder="Search Customer..."
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                className="w-full pl-10 pr-3 py-2 border border-orange-300 rounded-md
-      focus:outline-none focus:border-orange-400 bg-white"
-              />
-
-              {/* SEARCH ICON */}
-              <img
-                src="/search-icon.png"
-                alt="search"
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl
+      focus:outline-none focus:border-orange-400 bg-white text-sm"
               />
             </div>
 
-            {/* FILTER BUTTONS */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-gray-100 sm:w-auto sm:flex">
               {["All", "Active", "Left"].map((item) => (
                 <button
                   key={item}
+                  type="button"
                   onClick={() => setStatusFilter(item)}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition
         ${
           statusFilter === item
-            ? "bg-orange-500 text-white"
-            : "bg-gray-200 text-gray-700"
+            ? "bg-[#FF6A00] text-white shadow-sm"
+            : "text-gray-600"
         }`}
                 >
                   {item}
@@ -1702,7 +1493,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
               <div
                 className={`grid ${
                   statusFilter === "Left" ? "grid-cols-8" : "grid-cols-7"
-                } bg-black text-orange-500 px-6 py-4 font-semibold text-sm`}
+                } bg-black text-orange-500 px-4 lg:px-6 py-3 font-semibold text-xs sm:text-sm sticky top-0 z-10`}
               >
                 <div>Name</div>
                 <div className="text-center">Age</div>
@@ -1803,23 +1594,22 @@ const MyAccountPage = ({ setActiveMenu }) => {
             </div>
 
             {/* ================= MOBILE CARD VIEW ================= */}
-            <div className="md:hidden divide-y">
+            <div className="md:hidden divide-y divide-gray-100">
               {filteredStudents.map((student, index) => (
-                <div key={student.id} className="p-4 space-y-3">
-                  {/* Top Row */}
+                <div key={student.id} className="p-3.5 space-y-3">
                   <div className="flex justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">
+                      <h3 className="font-semibold text-sm text-gray-900 truncate">
                         {index + 1}. {student.firstName} {student.lastName}
                       </h3>
 
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-[11px] text-gray-500 mt-0.5">
                         Belt: {student.sports?.[0]?.belt || "-"}
                       </p>
                     </div>
 
                     <span
-                      className={`px-3 h-fit py-1 rounded-full text-xs font-semibold ${
+                      className={`px-2.5 h-fit py-1 rounded-full text-[10px] font-semibold ${
                         student.status === "Left"
                           ? "bg-red-100 text-red-600"
                           : "bg-green-100 text-green-700"
@@ -1829,24 +1619,23 @@ const MyAccountPage = ({ setActiveMenu }) => {
                     </span>
                   </div>
 
-                  {/* Details Grid */}
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <p className="text-xs text-gray-500">Age</p>
-                      <p className="font-medium">{student.age} yrs</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="bg-gray-50 rounded-xl p-2">
+                      <p className="text-[10px] text-gray-500">Age</p>
+                      <p className="font-medium text-xs">{student.age} yrs</p>
                     </div>
 
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <p className="text-xs text-gray-500">Added</p>
-                      <p className="font-medium">
+                    <div className="bg-gray-50 rounded-xl p-2">
+                      <p className="text-[10px] text-gray-500">Added</p>
+                      <p className="font-medium text-xs">
                         {student.createdAt?.toDate?.().toLocaleDateString?.() ||
                           "-"}
                       </p>
                     </div>
 
-                    <div className="bg-gray-50 rounded-lg p-2">
-                      <p className="text-xs text-gray-500">Left Date</p>
-                      <p className="font-medium">
+                    <div className="bg-gray-50 rounded-xl p-2">
+                      <p className="text-[10px] text-gray-500">Left Date</p>
+                      <p className="font-medium text-xs">
                         {student.leftDate?.toDate
                           ? student.leftDate.toDate().toLocaleDateString()
                           : "-"}
@@ -1854,38 +1643,40 @@ const MyAccountPage = ({ setActiveMenu }) => {
                     </div>
 
                     {statusFilter === "Left" && (
-                      <div className="bg-gray-50 rounded-lg p-2">
-                        <p className="text-xs text-gray-500">Reason</p>
-                        <p className="font-medium truncate">
+                      <div className="bg-gray-50 rounded-xl p-2">
+                        <p className="text-[10px] text-gray-500">Reason</p>
+                        <p className="font-medium text-xs truncate">
                           {student.leftReason || "-"}
                         </p>
                       </div>
                     )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex gap-3 pt-1">
+                  <div className="flex gap-2 pt-0.5">
                     <button
+                      type="button"
                       onClick={() => {
                         setEditingStudent(student);
                         setShowEditStudentModal(true);
                       }}
-                      className="flex-1 border border-orange-300 text-orange-500 rounded-lg py-2 font-medium"
+                      className="flex-1 border border-orange-200 text-[#FF6A00] rounded-xl py-2 text-sm font-medium active:scale-95 transition"
                     >
                       Edit
                     </button>
 
                     {statusFilter === "Left" ? (
                       <button
+                        type="button"
                         onClick={() => permanentlyDeleteStudent(student)}
-                        className="flex-1 bg-red-500 text-white rounded-lg py-2 font-medium"
+                        className="flex-1 bg-red-500 text-white rounded-xl py-2 text-sm font-medium active:scale-95 transition"
                       >
                         Delete
                       </button>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => markAsLeftConfirm(student)}
-                        className="flex-1 bg-black text-white rounded-lg py-2 font-medium"
+                        className="flex-1 bg-black text-white rounded-xl py-2 text-sm font-medium active:scale-95 transition"
                       >
                         Mark Left
                       </button>
@@ -1894,56 +1685,69 @@ const MyAccountPage = ({ setActiveMenu }) => {
                 </div>
               ))}
             </div>
+            {filteredStudents.length === 0 && (
+              <div className="p-8 text-center">
+                <p className="text-sm font-medium text-gray-700">
+                  No customers found
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Try a different search or filter.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
+      </div>
       {/* ================= UPLOAD TYPE MODAL ================= */}
       {showUploadTypeModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white w-[90%] sm:w-[360px] rounded-xl p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-center mb-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white w-full sm:w-[90%] max-w-[360px] rounded-t-3xl sm:rounded-2xl p-5 sm:p-6 shadow-2xl animate-slideUp sm:animate-moreFadeUp">
+            <h3 className="text-base sm:text-lg font-semibold text-center mb-4">
               Select Media Type
             </h3>
 
-            <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="grid grid-cols-3 gap-2 mb-5">
               <button
+                type="button"
                 onClick={() => setSelectedUploadType("image")}
-                className={`py-2 rounded border ${
+                className={`py-2.5 rounded-xl border text-sm font-medium transition ${
                   selectedUploadType === "image"
-                    ? "bg-orange-500 text-white"
-                    : "bg-gray-100"
+                    ? "bg-[#FF6A00] text-white border-orange-500"
+                    : "bg-gray-50 border-gray-200 text-gray-700"
                 }`}
               >
                 Image
               </button>
 
               <button
+                type="button"
                 onClick={() => setSelectedUploadType("video")}
-                className={`py-2 rounded border ${
+                className={`py-2.5 rounded-xl border text-sm font-medium transition ${
                   selectedUploadType === "video"
-                    ? "bg-orange-500 text-white"
-                    : "bg-gray-100"
+                    ? "bg-[#FF6A00] text-white border-orange-500"
+                    : "bg-gray-50 border-gray-200 text-gray-700"
                 }`}
               >
                 Video
               </button>
 
               <button
+                type="button"
                 onClick={() => setSelectedUploadType("reel")}
-                className={`py-2 rounded border ${
+                className={`py-2.5 rounded-xl border text-sm font-medium transition ${
                   selectedUploadType === "reel"
-                    ? "bg-orange-500 text-white"
-                    : "bg-gray-100"
+                    ? "bg-[#FF6A00] text-white border-orange-500"
+                    : "bg-gray-50 border-gray-200 text-gray-700"
                 }`}
               >
                 Reel
               </button>
             </div>
 
-            {/* Upload Status */}
             {uploading && (
               <p className="text-center text-sm text-orange-500 mb-3 animate-pulse">
-                ⏳ Please wait, media file is uploading...
+                Please wait, media file is uploading...
               </p>
             )}
 
@@ -1955,20 +1759,22 @@ const MyAccountPage = ({ setActiveMenu }) => {
 
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={() => {
                   setShowUploadTypeModal(false);
                   setPendingFile(null);
                   setSelectedUploadType("");
                 }}
-                className="flex-1 border rounded py-2"
+                className="flex-1 border border-gray-200 rounded-xl py-2.5 text-sm font-medium"
               >
                 Cancel
               </button>
 
               <button
+                type="button"
                 disabled={!selectedUploadType || uploading}
                 onClick={handleUpload}
-                className="flex-1 bg-orange-500 text-white rounded py-2 disabled:opacity-50"
+                className="flex-1 bg-[#FF6A00] text-white rounded-xl py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 Upload
               </button>
@@ -1977,11 +1783,11 @@ const MyAccountPage = ({ setActiveMenu }) => {
         </div>
       )}
       {showEditStudentModal && editingStudent && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white w-[95%] sm:w-[800px] rounded-2xl shadow-xl overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white w-full sm:w-[95%] max-w-[800px] rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[88dvh] flex flex-col animate-slideUp sm:animate-moreFadeUp">
             {/* HEADER */}
-            <div className="flex justify-between items-center px-6 py-4 border-b">
-              <h2 className="text-xl font-semibold text-gray-800">
+            <div className="flex justify-between items-center px-4 sm:px-6 py-3.5 border-b shrink-0">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-800">
                 Edit Customer Details
               </h2>
               <button
@@ -1999,7 +1805,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
             </div>
 
             {/* BODY */}
-            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-8">
+            <div className="p-4 sm:p-6 max-h-none flex-1 min-h-0 overflow-y-auto space-y-6 sm:space-y-8">
               {/* ================= PERSONAL INFORMATION ================= */}
               <div>
                 <h3 className="text-lg font-semibold text-orange-500 mb-4">
@@ -2076,30 +1882,82 @@ const MyAccountPage = ({ setActiveMenu }) => {
                       className="w-full border rounded-lg px-3 py-2 focus:outline-none"
                     />
                   </div>
-                  <div>
+                  <div className="relative">
                     <label className="block text-sm font-medium mb-1">
                       Branch
                     </label>
+
                     <input
                       type="text"
                       value={editingStudent?.branch || ""}
-                      placeholder="Enter branch name or number"
-                      onChange={(e) => {
-                        const value = e.target.value.replace(
-                          /[^A-Za-z0-9\s-]/g,
-                          "",
-                        );
-                        // allows letters, numbers, space, dash
-
-                        setEditingStudent({
-                          ...editingStudent,
-                          branch: value,
-                        });
+                      placeholder="Select or type branch"
+                      className="w-full border rounded-lg px-3 py-2"
+                      onFocus={() => setShowBranchDropdown(true)}
+                      onBlur={() => {
+                        // Delay so click event works
+                        setTimeout(() => setShowBranchDropdown(false), 200);
                       }}
-                      className="w-full border rounded-lg px-3 py-2 focus:outline-none"
+                      onChange={(e) =>
+                        setEditingStudent((prev) => ({
+                          ...prev,
+                          branch: e.target.value,
+                        }))
+                      }
                     />
-                  </div>
 
+                    {showBranchDropdown && (
+                      <div
+                        className="fixed z-[99999] bg-white border rounded-lg shadow-xl max-h-52 overflow-y-auto"
+                        style={{
+                          width: "320px",
+                          marginTop: "4px",
+                        }}
+                      >
+                        {branches.length > 0 ? (
+                          branches.map((branch, index) => (
+                            <div
+                              key={index}
+                              onMouseDown={() => {
+                                setEditingStudent((prev) => ({
+                                  ...prev,
+                                  branch,
+                                }));
+                                setShowBranchDropdown(false);
+                              }}
+                              className={`px-3 py-2 cursor-pointer hover:bg-orange-100 ${
+                                editingStudent?.branch === branch
+                                  ? "bg-orange-50 font-medium"
+                                  : ""
+                              }`}
+                            >
+                              {branch}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="px-3 py-2 text-gray-500">
+                            No branches available
+                          </div>
+                        )}
+
+                        {/* Add New Branch */}
+                        {editingStudent?.branch &&
+                          !branches.some(
+                            (b) =>
+                              b.toLowerCase() ===
+                              editingStudent.branch.toLowerCase(),
+                          ) && (
+                            <div
+                              onMouseDown={() => {
+                                setShowBranchDropdown(false);
+                              }}
+                              className="px-3 py-2 text-green-600 cursor-pointer border-t hover:bg-green-50 font-medium"
+                            >
+                              + Add "{editingStudent.branch}"
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">
                       Date of Birth
@@ -2278,7 +2136,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
                     {/* Belt */}
                     {/* Belt / Skill Level */}
                     {sport.category === "Martial Arts" ? (
-                      // ✅ Martial Arts → Show Belt
+                      // Martial Arts - Show Belt
                       <select
                         value={sports[index]?.belt || ""}
                         onChange={(e) => {
@@ -2298,7 +2156,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
                         <option value="Black">Black</option>
                       </select>
                     ) : (
-                      // ✅ Other Categories → Show Skill Level
+                      // Other Categories - Show Skill Level
                       <select
                         value={sports[index]?.skillLevel || ""}
                         onChange={(e) => {
@@ -2359,7 +2217,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
 
                   <div>
                     <label className="block text-sm font-medium mb-1">
-                      Monthly Billing Date (1–31)
+                      Monthly Billing Date (1â€“31)
                     </label>
 
                     <input
@@ -2430,14 +2288,19 @@ const MyAccountPage = ({ setActiveMenu }) => {
             </div>
 
             {/* FOOTER */}
-            <div className="flex justify-end gap-4 px-6 py-4 border-t">
-              <button onClick={() => setShowEditStudentModal(false)}>
+            <div className="flex justify-end gap-3 px-4 sm:px-6 py-3.5 border-t shrink-0 bg-white">
+              <button
+                type="button"
+                onClick={() => setShowEditStudentModal(false)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100"
+              >
                 Cancel
               </button>
 
               <button
+                type="button"
                 onClick={handleUpdateStudent}
-                className="bg-orange-500 text-white px-6 py-2 rounded-md"
+                className="bg-[#FF6A00] text-white px-5 py-2 rounded-xl text-sm font-medium active:scale-95 transition"
               >
                 Save Changes
               </button>
@@ -2446,6 +2309,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
         </div>
       )}
     </div>
+    </AccountPageShell>
   );
 };
 

@@ -11,6 +11,7 @@ import {
 
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
+import { getDashboardGreeting } from "../../utils/dashboardGreeting";
 
 import { collection, query, where, getDocs } from "firebase/firestore";
 
@@ -169,18 +170,25 @@ const PerformanceDashboard = () => {
   "
     >
       {/* ================= FIXED TOP SECTION ================= */}
-      <div className="shrink-0 px-3 md:px-5 pt-4">
+      <div className="shrink-0 px-3 md:px-5 pt-3 pb-2">
         {/* ================= HEADER ================= */}
-        <div className="mb-5">
-          <h1 className="text-2xl font-bold text-black">Students Dashboard</h1>
-
-          <p className="text-sm text-gray-500 mt-1">
-            Manage all students and payment details
-          </p>
+        <div className="mb-3 rounded-2xl bg-gradient-to-br from-[#FF6A00] via-[#FF7A1A] to-[#FF9A4A] p-4 shadow-[0_8px_24px_rgba(255,106,0,0.22)] relative overflow-hidden">
+          <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/15 pointer-events-none" />
+          <div className="relative">
+            <p className="text-orange-100 text-[11px] font-medium tracking-wide">
+              {getDashboardGreeting()}
+            </p>
+            <h1 className="text-lg sm:text-xl font-bold text-white mt-0.5">
+              Students Dashboard
+            </h1>
+            <p className="text-xs sm:text-sm text-orange-50/90 mt-1">
+              Manage all students and payment details
+            </p>
+          </div>
         </div>
 
         {/* ================= FILTERS ================= */}
-        <div className="bg-white rounded-2xl shadow-sm p-3 mb-4">
+        <div className="dash-card p-2.5 mb-0">
           {/* SEARCH */}
           <div className="relative mb-3">
             <Search
@@ -204,6 +212,8 @@ const PerformanceDashboard = () => {
                 text-sm
                 outline-none
                 focus:border-orange-500
+                bg-gray-50/80
+                transition
               "
             />
           </div>
@@ -246,8 +256,8 @@ const PerformanceDashboard = () => {
     min-h-0
     px-3
     md:px-5
-    pb-[170px]
-    md:pb-6
+    pb-2
+    md:pb-4
   "
       >
         <div
@@ -288,13 +298,20 @@ const PerformanceDashboard = () => {
                   .map((_, i) => (
                     <div
                       key={i}
-                      className="h-40 bg-gray-100 rounded-2xl animate-pulse"
+                      className="h-28 rounded-2xl dash-shimmer"
+                      style={{ animationDelay: `${i * 60}ms` }}
                     />
                   ))}
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="p-10 text-center text-gray-500">
-                No Students Found
+              <div className="dash-empty">
+                <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center">
+                  <Search size={22} className="text-[#FF6A00]" />
+                </div>
+                <p className="dash-empty-title">No students found</p>
+                <p className="dash-empty-sub">
+                  Try another search or branch filter to see results.
+                </p>
               </div>
             ) : (
               <div className="min-w-[1150px]">

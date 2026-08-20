@@ -4,13 +4,13 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 export default function Signup() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const role = queryParams.get("role") || "user"; // default user
-
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     emailPhone: "",
@@ -41,7 +41,6 @@ export default function Signup() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // ✅ Agreement check
     if (!agreed) {
       alert("Please agree to the Terms & Policies to continue");
       return;
@@ -52,8 +51,9 @@ export default function Signup() {
       return;
     }
 
+    setLoading(true);
+
     try {
-      // 🔹 USER signup only
       if (role === "user") {
         const userCredential = await createUserWithEmailAndPassword(
           auth,
@@ -68,8 +68,6 @@ export default function Signup() {
           emailOrPhone: formData.emailPhone,
           role: "user",
           createdAt: serverTimestamp(),
-
-          // ✅ AGREEMENT STORED SAFELY
           agreements: {
             termsAndConditions: true,
             privacyPolicy: true,
@@ -79,12 +77,13 @@ export default function Signup() {
           },
         });
 
-        console.log("User registered successfully");
         navigate("/");
       }
     } catch (error) {
       console.error(error);
       alert(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -103,8 +102,45 @@ export default function Signup() {
             ? "Register Your Institute"
             : "Join Kridana Sports"}
         </h2>
+        {loading && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/30 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-[330px] p-8 flex flex-col items-center">
+              {/* Spinner */}
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-4 border-orange-100"></div>
+                <Loader2
+                  size={36}
+                  className="animate-spin text-orange-500 absolute inset-0 m-auto"
+                />
+              </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+              <h2 className="mt-6 text-xl font-bold text-gray-800">
+                Creating your account
+              </h2>
+
+              <p className="text-gray-500 text-center mt-2 text-sm leading-6">
+                Setting everything up securely.
+                <br />
+                This usually takes only a few seconds.
+              </p>
+
+              {/* Progress Bar */}
+              <div className="w-full bg-gray-200 rounded-full h-2 mt-6 overflow-hidden">
+                <div className="h-full bg-orange-500 rounded-full animate-pulse w-3/4"></div>
+              </div>
+
+              <p className="text-xs text-gray-400 mt-4">
+                Please don't close this window.
+              </p>
+            </div>
+          </div>
+        )}
+        <form
+          onSubmit={handleSubmit}
+          className={`space-y-4 ${
+            loading ? "pointer-events-none opacity-60" : ""
+          }`}
+        >
           <div>
             <label className="block mb-1 text-orange-500">
               {role === "institute" ? "Institute Name*" : "Name*"}
@@ -123,13 +159,11 @@ export default function Signup() {
           </div>
 
           <div>
-            <label className="block mb-1 text-orange-500">
-              E-mail/Phone Number*
-            </label>
+            <label className="block mb-1 text-orange-500">E-mail</label>
             <input
               type="text"
               name="emailPhone"
-              placeholder="Enter Mail/Phone"
+              placeholder="Enter Mail"
               value={formData.emailPhone}
               onChange={handleChange}
               required
@@ -187,17 +221,23 @@ export default function Signup() {
               .
             </p>
           </div>
-
           <button
             type="submit"
-            disabled={!agreed}
-            className={`mt-4 w-full p-3 rounded-md font-semibold transition-colors ${
-              agreed
-                ? "bg-orange-500 text-white hover:bg-orange-600"
+            disabled={!agreed || loading}
+            className={`w-full h-12 rounded-lg font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+              agreed && !loading
+                ? "bg-orange-500 hover:bg-orange-600 text-white"
                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
-            Sign Up
+            {loading ? (
+              <>
+                <Loader2 className="animate-spin" size={20} />
+                Creating Account...
+              </>
+            ) : (
+              "Sign Up"
+            )}
           </button>
         </form>
 

@@ -560,7 +560,7 @@ export default function ViewTrainers() {
             onClick={() => setShowFilters(false)}
           />
 
-          <div className="relative bg-white w-full rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto">
+          <div className="relative bg-white w-full rounded-t-2xl p-5 pb-28 max-h-[85vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold text-[#ff7a00]">
                 Filter Trainers
@@ -671,11 +671,33 @@ export default function ViewTrainers() {
 
       {/* ================= LIST ================= */}
       {filteredTrainers.length === 0 ? (
-        <div className="text-center mt-12">
-          <img src="/institue.png" className="mx-auto w-32 mb-4 opacity-80" />
-          <h1 className="text-2xl font-bold mb-2">
-            Trainers will be available shortly
-          </h1>
+        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+          <img
+            src="/institue.png"
+            alt="No Trainers"
+            className="w-28 h-28 opacity-70 mb-5"
+          />
+
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            No Trainers Available
+          </h2>
+
+          <p className="text-gray-500 max-w-sm">
+            We couldn't find any trainers matching your selected filters. Try
+            changing or clearing the filters and search again.
+          </p>
+
+          <button
+            onClick={() => {
+              setCategory("");
+              setSubCategory("");
+              setCity("");
+              setMinRating("");
+            }}
+            className="mt-6 bg-[#FF6A00] text-white px-6 py-2 rounded-lg font-semibold hover:bg-[#e55f00] transition"
+          >
+            Clear Filters
+          </button>
         </div>
       ) : (
         <div className="md:hidden flex flex-col gap-4 mt-6">
@@ -711,10 +733,6 @@ export default function ViewTrainers() {
                 </div>
               </div>
               <div className="flex gap-3 mt-4">
-                <button className="bg-[#FF6A00] text-white rounded-md py-2 px-4 font-bold flex-1 active:scale-95 transition">
-                  Message
-                </button>
-
                 <button
                   onClick={() => navigate(`/trainers/${t.id}`)}
                   className="border-2 border-[#FF6A00] text-[#FF6A00] rounded-md py-2 px-4 font-bold flex-1 bg-white active:scale-95 transition"

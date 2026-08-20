@@ -19,6 +19,8 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 
 import { useNavigate } from "react-router-dom";
 
+import { getDashboardGreeting } from "../../utils/dashboardGreeting";
+
 const TrainerDashboard = () => {
   const { user } = useAuth();
 
@@ -170,215 +172,218 @@ const TrainerDashboard = () => {
   // =========================================================
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FFF7F2] flex items-center justify-center">
-        <div className="text-gray-500 text-lg">Loading Dashboard...</div>
+      <div className="h-full bg-[#F4F6FB] flex flex-col overflow-hidden rounded-2xl">
+        <div className="flex-shrink-0 bg-white/95 border-b border-orange-100 px-3 py-3">
+          <div className="h-4 w-40 rounded-lg dash-shimmer" />
+          <div className="h-3 w-28 rounded-lg dash-shimmer mt-2" />
+        </div>
+        <div className="p-3 space-y-3 flex-1">
+          <div className="h-12 rounded-2xl dash-shimmer" />
+          <div className="h-40 rounded-2xl dash-shimmer" />
+          <div className="h-40 rounded-2xl dash-shimmer" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FFF7F2] pb-32">
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-100 px-4 py-4">
-        <div className="flex items-center justify-between">
-          {/* LEFT */}
-          <div className="flex items-center gap-3">
+    <div className="h-full min-h-0 bg-[#F4F6FB] flex flex-col overflow-hidden rounded-2xl">
+      <div className="flex-shrink-0 bg-gradient-to-br from-[#FF6A00] via-[#FF7A1A] to-[#FF9A4A] px-3 py-3.5 sm:px-4 relative overflow-hidden">
+        <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-white/15 pointer-events-none" />
+        <div className="relative flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
             <img
               src={user?.photoURL || "https://ui-avatars.com/api/?name=Trainer"}
               alt=""
-              className="w-12 h-12 rounded-full object-cover border"
+              className="w-10 h-10 rounded-xl object-cover border-2 border-white/40 shadow-sm"
             />
 
-            <div>
-              <h1 className="font-bold text-lg">Trainer Dashboard</h1>
-
-              <p className="text-sm text-gray-500">Welcome Trainer 👋</p>
+            <div className="min-w-0">
+              <p className="text-orange-100 text-[11px] font-medium tracking-wide">
+                {getDashboardGreeting(user?.displayName)}
+              </p>
+              <h1 className="font-bold text-sm sm:text-base text-white truncate">
+                Trainer Dashboard
+              </h1>
             </div>
           </div>
-
-          {/* SETTINGS */}
-          <button className="bg-[#FF6A00] text-white p-3 rounded-2xl">
-            <Settings size={18} />
-          </button>
         </div>
       </div>
 
-      <div className="px-4 py-5 space-y-5">
+      <div className="flex-1 min-h-0 overflow-hidden px-3 pt-2.5 pb-1 sm:px-4 flex flex-col gap-2.5">
         {/* ===================================================
-            STATS TABLE
-        =================================================== */}
-
-        {/* ===================================================
-            SEARCH
-        =================================================== */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center gap-3 border rounded-2xl px-4 py-3">
-            <Search size={18} className="text-gray-400" />
+      SEARCH
+  =================================================== */}
+        <div className="dash-card p-2.5 flex-shrink-0">
+          <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+            <Search size={16} className="text-gray-400 shrink-0" />
 
             <input
               type="text"
               placeholder="Search student..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="flex-1 outline-none bg-transparent"
+              className="flex-1 outline-none bg-transparent text-sm"
             />
           </div>
         </div>
 
         {/* ===================================================
-            STUDENTS TABLE
-        =================================================== */}
-        <div className="bg-white rounded-3xl shadow-sm overflow-hidden">
-          {/* HEADER */}
-          <div className="px-4 py-4 bg-[#FF6A00]">
-            <h2 className="text-white font-bold text-lg">Students List</h2>
+      STUDENTS TABLE
+  =================================================== */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="px-3 py-2.5 bg-[#FF6A00] flex-shrink-0">
+            <h2 className="text-white font-bold text-sm sm:text-base">
+              Students List
+            </h2>
           </div>
 
-          {/* MOBILE TABLE */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px]">
-              <thead className="bg-orange-50">
-                <tr className="text-left">
-                  <Th>Photo</Th>
-
-                  <Th>Name</Th>
-
-                  <Th>Phone</Th>
-
-                  <Th>Email</Th>
-
-                  <Th>Register No</Th>
-
-                  <Th>Category</Th>
-
-                  <Th>Sport</Th>
-
-                  <Th>Session</Th>
-
-                  <Th>Timing</Th>
-
-                  <Th>Fee</Th>
-
-                  <Th>Joining</Th>
-
-                  <Th>Status</Th>
-
-                  <Th>Actions</Th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filteredStudents.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={13}
-                      className="text-center py-10 text-gray-500"
-                    >
-                      No Students Found
-                    </td>
+          {/* ONLY STUDENTS AREA SCROLLS */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {/* Horizontal + vertical student area */}
+            <div
+              className="
+      h-full
+      w-full
+      overflow-x-auto
+      overflow-y-auto
+      overscroll-contain
+    "
+              style={{
+                WebkitOverflowScrolling: "touch",
+                touchAction: "pan-x pan-y",
+              }}
+            >
+              <table className="w-full min-w-[1100px]">
+                <thead className="sticky top-0 z-20 bg-orange-50">
+                  <tr className="text-left">
+                    <Th>Photo</Th>
+                    <Th>Name</Th>
+                    <Th>Phone</Th>
+                    <Th>Email</Th>
+                    <Th>Register No</Th>
+                    <Th>Category</Th>
+                    <Th>Sport</Th>
+                    <Th>Session</Th>
+                    <Th>Timing</Th>
+                    <Th>Fee</Th>
+                    <Th>Joining</Th>
+                    <Th>Status</Th>
+                    <Th>Actions</Th>
                   </tr>
-                ) : (
-                  filteredStudents.map((student, index) => {
-                    const sport = student.sports?.[0] || {};
+                </thead>
 
-                    return (
-                      <tr
-                        key={student.id}
-                        className={`border-b ${
-                          index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                        }`}
+                <tbody>
+                  {filteredStudents.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={13}
+                        className="text-center py-10 text-gray-500"
                       >
-                        {/* PHOTO */}
-                        <Td>
-                          <img
-                            src={student.profileImageUrl}
-                            alt=""
-                            className="w-12 h-12 rounded-full object-cover border"
-                          />
-                        </Td>
+                        No students found — try a different search
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredStudents.map((student, index) => {
+                      const sport = student.sports?.[0] || {};
 
-                        {/* NAME */}
-                        <Td>
-                          <div className="font-semibold">
-                            {student.firstName} {student.lastName}
-                          </div>
+                      return (
+                        <tr
+                          key={student.id}
+                          className={`border-b ${
+                            index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                          }`}
+                        >
+                          {/* PHOTO */}
+                          <Td>
+                            <img
+                              src={student.profileImageUrl}
+                              alt=""
+                              className="w-12 h-12 rounded-full object-cover border"
+                            />
+                          </Td>
 
-                          <div className="text-xs text-gray-500">
-                            {student.gender}
-                          </div>
-                        </Td>
+                          {/* NAME */}
+                          <Td>
+                            <div className="font-semibold">
+                              {student.firstName} {student.lastName}
+                            </div>
 
-                        {/* PHONE */}
-                        <Td>
-                          <div className="flex items-center gap-2">
-                            <Phone size={14} />
+                            <div className="text-xs text-gray-500">
+                              {student.gender}
+                            </div>
+                          </Td>
 
-                            {student.phone}
-                          </div>
-                        </Td>
+                          {/* PHONE */}
+                          <Td>
+                            <div className="flex items-center gap-2">
+                              <Phone size={14} />
 
-                        {/* EMAIL */}
-                        <Td>
-                          <div className="flex items-center gap-2">
-                            <Mail size={14} />
+                              {student.phone}
+                            </div>
+                          </Td>
 
-                            <span className="break-all">{student.email}</span>
-                          </div>
-                        </Td>
+                          {/* EMAIL */}
+                          <Td>
+                            <div className="flex items-center gap-2">
+                              <Mail size={14} />
 
-                        {/* REGISTER */}
-                        <Td>{student.registerNumber}</Td>
+                              <span className="break-all">{student.email}</span>
+                            </div>
+                          </Td>
 
-                        {/* CATEGORY */}
-                        <Td>{student.category}</Td>
+                          {/* REGISTER */}
+                          <Td>{student.registerNumber}</Td>
 
-                        {/* SPORT */}
-                        <Td>{student.subCategory || sport.subCategory}</Td>
+                          {/* CATEGORY */}
+                          <Td>{student.category}</Td>
 
-                        {/* SESSION */}
-                        <Td>{student.sessions}</Td>
+                          {/* SPORT */}
+                          <Td>{student.subCategory || sport.subCategory}</Td>
 
-                        {/* TIMING */}
-                        <Td>{student.timings || sport.timings}</Td>
+                          {/* SESSION */}
+                          <Td>{student.sessions}</Td>
 
-                        {/* FEE */}
-                        <Td>₹{student.monthlyFee || sport.fee || 0}</Td>
+                          {/* TIMING */}
+                          <Td>{student.timings || sport.timings}</Td>
 
-                        {/* JOINING */}
-                        <Td>{student.joiningDate}</Td>
+                          {/* FEE */}
+                          <Td>₹{student.monthlyFee || sport.fee || 0}</Td>
 
-                        {/* STATUS */}
-                        <Td>
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              student.status === "Active"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
-                          >
-                            {student.status || "Active"}
-                          </span>
-                        </Td>
+                          {/* JOINING */}
+                          <Td>{student.joiningDate}</Td>
 
-                        {/* ACTIONS */}
-                        <Td>
-                          <div className="flex items-center gap-2">
-                            <a
-                              href={`tel:${student.phone}`}
-                              className="bg-green-500 text-white px-3 py-2 rounded-xl text-xs"
+                          {/* STATUS */}
+                          <Td>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                student.status === "Active"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}
                             >
-                              Call
-                            </a>
-                          </div>
-                        </Td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                              {student.status || "Active"}
+                            </span>
+                          </Td>
+
+                          {/* ACTIONS */}
+                          <Td>
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={`tel:${student.phone}`}
+                                className="bg-green-500 text-white px-3 py-2 rounded-xl text-xs"
+                              >
+                                Call
+                              </a>
+                            </div>
+                          </Td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -395,7 +400,7 @@ const TrainerDashboard = () => {
 // =========================================================
 const Th = ({ children }) => {
   return (
-    <th className="px-4 py-4 text-sm font-bold text-gray-700 whitespace-nowrap">
+    <th className="px-3 py-2.5 text-xs sm:text-sm font-bold text-gray-700 whitespace-nowrap">
       {children}
     </th>
   );
@@ -406,7 +411,7 @@ const Th = ({ children }) => {
 // =========================================================
 const Td = ({ children, className = "" }) => {
   return (
-    <td className={`px-4 py-4 text-sm whitespace-nowrap ${className}`}>
+    <td className={`px-3 py-2.5 text-sm whitespace-nowrap ${className}`}>
       {children}
     </td>
   );

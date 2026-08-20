@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
 import { useAuth } from "../../../../context/AuthContext";
+import { Trophy, Trash2 } from "lucide-react";
+import StepHeader from "../StepHeader";
 
 const AchievementsTrack = ({ setStep }) => {
   const { user } = useAuth();
@@ -18,6 +20,15 @@ const AchievementsTrack = ({ setStep }) => {
     },
     awardsImages: [],
     mediaMentions: [],
+    achievementHighlights: [],
+    yearsInOperation: "",
+    totalStudentsTrained: "",
+  });
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newHighlight, setNewHighlight] = useState({
+    title: "",
+    summary: "",
+    year: "",
   });
 
   // ================= LOAD DATA =================
@@ -57,6 +68,18 @@ const AchievementsTrack = ({ setStep }) => {
             },
             awardsImages: data?.awardsImages ?? [],
             mediaMentions: data?.mediaMentions ?? [],
+            achievementHighlights: data?.achievementHighlights ?? [],
+            yearsInOperation:
+              data?.yearsInOperation ||
+              (data?.yearFounded
+                ? String(
+                    Math.max(
+                      0,
+                      new Date().getFullYear() - Number(data.yearFounded),
+                    ),
+                  )
+                : ""),
+            totalStudentsTrained: data?.totalStudentsTrained ?? "",
           });
         } else {
           // no doc → empty
@@ -68,6 +91,9 @@ const AchievementsTrack = ({ setStep }) => {
             },
             awardsImages: [],
             mediaMentions: [],
+            achievementHighlights: [],
+            yearsInOperation: "",
+            totalStudentsTrained: "",
           });
         }
       } catch (error) {
@@ -184,6 +210,9 @@ const AchievementsTrack = ({ setStep }) => {
           achievements: formData.achievements,
           awardsImages: formData.awardsImages,
           mediaMentions: formData.mediaMentions,
+          achievementHighlights: formData.achievementHighlights,
+          yearsInOperation: formData.yearsInOperation,
+          totalStudentsTrained: formData.totalStudentsTrained,
           updatedAt: serverTimestamp(),
         },
         { merge: true }, // ✅ keeps existing fields safe
@@ -208,45 +237,208 @@ const AchievementsTrack = ({ setStep }) => {
       },
       awardsImages: [],
       mediaMentions: [],
+      achievementHighlights: [],
+      yearsInOperation: "",
+      totalStudentsTrained: "",
     });
   };
+
+  const addHighlight = () => {
+    if (!newHighlight.title.trim()) {
+      alert("Please enter achievement title");
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      achievementHighlights: [
+        ...prev.achievementHighlights,
+        { ...newHighlight, id: Date.now() },
+      ],
+    }));
+    setNewHighlight({ title: "", summary: "", year: "" });
+    setShowAddForm(false);
+  };
+
+  const removeHighlight = (index) => {
+    setFormData((prev) => ({
+      ...prev,
+      achievementHighlights: prev.achievementHighlights.filter(
+        (_, i) => i !== index,
+      ),
+    }));
+  };
+
+  const fieldClass =
+    "w-full min-h-[48px] text-base rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100";
 
   if (loading) return <p className="p-6 text-gray-500">Loading...</p>;
 
   return (
-    <div className="w-full">
-      <div
-        onClick={() => setStep(2)}
-        className="cursor-pointer text-orange-600 mb-4"
-      >
-        ← Back
+    <div className="w-full pb-6">
+      <StepHeader
+        title="Achievements & Trust"
+        onBack={() => setStep?.(0)}
+        onSave={handleSave}
+        saving={saving}
+      />
+
+      <div className="flex flex-col items-center mb-5">
+        <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+          <Trophy size={28} />
+        </div>
+        <p className="text-sm font-semibold text-gray-900 mt-3">
+          Achievements & Trust
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 text-center">
+          Add awards and results to build credibility.
+        </p>
       </div>
 
-      <h2 className="text-orange-500 font-semibold text-xl mb-6">
-        Achievements & Track Record
-      </h2>
+      <div className="space-y-3 mb-4">
+        {formData.achievementHighlights.map((item, index) => (
+          <div
+            key={item.id || index}
+            className="bg-white border border-gray-100 rounded-xl p-3.5 flex items-start gap-3"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 text-sm">{item.title}</p>
+              {item.summary && (
+                <p className="text-xs text-gray-500 mt-0.5">{item.summary}</p>
+              )}
+              {item.year && (
+                <p className="text-xs text-gray-400 mt-1">{item.year}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => removeHighlight(index)}
+              className="w-10 h-10 flex items-center justify-center text-red-500"
+              aria-label="Delete achievement"
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
+        ))}
+      </div>
 
-      {/* TABLE */}
-      <div className="overflow-x-auto mb-8">
-        <table className="w-full table-fixed border border-gray-300 min-w-[320px]">
+      {showAddForm && (
+        <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-3 mb-3">
+          <input
+            className={fieldClass}
+            placeholder="Achievement title"
+            value={newHighlight.title}
+            onChange={(e) =>
+              setNewHighlight((p) => ({ ...p, title: e.target.value }))
+            }
+          />
+          <input
+            className={fieldClass}
+            placeholder="Summary (e.g. 5 Gold, 3 Silver)"
+            value={newHighlight.summary}
+            onChange={(e) =>
+              setNewHighlight((p) => ({ ...p, summary: e.target.value }))
+            }
+          />
+          <input
+            className={fieldClass}
+            placeholder="Year"
+            inputMode="numeric"
+            maxLength={4}
+            value={newHighlight.year}
+            onChange={(e) =>
+              setNewHighlight((p) => ({
+                ...p,
+                year: e.target.value.replace(/\D/g, "").slice(0, 4),
+              }))
+            }
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAddForm(false)}
+              className="flex-1 min-h-[44px] rounded-xl border border-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={addHighlight}
+              className="flex-1 min-h-[44px] rounded-xl bg-orange-500 text-white font-semibold"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowAddForm(true)}
+        className="w-full min-h-[48px] rounded-xl border-2 border-dashed border-orange-400 text-orange-500 font-semibold"
+      >
+        + Add Achievement
+      </button>
+
+      <div className="mt-5 space-y-4">
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
+            Years in Operation
+          </label>
+          <select
+            className={fieldClass}
+            value={formData.yearsInOperation}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                yearsInOperation: e.target.value,
+              }))
+            }
+          >
+            <option value="">Select years</option>
+            {Array.from({ length: 60 }, (_, i) => String(i + 1)).map((y) => (
+              <option key={y} value={y}>
+                {y} {y === "1" ? "Year" : "Years"}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
+            Total Students Trained
+          </label>
+          <input
+            className={fieldClass}
+            inputMode="numeric"
+            placeholder="e.g. 500"
+            value={formData.totalStudentsTrained}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                totalStudentsTrained: e.target.value.replace(/\D/g, ""),
+              }))
+            }
+          />
+        </div>
+      </div>
+
+      <div className="mt-6 overflow-x-auto rounded-xl border border-gray-200">
+        <table className="w-full table-fixed min-w-[320px]">
           <thead>
-            <tr className="bg-gray-100 text-orange-500">
-              <th className="p-2 sm:p-3 border w-1/4">Category</th>
-              <th className="p-2 sm:p-3 border w-1/4">Gold</th>
-              <th className="p-2 sm:p-3 border w-1/4">Silver</th>
-              <th className="p-2 sm:p-3 border w-1/4">Bronze</th>
+            <tr className="bg-orange-50 text-orange-600 text-sm">
+              <th className="p-3 w-1/4 text-left">Category</th>
+              <th className="p-3 w-1/4">Gold</th>
+              <th className="p-3 w-1/4">Silver</th>
+              <th className="p-3 w-1/4">Bronze</th>
             </tr>
           </thead>
-
           <tbody>
             {["district", "state", "national"].map((level) => (
-              <tr key={level} className="text-center">
-                <td className="p-2 sm:p-3 border capitalize font-medium text-xs sm:text-sm">
+              <tr key={level} className="text-center border-t">
+                <td className="p-2 capitalize font-medium text-xs text-left pl-3">
                   {level}
                 </td>
-
                 {["gold", "silver", "bronze"].map((medal) => (
-                  <td key={medal} className="p-2 border">
+                  <td key={medal} className="p-2">
                     <input
                       type="number"
                       min="0"
@@ -254,15 +446,7 @@ const AchievementsTrack = ({ setStep }) => {
                       onChange={(e) =>
                         handleChange(level, medal, e.target.value)
                       }
-                      className="
-                  w-full
-                  h-10
-                  text-center
-                  text-sm
-                  border border-gray-300
-                  rounded
-                  px-1
-                "
+                      className="w-full h-11 text-center text-base border border-gray-200 rounded-lg"
                     />
                   </td>
                 ))}
@@ -272,36 +456,34 @@ const AchievementsTrack = ({ setStep }) => {
         </table>
       </div>
 
-      {/* ================= AWARDS UPLOAD ================= */}
       {["awardsImages", "mediaMentions"].map((type) => (
-        <div key={type} className="mb-8">
-          <label className="font-medium block mb-2 capitalize">
+        <div key={type} className="mt-6">
+          <label className="font-medium block mb-2 text-sm">
             {type === "awardsImages"
               ? "Awards Images Upload"
               : "Media Mentions Upload"}
           </label>
-
-          <div className="flex items-center border rounded px-4 py-2 min-h-14">
+          <div className="flex items-center border border-gray-200 rounded-xl px-4 py-3 min-h-14 bg-white">
             <div className="flex gap-2 flex-wrap flex-1">
               {formData[type].map((img, index) => (
                 <div key={index} className="relative">
                   <img
                     src={img}
                     alt="upload"
-                    className="h-10 w-10 object-cover rounded"
+                    className="h-12 w-12 object-cover rounded-lg"
                   />
                   <button
+                    type="button"
                     onClick={() => removeImage(type, index)}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center"
+                    className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
                   >
                     ×
                   </button>
                 </div>
               ))}
             </div>
-
             {formData[type].length < 3 && (
-              <label className="cursor-pointer">
+              <label className="cursor-pointer w-11 h-11 flex items-center justify-center">
                 <img src="/upload.png" alt="upload" className="w-6 h-6" />
                 <input
                   type="file"
@@ -312,7 +494,9 @@ const AchievementsTrack = ({ setStep }) => {
               </label>
             )}
           </div>
-
+          {uploading && (
+            <p className="text-orange-500 text-xs mt-1">Uploading...</p>
+          )}
           {formData[type].length > 0 && (
             <p className="text-green-600 text-sm mt-2">
               {formData[type].length} image
@@ -321,24 +505,6 @@ const AchievementsTrack = ({ setStep }) => {
           )}
         </div>
       ))}
-
-      {/* ================= BUTTONS ================= */}
-      <div className="flex justify-end gap-4">
-        <button
-          onClick={handleCancel}
-          className="text-gray-600 hover:text-black"
-        >
-          Cancel
-        </button>
-
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-orange-500 text-white px-6 py-2 rounded"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
     </div>
   );
 };

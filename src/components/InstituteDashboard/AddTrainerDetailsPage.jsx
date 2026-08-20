@@ -37,6 +37,7 @@ export default function AddTrainerDetailsPage() {
   const certificateInputRef = useRef(null);
   const aadharInputRef = useRef(null);
   const [nextLoading, setNextLoading] = useState(false);
+
   const categories = [
     "Martial Arts",
     "Team Ball Sports",
@@ -473,7 +474,16 @@ export default function AddTrainerDetailsPage() {
 
     e.target.value = null;
   };
+  const removeCertificate = (index) => {
+    setFormData((prev) => ({
+      ...prev,
+      certificates: prev.certificates.filter((_, i) => i !== index),
+    }));
 
+    if (certificateInputRef.current) {
+      certificateInputRef.current.value = "";
+    }
+  };
   const formatName = (value) => {
     return value
       .toLowerCase()
@@ -1055,13 +1065,13 @@ export default function AddTrainerDetailsPage() {
             </div>
 
             {/* Upload Certification */}
+            {/* Upload Certification */}
             <div className="flex flex-col">
               <label className="text-sm font-semibold mb-2">
                 Upload Certification<span className="text-red-500">*</span> /
                 License Number
               </label>
 
-              {/* THIS wrapper is important */}
               <div className="relative w-full">
                 <input
                   readOnly
@@ -1081,20 +1091,50 @@ export default function AddTrainerDetailsPage() {
                 >
                   <img src="/upload.png" alt="upload" className="w-6 h-6" />
                 </button>
-                {errors.certificates && (
-                  <p className="text-red-500 text-xs mt-1">
-                    {errors.certificates}
-                  </p>
-                )}
               </div>
+
+              {errors.certificates && (
+                <p className="text-red-500 text-xs mt-1">
+                  {errors.certificates}
+                </p>
+              )}
 
               <input
                 type="file"
                 multiple
                 ref={certificateInputRef}
                 className="hidden"
+                accept="image/*"
                 onChange={handleCertificateChange}
               />
+
+              {/* Selected Images */}
+              {formData.certificates.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {formData.certificates.map((file, index) => (
+                    <div
+                      key={index}
+                      className="relative border rounded-lg overflow-hidden"
+                    >
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`certificate-${index}`}
+                        className="w-full h-28 object-cover"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => removeCertificate(index)}
+                        className="absolute top-1 right-1 bg-red-500 text-white text-xs px-2 py-1 rounded hover:bg-red-600"
+                      >
+                        ✕
+                      </button>
+
+                      <p className="text-xs p-2 truncate">{file.name}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

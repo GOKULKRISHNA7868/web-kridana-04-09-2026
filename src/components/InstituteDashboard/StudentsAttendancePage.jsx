@@ -510,16 +510,18 @@ const StudentsAttendancePage = () => {
   };
 
   return (
-    <div className="h-full w-full bg-gray-50 rounded-2xl overflow-hidden flex flex-col">
+    <div className="h-full w-full bg-[#F4F6FB] rounded-2xl overflow-hidden flex flex-col">
       {/* ================= FIXED HEADER ================= */}
-      <div className="shrink-0 bg-white border-b shadow-sm sticky top-0 z-20">
-        <div className="px-4 py-4 md:px-8 md:py-6">
-          {/* BACK + TITLE */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="flex items-center gap-2 min-w-0">
-              <h1 className="text-lg font-bold text-[#FF6A00] truncate">
+      <div className="shrink-0 bg-white/95 backdrop-blur-md border-b border-orange-100 shadow-sm z-20">
+        <div className="px-3 py-2.5 sm:px-5 sm:py-3 md:px-8">
+          <div className="flex items-center justify-between gap-3 animate-moreFadeUp">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-[#FF6A00] truncate">
                 Attendance
               </h1>
+              <p className="text-[10px] sm:text-xs text-gray-400 truncate">
+                Mark present or absent for today
+              </p>
             </div>
 
             <input
@@ -527,53 +529,53 @@ const StudentsAttendancePage = () => {
               value={selectedDate}
               max={today}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="border rounded-lg px-2 py-1 text-sm w-[135px]"
+              className="border border-gray-200 rounded-xl px-2 py-1.5 text-xs sm:text-sm w-[132px] bg-gray-50 outline-none focus:border-orange-400"
             />
           </div>
 
-          {/* SUMMARY */}
-          <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-4 mt-3 mb-3">
+          <div className="grid grid-cols-3 gap-2 mt-2.5">
             {[
-              ["Total", summary.totalStudents],
-              ["Present", summary.presentToday],
-              ["Absent", summary.absentToday],
-            ].map(([label, val]) => (
+              ["Total", summary.totalStudents, "bg-orange-50 text-orange-600"],
+              ["Present", summary.presentToday, "bg-green-50 text-green-600"],
+              ["Absent", summary.absentToday, "bg-red-50 text-red-500"],
+            ].map(([label, val, tone]) => (
               <div
                 key={label}
-                className="bg-orange-50 rounded-2xl p-4 shadow-sm text-center"
+                className={`${tone} rounded-xl py-2 px-1 shadow-sm text-center`}
               >
-                <div className="text-xs text-gray-500">{label}</div>
-                <div className="font-bold text-[#FF6A00]">{val}</div>
+                <div className="text-[10px] sm:text-xs text-gray-500">
+                  {label}
+                </div>
+                <div className="font-bold text-sm sm:text-base">{val}</div>
               </div>
             ))}
           </div>
 
-          {/* SEARCH */}
-          <div className="flex flex-col md:flex-row gap-3 mb-5">
-            <div className="flex flex-1 items-center border rounded-full px-3">
-              <Search size={16} />
+          <div className="flex items-center gap-2 mt-2.5">
+            <div className="flex flex-1 items-center border border-gray-200 rounded-xl px-3 bg-gray-50">
+              <Search size={15} className="text-gray-400 flex-shrink-0" />
               <input
-                placeholder="Search..."
+                placeholder="Search student..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full px-2 py-2 outline-none text-sm"
+                className="w-full px-2 py-2 outline-none text-sm bg-transparent"
               />
             </div>
 
             <button
+              type="button"
               onClick={() => setShowExportModal(true)}
-              className="p-2 border rounded-full bg-white"
+              className="w-10 h-10 flex-shrink-0 border border-gray-200 rounded-xl bg-white flex items-center justify-center text-[#FF6A00] active:scale-95 transition"
             >
-              <Download size={18} />
+              <Download size={16} />
             </button>
           </div>
 
-          {/* FILTERS */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2.5">
             <select
               value={selectedSession}
               onChange={(e) => setSelectedSession(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm w-full"
+              className="border border-gray-200 rounded-xl px-2.5 py-2 text-xs sm:text-sm w-full bg-gray-50 outline-none"
             >
               <option value="">Session</option>
               {SESSIONS.map((s) => (
@@ -584,7 +586,7 @@ const StudentsAttendancePage = () => {
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm w-full"
+              className="border border-gray-200 rounded-xl px-2.5 py-2 text-xs sm:text-sm w-full bg-gray-50 outline-none"
             >
               <option value="">Branch</option>
               {branches.map((b) => (
@@ -598,7 +600,7 @@ const StudentsAttendancePage = () => {
                 setSelectedCategory(e.target.value);
                 setSelectedSubCategory("");
               }}
-              className="border rounded-lg px-3 py-2 text-sm min-w-[130px]"
+              className="border border-gray-200 rounded-xl px-2.5 py-2 text-xs sm:text-sm w-full bg-gray-50 outline-none"
             >
               <option value="">Category</option>
               {categories.map((c) => (
@@ -609,7 +611,7 @@ const StudentsAttendancePage = () => {
             <select
               value={selectedSubCategory}
               onChange={(e) => setSelectedSubCategory(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-sm min-w-[130px]"
+              className="border border-gray-200 rounded-xl px-2.5 py-2 text-xs sm:text-sm w-full bg-gray-50 outline-none"
             >
               <option value="">Sub</option>
               {subCategories.map((s) => (
@@ -621,111 +623,141 @@ const StudentsAttendancePage = () => {
       </div>
 
       {/* ================= SCROLL STUDENTS ONLY ================= */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <div
           ref={scrollRef}
-          className="h-full overflow-y-auto px-3 py-3 space-y-3 scroll-smooth"
+          className="h-full overflow-y-auto overflow-x-hidden px-3 sm:px-4 py-3 space-y-2.5 scrollbar-hide"
           style={{
             WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
           }}
         >
-          {paginatedStudents.map((s, index) => {
-            const key = `${s.uid}||${selectedCategory}||${selectedSubCategory}`;
-            const record = draftAttendance[key];
+          {paginatedStudents.length === 0 ? (
+            <div className="h-full min-h-[180px] flex items-center justify-center text-sm text-gray-400">
+              No students found
+            </div>
+          ) : (
+            paginatedStudents.map((s, index) => {
+              const key = `${s.uid}||${selectedCategory}||${selectedSubCategory}`;
+              const record = draftAttendance[key];
 
-            return (
-              <div
-                key={s.uid}
-                className="bg-white border rounded-xl p-3 sm:p-4 shadow-sm"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="grid grid-cols-[18px_1fr] gap-1 items-start font-semibold text-gray-800 leading-6">
-                    <span>{index + 1}.</span>
-
-                    <span className="break-words">
-                      {s.firstName} {s.lastName}
-                    </span>
-                  </div>
-
-                  <div className="text-xs text-gray-500">
-                    {s.sessions || "-"}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  {/* Present */}
-                  <div
-                    onClick={() => saveAttendance(s, "present")}
-                    className="flex items-center gap-2 cursor-pointer"
-                  >
-                    <div className="w-6 h-6 rounded-full border flex items-center justify-center">
-                      {record?.status === "present" && (
-                        <div className="w-3 h-3 bg-green-500 rounded-full" />
-                      )}
+              return (
+                <div
+                  key={s.uid}
+                  className="bg-white border border-gray-100 rounded-2xl p-3 sm:p-4 shadow-sm animate-moreFadeUp"
+                  style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm sm:text-base leading-snug break-words">
+                        {index + 1}. {s.firstName} {s.lastName}
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {s.sessions || "-"}
+                      </p>
                     </div>
-                    <span className="text-green-600 font-medium">P</span>
                   </div>
 
-                  {/* Absent */}
-                  <div
-                    onClick={() => saveAttendance(s, "absent")}
-                    className="flex items-center gap-2 cursor-pointer"
-                  >
-                    <div className="w-6 h-6 rounded-full border flex items-center justify-center">
-                      {record?.status === "absent" && (
-                        <div className="w-3 h-3 bg-red-500 rounded-full" />
-                      )}
-                    </div>
-                    <span className="text-red-500 font-medium">A</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => saveAttendance(s, "present")}
+                      className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition active:scale-95 ${
+                        record?.status === "present"
+                          ? "bg-green-50 border-green-200 text-green-700"
+                          : "bg-gray-50 border-gray-200 text-gray-500"
+                      }`}
+                    >
+                      <span
+                        className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                          record?.status === "present"
+                            ? "border-green-500"
+                            : "border-gray-300"
+                        }`}
+                      >
+                        {record?.status === "present" && (
+                          <span className="w-2.5 h-2.5 bg-green-500 rounded-full" />
+                        )}
+                      </span>
+                      Present
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => saveAttendance(s, "absent")}
+                      className={`flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition active:scale-95 ${
+                        record?.status === "absent"
+                          ? "bg-red-50 border-red-200 text-red-600"
+                          : "bg-gray-50 border-gray-200 text-gray-500"
+                      }`}
+                    >
+                      <span
+                        className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                          record?.status === "absent"
+                            ? "border-red-500"
+                            : "border-gray-300"
+                        }`}
+                      >
+                        {record?.status === "absent" && (
+                          <span className="w-2.5 h-2.5 bg-red-500 rounded-full" />
+                        )}
+                      </span>
+                      Absent
+                    </button>
                   </div>
+
+                  {record?.status === "absent" && (
+                    <select
+                      value={record?.reason || ""}
+                      onChange={(e) =>
+                        saveAttendance(s, "absent", e.target.value)
+                      }
+                      className="mt-3 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 outline-none animate-moreFadeUp"
+                    >
+                      <option value="">Select reason</option>
+                      {absenceReasons.map((r) => (
+                        <option key={r}>{r}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
+              );
+            })
+          )}
+        </div>
+      </div>
 
-                {record?.status === "absent" && (
-                  <select
-                    value={record?.reason || ""}
-                    onChange={(e) =>
-                      saveAttendance(s, "absent", e.target.value)
-                    }
-                    className="mt-3 w-full border rounded-lg px-3 py-2 text-sm"
-                  >
-                    <option value="">Select reason</option>
-                    {absenceReasons.map((r) => (
-                      <option key={r}>{r}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            );
-          })}
+      {/* ================= STATIC FOOTER ================= */}
+      <div className="shrink-0 bg-white border-t border-gray-100 px-3 sm:px-4 py-2.5 z-20">
+        <div className="flex justify-center gap-2 sm:gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={clearAllAttendance}
+            disabled={!hasChanges}
+            className={`px-4 sm:px-5 py-2.5 min-h-[44px] text-sm font-semibold rounded-xl border transition ${
+              hasChanges
+                ? "bg-white text-gray-700 border-gray-300 active:scale-95"
+                : "bg-gray-100 text-gray-400 border-gray-200"
+            }`}
+          >
+            Clear All
+          </button>
 
-          {/* SAVE BUTTON */}
-          <div className="flex justify-center gap-3 mt-4 flex-wrap">
-            {/* Clear All */}
-            <button
-              onClick={clearAllAttendance}
-              disabled={!hasChanges}
-              className={`px-5 py-2 text-sm font-semibold rounded-lg border ${
-                hasChanges
-                  ? "bg-white text-gray-700 border-gray-300"
-                  : "bg-gray-100 text-gray-400 border-gray-200"
-              }`}
-            >
-              Clear All
-            </button>
+          <button
+            type="button"
+            onClick={handleSaveAll}
+            disabled={!hasChanges}
+            className={`px-5 sm:px-6 py-2.5 min-h-[44px] text-sm font-semibold rounded-xl text-white transition ${
+              hasChanges
+                ? "bg-[#FF6A00] shadow-sm active:scale-95"
+                : "bg-gray-300"
+            }`}
+          >
+            Save
+          </button>
+        </div>
 
-            {/* Save */}
-            <button
-              onClick={handleSaveAll}
-              disabled={!hasChanges}
-              className={`px-6 py-2 text-sm font-semibold rounded-lg text-white ${
-                hasChanges ? "bg-[#FF6A00]" : "bg-gray-300"
-              }`}
-            >
-              Save
-            </button>
-          </div>
-
-          {/* PAGINATION */}
+        <div className="mt-1">
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
@@ -734,37 +766,38 @@ const StudentsAttendancePage = () => {
         </div>
       </div>
 
-      {/* EXPORT MODAL */}
       {showExportModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-4w-[90%] space-y-3">
-            <h2 className="font-semibold">Export Attendance</h2>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-3 shadow-2xl">
+            <h2 className="font-bold text-gray-900">Export Attendance</h2>
 
             <input
               type="date"
               value={exportFromDate}
               onChange={(e) => setExportFromDate(e.target.value)}
-              className="w-full border p-2 rounded"
+              className="w-full border border-gray-200 p-3 rounded-xl text-sm bg-gray-50"
             />
 
             <input
               type="date"
               value={exportToDate}
               onChange={(e) => setExportToDate(e.target.value)}
-              className="w-full border p-2 rounded"
+              className="w-full border border-gray-200 p-3 rounded-xl text-sm bg-gray-50"
             />
 
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-1">
               <button
+                type="button"
                 onClick={() => setShowExportModal(false)}
-                className="px-3 py-1 border rounded"
+                className="px-4 py-2.5 min-h-[44px] border border-gray-200 rounded-xl text-sm font-semibold"
               >
                 Cancel
               </button>
 
               <button
+                type="button"
                 onClick={exportAttendanceRange}
-                className="px-3 py-1 bg-[#FF6A00] text-white rounded"
+                className="px-4 py-2.5 min-h-[44px] bg-[#FF6A00] text-white rounded-xl text-sm font-semibold"
               >
                 Download
               </button>

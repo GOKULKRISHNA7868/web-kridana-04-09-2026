@@ -1,11 +1,11 @@
 // src/pages/InstituteSignup.js
 
 import { useNavigate } from "react-router-dom";
-import { Trash2, Edit2, Building2, ChevronDown } from "lucide-react";
+import { Trash2, Edit2, Building2, ChevronDown, Loader2 } from "lucide-react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebase";
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 
 export default function InstituteSignup() {
@@ -18,9 +18,9 @@ export default function InstituteSignup() {
   const [showFetchScreen, setShowFetchScreen] = useState(false);
   const [showCategory, setShowCategory] = useState(false);
   const [showSubCategory, setShowSubCategory] = useState(false);
-  const certificateInputRef = useRef(null);
-  const aadhaarInputRef = useRef(null);
 
+  const aadhaarInputRef = useRef(null);
+  const [nextLoading, setNextLoading] = useState(false);
   const inputClass =
     "h-12 px-4 border border-orange-300 rounded-xl bg-white outline-none focus:border-2 focus:border-orange-500 focus:ring-0 transition-all";
 
@@ -36,7 +36,7 @@ export default function InstituteSignup() {
     organizationType: "",
     founderName: "",
     designation: "",
-    certifications: [],
+
     category: "",
     subCategory: "",
     yearFounded: "",
@@ -337,25 +337,6 @@ export default function InstituteSignup() {
       "Contra Dance",
     ],
   };
-  const handleCertificateChange = (e) => {
-    const newFiles = Array.from(e.target.files);
-
-    setFormData((prev) => {
-      const combined = [...prev.certifications, ...newFiles];
-
-      if (combined.length > 3) {
-        alert("Maximum 3 certifications allowed");
-        return prev;
-      }
-
-      return {
-        ...prev,
-        certifications: combined,
-      };
-    });
-
-    e.target.value = null; // allow re-select same file
-  };
 
   const handleAadhaarChange = (e) => {
     const newFiles = Array.from(e.target.files);
@@ -516,9 +497,6 @@ export default function InstituteSignup() {
       } else if (formData.password !== formData.confirmPassword) {
         newErrors.confirmPassword = "Passwords do not match";
       }
-
-      if (!formData.certifications.length)
-        newErrors.certifications = "Upload at least one certification";
     }
 
     if (step === 2) {
@@ -538,18 +516,25 @@ export default function InstituteSignup() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!validateStep()) return;
 
-    // require agreement before leaving step 1
     if (step === 1 && !agreed) {
       alert("Please agree to policies to continue");
       return;
     }
 
-    setStep((prev) => prev + 1);
-  };
+    setNextLoading(true);
 
+    // allow spinner to render
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    setStep((prev) => prev + 1);
+
+    setTimeout(() => {
+      setNextLoading(false);
+    }, 200);
+  };
   const handlePrev = () => {
     if (step > 1) {
       setStep((prev) => prev - 1);
@@ -586,28 +571,6 @@ export default function InstituteSignup() {
       return "";
     }
   };
-  const uploadCertificatesToCloudinary = async (files) => {
-    const urls = [];
-
-    for (const file of files) {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("upload_preset", "kirdana");
-
-      const res = await fetch(
-        "https://api.cloudinary.com/v1_1/dr0svrhu1/image/upload",
-        {
-          method: "POST",
-          body: fd,
-        },
-      );
-
-      const data = await res.json();
-      urls.push(data.secure_url);
-    }
-
-    return urls;
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -635,13 +598,6 @@ export default function InstituteSignup() {
       if (profileImageFile) {
         profileImageUrl = await uploadProfileToCloudinary(profileImageFile);
       }
-      let certificateUrls = [];
-
-      if (formData.certifications?.length) {
-        certificateUrls = await uploadCertificatesToCloudinary(
-          formData.certifications,
-        );
-      }
 
       await setDoc(doc(db, "institutes", uid), {
         role: "institute",
@@ -657,7 +613,6 @@ export default function InstituteSignup() {
         subCategory: formData.subCategory,
         phoneNumber: formData.phoneNumber,
         email: formData.email,
-        certifications: certificateUrls,
 
         // Step 2
         building: formData.building,
@@ -708,7 +663,26 @@ export default function InstituteSignup() {
       setLoading(false);
     }
   };
+  const loadingMessages = [
+    "Creating your account...",
+    "Securing your information...",
+    "Setting up your profile...",
+    "Almost done...",
+  ];
 
+  const [loadingText, setLoadingText] = useState(loadingMessages[0]);
+
+  useEffect(() => {
+    if (!loading) return;
+
+    let i = 0;
+    const interval = setInterval(() => {
+      i = (i + 1) % loadingMessages.length;
+      setLoadingText(loadingMessages[i]);
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, [loading]);
   // Progress bar width
   const progressPercentage = (step / 2) * 100;
 
@@ -836,7 +810,12 @@ export default function InstituteSignup() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form
+          onSubmit={handleSubmit}
+          className={`space-y-4 ${
+            loading ? "pointer-events-none opacity-60" : ""
+          }`}
+        >
           {/* STEP 1 */}
           {step === 1 && (
             <div className="animate-fade-in space-y-6">
@@ -920,53 +899,6 @@ export default function InstituteSignup() {
                       {errors.yearFounded}
                     </p>
                   )}
-                </div>
-
-                <div className="md:col-span-2 flex flex-col">
-                  <label className="text-sm font-semibold mb-2">
-                    Certifications & Licence*
-                  </label>
-
-                  <div className="relative w-full">
-                    <input
-                      readOnly
-                      value={
-                        formData.certifications.length
-                          ? `${formData.certifications.length} file(s) selected`
-                          : ""
-                      }
-                      placeholder="Upload certification or licence images"
-                      className={`${inputClass} w-full pr-12`}
-                    />
-
-                    {/* icon INSIDE box */}
-                    <button
-                      type="button"
-                      onClick={() => certificateInputRef.current.click()}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-transparent"
-                    >
-                      <img src="/upload.png" alt="upload" className="w-5 h-5" />
-                    </button>
-
-                    <input
-                      id="certUpload"
-                      type="file"
-                      ref={certificateInputRef}
-                      multiple
-                      accept="image/*"
-                      onChange={handleCertificateChange}
-                      className="hidden"
-                    />
-                    {errors.certifications && (
-                      <p className="text-red-500 text-xs mt-1">
-                        {errors.certifications}
-                      </p>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-gray-500 mt-1">
-                    Upload certification or licence images (1–3 only)
-                  </p>
                 </div>
 
                 {/* Category + Sub Category – SAME ROW */}
@@ -1480,6 +1412,48 @@ export default function InstituteSignup() {
         }
       `}
       </style>
+      {loading && (
+        <div className="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white rounded-3xl shadow-2xl w-[340px] p-8 flex flex-col items-center">
+            {/* Animated Spinner */}
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full border-4 border-orange-100"></div>
+
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 size={42} className="animate-spin text-orange-500" />
+              </div>
+            </div>
+
+            <h2 className="mt-6 text-xl font-bold text-gray-800">
+              Please Wait
+            </h2>
+
+            <p className="text-center text-gray-500 mt-2 text-sm h-10">
+              {loadingText}
+            </p>
+
+            {/* Animated Progress */}
+            <div className="w-full h-2 bg-gray-200 rounded-full mt-6 overflow-hidden">
+              <div className="h-full w-1/2 bg-orange-500 rounded-full animate-pulse"></div>
+            </div>
+
+            <p className="text-xs text-gray-400 mt-5 text-center">
+              This usually takes only a few seconds.
+              <br />
+              Please don't close this page.
+            </p>
+          </div>
+        </div>
+      )}
+      {/* Next Loading */}
+      {nextLoading && (
+        <div className="fixed inset-0 z-[9999] bg-white/80 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-14 h-14 border-4 border-orange-300 border-t-orange-500 rounded-full animate-spin"></div>
+            <p className="text-orange-600 font-semibold text-lg">Loading...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

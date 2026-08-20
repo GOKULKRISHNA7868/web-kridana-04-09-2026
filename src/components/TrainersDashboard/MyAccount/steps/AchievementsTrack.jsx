@@ -3,6 +3,9 @@ import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
 import { useAuth } from "../../../../context/AuthContext";
 
+import { Trophy } from "lucide-react";
+import StepHeader from "../StepHeader";
+
 const AchievementsTrack = ({ setStep }) => {
   const { user } = useAuth();
 
@@ -201,37 +204,44 @@ const AchievementsTrack = ({ setStep }) => {
   if (loading) return <p className="p-6 text-gray-500">Loading...</p>;
 
   return (
-    <div className="w-full">
-      <div
-        onClick={() => setStep(2)}
-        className="cursor-pointer text-orange-600 mb-4"
-      >
-        ← Back
+    <div className="w-full pb-6">
+      <StepHeader
+        title="Achievements & Trust"
+        onBack={() => setStep?.(0)}
+        onSave={handleSave}
+        saving={saving}
+      />
+
+      <div className="flex flex-col items-center mb-5">
+        <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+          <Trophy size={28} />
+        </div>
+        <p className="text-sm font-semibold text-gray-900 mt-3">
+          Achievements & Trust
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 text-center">
+          Add awards and results to build credibility.
+        </p>
       </div>
 
-      <h2 className="text-orange-500 font-semibold text-xl mb-6">
-        Achievements & Track Record
-      </h2>
-
-      {/* TABLE */}
-      <div className="overflow-x-auto mb-8">
-        <table className="min-w-full border border-gray-300">
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <table className="w-full table-fixed min-w-[320px]">
           <thead>
-            <tr className="bg-gray-100 text-orange-500">
-              <th className="p-3 border">Category</th>
-              <th className="p-3 border">Gold</th>
-              <th className="p-3 border">Silver</th>
-              <th className="p-3 border">Bronze</th>
+            <tr className="bg-orange-50 text-orange-600 text-sm">
+              <th className="p-3 w-1/4 text-left">Category</th>
+              <th className="p-3 w-1/4">Gold</th>
+              <th className="p-3 w-1/4">Silver</th>
+              <th className="p-3 w-1/4">Bronze</th>
             </tr>
           </thead>
-
           <tbody>
             {["district", "state", "national"].map((level) => (
-              <tr key={level} className="text-center">
-                <td className="p-3 border capitalize font-medium">{level}</td>
-
+              <tr key={level} className="text-center border-t">
+                <td className="p-2 capitalize font-medium text-xs text-left pl-3">
+                  {level}
+                </td>
                 {["gold", "silver", "bronze"].map((medal) => (
-                  <td key={medal} className="p-3 border">
+                  <td key={medal} className="p-2">
                     <input
                       type="number"
                       min="0"
@@ -239,7 +249,7 @@ const AchievementsTrack = ({ setStep }) => {
                       onChange={(e) =>
                         handleChange(level, medal, e.target.value)
                       }
-                      className="w-full border border-gray-300 rounded px-2 py-1"
+                      className="w-full h-11 text-center text-base border border-gray-200 rounded-lg"
                     />
                   </td>
                 ))}
@@ -249,36 +259,34 @@ const AchievementsTrack = ({ setStep }) => {
         </table>
       </div>
 
-      {/* ================= AWARDS & MEDIA ================= */}
       {["awardsImages", "mediaMentions"].map((type) => (
-        <div key={type} className="mb-8">
-          <label className="font-medium block mb-2 capitalize">
+        <div key={type} className="mt-6">
+          <label className="font-medium block mb-2 text-sm">
             {type === "awardsImages"
               ? "Awards Images Upload"
               : "Media Mentions Upload"}
           </label>
-
-          <div className="flex items-center border rounded px-4 py-2 min-h-14">
+          <div className="flex items-center border border-gray-200 rounded-xl px-4 py-3 min-h-14 bg-white">
             <div className="flex gap-2 flex-wrap flex-1">
               {formData[type].map((img, index) => (
                 <div key={index} className="relative">
                   <img
                     src={img}
                     alt="upload"
-                    className="h-10 w-10 object-cover rounded"
+                    className="h-12 w-12 object-cover rounded-lg"
                   />
                   <button
+                    type="button"
                     onClick={() => removeImage(type, index)}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center"
+                    className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"
                   >
                     ×
                   </button>
                 </div>
               ))}
             </div>
-
             {formData[type].length < 3 && (
-              <label className="cursor-pointer">
+              <label className="cursor-pointer w-11 h-11 flex items-center justify-center">
                 <img src="/upload.png" alt="upload" className="w-6 h-6" />
                 <input
                   type="file"
@@ -289,7 +297,9 @@ const AchievementsTrack = ({ setStep }) => {
               </label>
             )}
           </div>
-
+          {uploading && (
+            <p className="text-orange-500 text-xs mt-1">Uploading...</p>
+          )}
           {formData[type].length > 0 && (
             <p className="text-green-600 text-sm mt-2">
               {formData[type].length} image
@@ -298,25 +308,6 @@ const AchievementsTrack = ({ setStep }) => {
           )}
         </div>
       ))}
-
-      {/* ================= BUTTONS ================= */}
-      <div className="flex justify-end gap-4">
-        <button
-          onClick={handleCancel}
-          className="text-gray-600 hover:text-black"
-        >
-          Cancel
-        </button>
-
-        <button
-          onClick={handleSave}
-          disabled={saving || uploading}
-          className="bg-orange-500 text-white px-6 py-2 rounded"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
-
       {uploadMsg && <p className="text-green-600 text-sm mt-4">{uploadMsg}</p>}
     </div>
   );

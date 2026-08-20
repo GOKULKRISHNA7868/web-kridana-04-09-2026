@@ -4,6 +4,8 @@ import { db } from "../../../../firebase";
 import { useAuth } from "../../../../context/AuthContext";
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
+import { MapPin } from "lucide-react";
+import StepHeader from "../StepHeader";
 const LocationAccessibility = ({ setStep }) => {
   const { user } = useAuth();
 
@@ -276,43 +278,44 @@ const LocationAccessibility = ({ setStep }) => {
     setErrors({});
   };
 
-  const inputClass = (field) =>
-    `border ${
-      errors[field] ? "border-red-500" : "border-gray-300"
-    } rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500`;
+  const fieldClass = (field) =>
+    `w-full min-h-[48px] text-base rounded-xl border ${
+      errors[field] ? "border-red-500" : "border-gray-200"
+    } bg-white px-4 py-3 text-gray-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`;
 
   return (
-    <div className="w-full">
-      {/* BACK */}
-      <div
-        onClick={() => setStep(1)}
-        className="flex items-center gap-2 text-orange-600 font-medium mb-4 cursor-pointer"
-      >
-        ← Back
+    <div className="w-full pb-6">
+      <StepHeader
+        title="Location & Accessibility"
+        onBack={() => setStep?.(0)}
+        onSave={handleSave}
+        saving={saving}
+      />
+
+      <div className="flex flex-col items-center mb-5">
+        <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+          <MapPin size={28} />
+        </div>
+        <p className="text-sm font-semibold text-gray-900 mt-3">
+          Location & Accessibility
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 text-center">
+          Help students find your academy easily.
+        </p>
       </div>
 
-      <div className="border-b border-gray-300 mb-6"></div>
-
-      {/* TITLE */}
-      <h2 className="text-orange-500 font-semibold text-lg sm:text-xl mb-3">
-        Location & Accessibility
-      </h2>
-
-      {/* 🔥 LOCATION BUTTON (NEW, UI SAFE) */}
       <button
         type="button"
         onClick={handleGetLocation}
         disabled={locLoading}
-        className="mb-5 text-sm bg-orange-100 text-orange-700 px-4 py-2 rounded-md hover:bg-orange-200 transition"
+        className="mb-5 w-full min-h-[48px] text-sm bg-orange-50 text-orange-600 font-semibold rounded-xl"
       >
-        {locLoading ? "Fetching location..." : "📍 Use Current Location"}
+        {locLoading ? "Fetching location..." : "Use Current Location"}
       </button>
 
-      {/* FORM UI (UNCHANGED) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {/* Full Address */}
-        <div className="flex flex-col sm:col-span-2">
-          <label className="text-sm font-medium mb-2">
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
             Full Address <span className="text-red-500">*</span>
           </label>
           <textarea
@@ -320,106 +323,107 @@ const LocationAccessibility = ({ setStep }) => {
             value={formData.fullAddress}
             onChange={handleChange}
             rows={4}
-            className={`${inputClass("fullAddress")} resize-none`}
+            className={`${fieldClass("fullAddress")} min-h-[96px] resize-none`}
           />
           {errors.fullAddress && (
-            <span className="text-red-500 text-sm mt-1">
-              {errors.fullAddress}
-            </span>
+            <span className="text-red-500 text-xs mt-1">{errors.fullAddress}</span>
           )}
         </div>
 
         {[
           { label: "Land Mark", name: "landmark" },
           { label: "Distance From User (Auto)", name: "distance" },
-          { label: "Contact Number", name: "contactNumber" },
-          { label: "E-mail Address", name: "email" },
+          { label: "E-mail Address", name: "email", type: "email" },
         ].map((field) => (
-          <div className="flex flex-col" key={field.name}>
-            <label className="text-sm font-medium mb-2">
+          <div key={field.name}>
+            <label className="text-sm font-medium mb-1.5 block">
               {field.label} <span className="text-red-500">*</span>
             </label>
             <input
               name={field.name}
+              type={field.type || "text"}
               value={formData[field.name]}
-              maxLength={field.name === "contactNumber" ? 10 : undefined}
-              onChange={(e) => {
-                let value = e.target.value;
-
-                if (field.name === "contactNumber") {
-                  value = value.replace(/\D/g, ""); // allow only numbers
-                }
-
-                setFormData((prev) => ({
-                  ...prev,
-                  [field.name]: value,
-                }));
-
-                setErrors((prev) => ({
-                  ...prev,
-                  [field.name]: "",
-                }));
-              }}
-              className={inputClass(field.name)}
+              onChange={handleChange}
+              className={fieldClass(field.name)}
             />
             {errors[field.name] && (
-              <span className="text-red-500 text-sm mt-1">
+              <span className="text-red-500 text-xs mt-1">
                 {errors[field.name]}
               </span>
             )}
           </div>
         ))}
-        {/* 🔥 Latitude & Longitude */}
-        <div className="flex flex-col">
-          <label className="text-sm font-medium mb-2">Latitude</label>
-          <input
-            value={latitude}
-            onChange={(e) => setLatitude(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
-            placeholder="e.g. 17.48930115508228"
-          />
+
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
+            Contact Number <span className="text-red-500">*</span>
+          </label>
+          <div className="flex gap-2">
+            <div className={`${fieldClass(false)} w-[88px] shrink-0 px-2 flex items-center`}>
+              +91
+            </div>
+            <input
+              name="contactNumber"
+              value={formData.contactNumber}
+              maxLength={10}
+              inputMode="numeric"
+              onChange={(e) => {
+                const value = e.target.value.replace(/\D/g, "");
+                setFormData((prev) => ({ ...prev, contactNumber: value }));
+                setErrors((prev) => ({ ...prev, contactNumber: "" }));
+              }}
+              className={fieldClass("contactNumber")}
+              placeholder="10-digit number"
+            />
+          </div>
+          {errors.contactNumber && (
+            <span className="text-red-500 text-xs mt-1">
+              {errors.contactNumber}
+            </span>
+          )}
         </div>
 
-        <div className="flex flex-col">
-          <label className="text-sm font-medium mb-2">Longitude</label>
-          <input
-            value={longitude}
-            onChange={(e) => setLongitude(e.target.value)}
-            className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
-            placeholder="e.g. 78.3985042909833"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Latitude</label>
+            <input
+              value={latitude}
+              onChange={(e) => setLatitude(e.target.value)}
+              className={fieldClass(false)}
+              placeholder="e.g. 17.4893"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Longitude</label>
+            <input
+              value={longitude}
+              onChange={(e) => setLongitude(e.target.value)}
+              className={fieldClass(false)}
+              placeholder="e.g. 78.3985"
+            />
+          </div>
         </div>
-        {/* Website */}
-        <div className="flex flex-col sm:col-span-2">
-          <label className="text-sm font-medium mb-2">
+
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
             Website / Social Media Links
           </label>
           <input
             name="website"
             value={formData.website}
             onChange={handleChange}
-            className={inputClass("website")}
+            className={fieldClass("website")}
           />
         </div>
       </div>
 
-      {/* BUTTONS */}
-      <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
-        <button
-          onClick={handleCancel}
-          className="text-orange-600 font-medium hover:text-black transition"
-        >
-          Cancel
-        </button>
-
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-md transition disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={handleCancel}
+        className="mt-5 w-full min-h-[44px] text-gray-500 text-sm"
+      >
+        Clear form
+      </button>
     </div>
   );
 };

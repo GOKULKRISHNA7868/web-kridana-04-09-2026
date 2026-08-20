@@ -831,67 +831,105 @@ const StatCard = ({ title, value }) => (
   </div>
 );
 
-const ModalForm = ({ title, data, setData, onSave, onClose }) => (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div className="bg-white p-6 rounded-xl w-[90%] sm:w-96 space-y-4">
-      <h2 className="font-semibold">{title}</h2>
+const ModalForm = ({ title, data, setData, onSave, onClose }) => {
+  const [showWaiveConfirm, setShowWaiveConfirm] = useState(false);
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-xl w-[90%] sm:w-96 space-y-4">
+        <h2 className="font-semibold">{title}</h2>
 
-      <input
-        type="number"
-        className="border w-full p-2 rounded"
-        placeholder="Total Fee"
-        value={data.totalFee}
-        onChange={(e) => setData({ ...data, totalFee: e.target.value })}
-      />
-
-      <input
-        type="number"
-        className="border w-full p-2 rounded"
-        placeholder="Paid Amount"
-        value={data.paidAmount}
-        onChange={(e) => setData({ ...data, paidAmount: e.target.value })}
-      />
-
-      <input
-        type="date"
-        className="border w-full p-2 rounded"
-        placeholder="Paid Date"
-        value={data.paidDate}
-        onChange={(e) => setData({ ...data, paidDate: e.target.value })}
-      />
-      {data.feeWaived && (
         <input
-          type="text"
+          type="number"
           className="border w-full p-2 rounded"
-          placeholder="Reason (Medical Leave / Vacation)"
-          value={data.waiveReason}
-          onChange={(e) => setData({ ...data, waiveReason: e.target.value })}
+          placeholder="Total Fee"
+          value={data.totalFee}
+          onChange={(e) => setData({ ...data, totalFee: e.target.value })}
         />
-      )}
-      <div className="flex justify-end gap-3">
-        <button onClick={onClose}>Cancel</button>
-        <button
-          onClick={onSave}
-          className="bg-orange-500 text-white px-4 py-2 rounded"
-        >
-          Save
-        </button>
-        <button
-          onClick={() =>
-            setData({
-              ...data,
-              feeWaived: true,
-              totalFee: 0,
-              paidAmount: 0,
-            })
-          }
-          className="bg-gray-200 px-3 py-1 rounded"
-        >
-          Waive Fee
-        </button>
+
+        <input
+          type="number"
+          className="border w-full p-2 rounded"
+          placeholder="Paid Amount"
+          value={data.paidAmount}
+          onChange={(e) => setData({ ...data, paidAmount: e.target.value })}
+        />
+
+        <input
+          type="date"
+          className="border w-full p-2 rounded"
+          placeholder="Paid Date"
+          value={data.paidDate}
+          onChange={(e) => setData({ ...data, paidDate: e.target.value })}
+        />
+        {data.feeWaived && (
+          <input
+            type="text"
+            className="border w-full p-2 rounded"
+            placeholder="Reason (Medical Leave / Vacation)"
+            value={data.waiveReason}
+            onChange={(e) => setData({ ...data, waiveReason: e.target.value })}
+          />
+        )}
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose}>Cancel</button>
+          <button
+            onClick={onSave}
+            className="bg-orange-500 text-white px-4 py-2 rounded"
+          >
+            Save
+          </button>
+          <button
+            onClick={() => setShowWaiveConfirm(true)}
+            className="bg-red-500 text-white px-4 py-2 rounded"
+          >
+            Waive Fee
+          </button>
+        </div>
       </div>
+      {showWaiveConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[999] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl animate-scaleIn">
+            <h3 className="text-lg font-bold text-gray-800">
+              Confirm Fee Waiver
+            </h3>
+
+            <p className="text-gray-600 mt-3">
+              Are you sure you want to waive this student's fee?
+            </p>
+
+            <p className="mt-2 font-semibold text-red-600">
+              This will set the fee amount to ₹0.
+            </p>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowWaiveConfirm(false)}
+                className="flex-1 border border-gray-300 py-3 rounded-xl font-medium"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={() => {
+                  setData({
+                    ...data,
+                    feeWaived: true,
+                    totalFee: 0,
+                    paidAmount: 0,
+                  });
+
+                  setShowWaiveConfirm(false);
+                }}
+                className="flex-1 bg-red-500 text-white py-3 rounded-xl font-medium"
+              >
+                Yes, Waive
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 export default FeesDetailsPage;

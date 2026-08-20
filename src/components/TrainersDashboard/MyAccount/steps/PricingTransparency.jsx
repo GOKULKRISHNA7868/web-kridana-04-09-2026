@@ -2,58 +2,86 @@ import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
 import { useAuth } from "../../../../context/AuthContext";
+import { IndianRupee, Trash2, Pencil } from "lucide-react";
+import StepHeader from "../StepHeader";
+import CategoryFields from "../CategoryFields";
+import { formatRupee } from "../../../InstituteDashboard/MyAccount/sportCategories";
+
+const emptyPackage = () => ({
+  id: Date.now(),
+  category: "",
+  subCategory: "",
+  billingCycle: "Monthly",
+  monthlyFee: "",
+  yearlyFee: "",
+  registrationFee: "",
+  uniformFee: "",
+  otherFeeName: "",
+  otherFee: "",
+  notes: "",
+});
+
+const BILLING_OPTIONS = [
+  "Monthly",
+  "Quarterly",
+  "Half-Yearly",
+  "Yearly",
+  "Per Session",
+];
+
+const fieldClass = (hasError) =>
+  `w-full min-h-[48px] text-base rounded-xl border ${
+    hasError ? "border-red-500" : "border-gray-200"
+  } bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`;
+
+const digitsOnly = (value) => value.replace(/\D/g, "");
 
 const PricingTransparency = ({ setStep }) => {
-  const { user } = useAuth(); // logged in trainer
-
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [trainerId, setTrainerId] = useState(null); // dynamic doc id
-
   const [formData, setFormData] = useState({
-    monthlyFees: "",
-    registrationFees: "",
-    uniformCost: "",
     paymentMethods: "",
     refundPolicy: "",
   });
-
+  const [packages, setPackages] = useState([]);
+  const [draft, setDraft] = useState(emptyPackage());
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [showForm, setShowForm] = useState(false);
   const [errors, setErrors] = useState({});
+  const [formErrors, setFormErrors] = useState({});
 
-  /* ============================
-     🔥 FIND TRAINER DOC DYNAMICALLY
-  ============================ */
-  useEffect(() => {
-    if (!user?.uid) return;
-
-    // trainerId = user.uid
-    // because trainers collection doc id = auth uid
-    setTrainerId(user.uid);
-  }, [user]);
-
-  /* ============================
-     ✅ FETCH EXISTING DATA
-  ============================ */
   useEffect(() => {
     const fetchData = async () => {
-      if (!trainerId) return;
+      if (!user?.uid) {
+        setLoading(false);
+        return;
+      }
 
       try {
-        const docRef = doc(db, "trainers", trainerId);
-        const docSnap = await getDoc(docRef);
+        const snap = await getDoc(doc(db, "trainers", user.uid));
+        if (snap.exists()) {
+          const data = snap.data();
+          const pricing = data?.pricing || {};
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+          setFormData({
+            paymentMethods: pricing.paymentMethods ?? "",
+            refundPolicy: pricing.refundPolicy ?? "",
+          });
 
-          if (data?.pricing) {
-            setFormData({
-              monthlyFees: data.pricing.monthlyFees ?? "",
-              registrationFees: data.pricing.registrationFees ?? "",
-              uniformCost: data.pricing.uniformCost ?? "",
-              paymentMethods: data.pricing.paymentMethods ?? "",
-              refundPolicy: data.pricing.refundPolicy ?? "",
-            });
+          if (Array.isArray(pricing.packages) && pricing.packages.length) {
+            setPackages(pricing.packages);
+          } else if (pricing.monthlyFees || pricing.registrationFees) {
+            setPackages([
+              {
+                ...emptyPackage(),
+                monthlyFee: String(pricing.monthlyFees || ""),
+                registrationFee: String(pricing.registrationFees || ""),
+                uniformFee: String(pricing.uniformCost || ""),
+                billingCycle: "Monthly",
+                notes: "General fees — add category and sport",
+              },
+            ]);
           }
         }
       } catch (error) {
@@ -64,275 +92,443 @@ const PricingTransparency = ({ setStep }) => {
     };
 
     fetchData();
-  }, [trainerId]);
-  // Capitalize each word
-  const capitalizeWords = (value) => {
-    return value.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+  }, [user]);
+
+  const openAdd = () => {
+    setDraft(emptyPackage());
+    setEditingIndex(null);
+    setFormErrors({});
+    setShowForm(true);
   };
 
-  // Allow only alphabets + space + slash
-  const onlyAlphabetsWithSlash = (value) => {
-    return value.replace(/[^A-Za-z\s/]/g, "");
+  const openEdit = (index) => {
+    setDraft({ ...emptyPackage(), ...packages[index] });
+    setEditingIndex(index);
+    setFormErrors({});
+    setShowForm(true);
   };
 
-  /* ============================
-     HANDLE CHANGE
-  ============================ */
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    let newValue = value;
-
-    // ✅ Fee fields → numbers only
-    if (
-      name === "monthlyFees" ||
-      name === "registrationFees" ||
-      name === "uniformCost"
-    ) {
-      newValue = value.replace(/[^0-9]/g, "");
+  const validateDraft = () => {
+    const next = {};
+    if (!draft.category) next.category = "Select a category";
+    if (!draft.subCategory) next.subCategory = "Select the sport";
+    if (!draft.monthlyFee && !draft.yearlyFee && !draft.otherFee) {
+      next.monthlyFee = "Add monthly, yearly, or other fee";
     }
-
-    // ✅ Payment Methods → alphabets + slash + auto capitalize
-    if (name === "paymentMethods") {
-      newValue = onlyAlphabetsWithSlash(value);
-      newValue = capitalizeWords(newValue);
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: newValue,
-    }));
-
-    setErrors((prev) => ({
-      ...prev,
-      [name]: "",
-    }));
+    setFormErrors(next);
+    return Object.keys(next).length === 0;
   };
-  /* ============================
-     VALIDATION
-  ============================ */
-  const validate = () => {
-    let newErrors = {};
 
-    Object.keys(formData).forEach((field) => {
-      if (!formData[field] || String(formData[field]).trim() === "") {
-        newErrors[field] = "This field is required";
+  const saveDraft = () => {
+    if (!validateDraft()) return;
+
+    const item = {
+      ...draft,
+      id: draft.id || Date.now(),
+      monthlyFee: digitsOnly(String(draft.monthlyFee || "")),
+      yearlyFee: digitsOnly(String(draft.yearlyFee || "")),
+      registrationFee: digitsOnly(String(draft.registrationFee || "")),
+      uniformFee: digitsOnly(String(draft.uniformFee || "")),
+      otherFee: digitsOnly(String(draft.otherFee || "")),
+    };
+
+    setPackages((prev) => {
+      if (editingIndex !== null) {
+        const copy = [...prev];
+        copy[editingIndex] = item;
+        return copy;
       }
+      return [...prev, item];
     });
 
-    if (formData.monthlyFees && isNaN(formData.monthlyFees)) {
-      newErrors.monthlyFees = "Must be a valid number";
-    }
-
-    if (formData.registrationFees && isNaN(formData.registrationFees)) {
-      newErrors.registrationFees = "Must be a valid number";
-    }
-
-    if (formData.uniformCost && isNaN(formData.uniformCost)) {
-      newErrors.uniformCost = "Must be a valid number";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setShowForm(false);
+    setDraft(emptyPackage());
+    setEditingIndex(null);
   };
 
-  /* ============================
-     ✅ SAVE DATA DYNAMICALLY
-  ============================ */
-  const handleSave = async () => {
-    if (!trainerId) return;
+  const validate = () => {
+    const next = {};
+    if (!packages.length) {
+      next.packages = "Add at least one sport fee so students can see pricing.";
+    }
+    if (!formData.paymentMethods?.trim()) {
+      next.paymentMethods = "Tell students how they can pay";
+    }
+    if (!formData.refundPolicy?.trim()) {
+      next.refundPolicy = "Add a short refund policy";
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
-    const isValid = validate();
-    if (!isValid) {
-      alert("Please fill all required fields correctly.");
+  const handleSave = async () => {
+    if (!user?.uid) return;
+    if (showForm) {
+      alert("Save or cancel the fee form first.");
+      return;
+    }
+    if (!validate()) {
+      alert("Please complete the highlighted fields.");
       return;
     }
 
     try {
       setSaving(true);
-
-      const docRef = doc(db, "trainers", trainerId);
-
+      const first = packages[0] || {};
       await setDoc(
-        docRef,
+        doc(db, "trainers", user.uid),
         {
           pricing: {
-            monthlyFees: Number(formData.monthlyFees),
-            registrationFees: Number(formData.registrationFees),
-            uniformCost: Number(formData.uniformCost),
+            packages,
             paymentMethods: formData.paymentMethods,
             refundPolicy: formData.refundPolicy,
+            monthlyFees: Number(first.monthlyFee || 0),
+            registrationFees: Number(first.registrationFee || 0),
+            uniformCost: Number(first.uniformFee || 0),
           },
           pricingUpdatedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
         },
-        { merge: true }, // 🔥 does not overwrite other trainer data
+        { merge: true },
       );
-
-      alert("Saved Successfully!");
+      alert("Fees saved. Students will see these clearly on your profile.");
     } catch (error) {
       console.error("Error saving pricing:", error);
       alert("Error saving data");
     }
-
     setSaving(false);
   };
 
-  /* ============================
-     CANCEL
-  ============================ */
-  const handleCancel = () => {
-    setFormData({
-      monthlyFees: "",
-      registrationFees: "",
-      uniformCost: "",
-      paymentMethods: "",
-      refundPolicy: "",
-    });
-
-    setErrors({});
-  };
-
   if (loading) {
-    return <p className="text-gray-500 p-6">Loading...</p>;
+    return <p className="text-gray-500 p-6 text-center">Loading...</p>;
   }
 
-  const inputClass = (field) =>
-    `border ${
-      errors[field] ? "border-red-500" : "border-gray-300"
-    } rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500`;
-
-  /* ============================
-     🔥 UI NOT TOUCHED
-  ============================ */
   return (
-    <div className="w-full">
-      <div className="w-full max-w-4xl bg-white rounded-lg shadow-md p-6 sm:p-8">
-        {/* Back */}
-        <div
-          onClick={() => setStep(4)}
-          className="flex items-center gap-2 text-orange-500 font-medium mb-4 cursor-pointer hover:text-orange-600 transition"
-        >
-          ← Back
+    <div className="w-full pb-6">
+      <StepHeader
+        title="Fees & Packages"
+        onBack={() => setStep?.(0)}
+        onSave={handleSave}
+        saving={saving}
+      />
+
+      <div className="flex flex-col items-center mb-5">
+        <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+          <IndianRupee size={28} />
         </div>
+        <p className="text-sm font-semibold text-gray-900 mt-3">
+          Fees & Packages
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 text-center px-2">
+          Add fees by category and sport. Students will see monthly, yearly and
+          other charges clearly.
+        </p>
+      </div>
 
-        <div className="border-b border-gray-300 mb-6"></div>
+      <div className="space-y-3 mb-3">
+        {packages.map((pkg, index) => (
+          <div
+            key={pkg.id || index}
+            className="bg-white border border-gray-100 rounded-xl p-3.5"
+          >
+            <div className="flex items-start gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900">
+                  {pkg.subCategory || "Sport not selected"}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {pkg.category || "Category missing"}
+                  {pkg.billingCycle ? ` · Billed ${pkg.billingCycle}` : ""}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {pkg.monthlyFee ? (
+                    <span className="text-[11px] bg-orange-50 text-orange-700 px-2 py-1 rounded-full">
+                      Monthly {formatRupee(pkg.monthlyFee)}
+                    </span>
+                  ) : null}
+                  {pkg.yearlyFee ? (
+                    <span className="text-[11px] bg-orange-50 text-orange-700 px-2 py-1 rounded-full">
+                      Yearly {formatRupee(pkg.yearlyFee)}
+                    </span>
+                  ) : null}
+                  {pkg.registrationFee ? (
+                    <span className="text-[11px] bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                      Registration {formatRupee(pkg.registrationFee)}
+                    </span>
+                  ) : null}
+                  {pkg.uniformFee ? (
+                    <span className="text-[11px] bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                      Kit / Uniform {formatRupee(pkg.uniformFee)}
+                    </span>
+                  ) : null}
+                  {pkg.otherFee ? (
+                    <span className="text-[11px] bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                      {pkg.otherFeeName || "Other"} {formatRupee(pkg.otherFee)}
+                    </span>
+                  ) : null}
+                </div>
+                {pkg.notes ? (
+                  <p className="text-xs text-gray-500 mt-2">{pkg.notes}</p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => openEdit(index)}
+                className="w-10 h-10 flex items-center justify-center text-orange-500"
+                aria-label="Edit fee"
+              >
+                <Pencil size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPackages((prev) => prev.filter((_, i) => i !== index))
+                }
+                className="w-10 h-10 flex items-center justify-center text-red-500"
+                aria-label="Delete fee"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {errors.packages && (
+        <p className="text-red-500 text-xs mb-3">{errors.packages}</p>
+      )}
 
-        {/* Title */}
-        <h2 className="text-orange-500 font-semibold text-lg sm:text-xl mb-6">
-          Pricing Transparency
-        </h2>
+      {showForm && (
+        <div className="bg-white border border-orange-100 rounded-2xl p-4 space-y-4 mb-4">
+          <p className="font-semibold text-gray-900 text-sm">
+            {editingIndex !== null ? "Edit sport fees" : "Add sport fees"}
+          </p>
 
-        {/* Form Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Monthly Fees */}
-          <div className="flex flex-col">
-            <label className="text-sm font-medium mb-2">
-              Monthly/Yearly Fees <span className="text-red-500">*</span>
+          <CategoryFields
+            category={draft.category}
+            subCategory={draft.subCategory}
+            onCategoryChange={(value) =>
+              setDraft((p) => ({ ...p, category: value, subCategory: "" }))
+            }
+            onSubCategoryChange={(value) =>
+              setDraft((p) => ({ ...p, subCategory: value }))
+            }
+            categoryError={formErrors.category}
+            subCategoryError={formErrors.subCategory}
+          />
+
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">
+              How students pay
             </label>
-            <input
-              name="monthlyFees"
-              value={formData.monthlyFees}
-              onChange={handleChange}
-              className={inputClass("monthlyFees")}
-            />
-            {errors.monthlyFees && (
-              <span className="text-red-500 text-sm mt-1">
-                {errors.monthlyFees}
-              </span>
-            )}
+            <select
+              className={fieldClass(false)}
+              value={draft.billingCycle}
+              onChange={(e) =>
+                setDraft((p) => ({ ...p, billingCycle: e.target.value }))
+              }
+            >
+              {BILLING_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Registration Fees */}
-          <div className="flex flex-col">
-            <label className="text-sm font-medium mb-2">
-              Registration Fees <span className="text-red-500">*</span>
-            </label>
-            <input
-              name="registrationFees"
-              value={formData.registrationFees}
-              onChange={handleChange}
-              className={inputClass("registrationFees")}
-            />
-            {errors.registrationFees && (
-              <span className="text-red-500 text-sm mt-1">
-                {errors.registrationFees}
-              </span>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">
+                Monthly fee (₹)
+              </label>
+              <input
+                inputMode="numeric"
+                placeholder="e.g. 2500"
+                value={draft.monthlyFee}
+                onChange={(e) =>
+                  setDraft((p) => ({
+                    ...p,
+                    monthlyFee: digitsOnly(e.target.value),
+                  }))
+                }
+                className={fieldClass(formErrors.monthlyFee)}
+              />
+              {formErrors.monthlyFee && (
+                <p className="text-red-500 text-xs mt-1">
+                  {formErrors.monthlyFee}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">
+                Yearly fee (₹)
+              </label>
+              <input
+                inputMode="numeric"
+                placeholder="e.g. 25000"
+                value={draft.yearlyFee}
+                onChange={(e) =>
+                  setDraft((p) => ({
+                    ...p,
+                    yearlyFee: digitsOnly(e.target.value),
+                  }))
+                }
+                className={fieldClass(false)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">
+                Registration / admission (₹)
+              </label>
+              <input
+                inputMode="numeric"
+                placeholder="One-time fee"
+                value={draft.registrationFee}
+                onChange={(e) =>
+                  setDraft((p) => ({
+                    ...p,
+                    registrationFee: digitsOnly(e.target.value),
+                  }))
+                }
+                className={fieldClass(false)}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">
+                Uniform / kit (₹)
+              </label>
+              <input
+                inputMode="numeric"
+                placeholder="Optional"
+                value={draft.uniformFee}
+                onChange={(e) =>
+                  setDraft((p) => ({
+                    ...p,
+                    uniformFee: digitsOnly(e.target.value),
+                  }))
+                }
+                className={fieldClass(false)}
+              />
+            </div>
           </div>
 
-          {/* Uniform Cost */}
-          <div className="flex flex-col">
-            <label className="text-sm font-medium mb-2">
-              Uniform / Equipment Cost <span className="text-red-500">*</span>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">
+              Other fee (optional)
             </label>
-            <input
-              name="uniformCost"
-              value={formData.uniformCost}
-              onChange={handleChange}
-              className={inputClass("uniformCost")}
-            />
-            {errors.uniformCost && (
-              <span className="text-red-500 text-sm mt-1">
-                {errors.uniformCost}
-              </span>
-            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                placeholder="Name (e.g. Exam fee)"
+                value={draft.otherFeeName}
+                onChange={(e) =>
+                  setDraft((p) => ({ ...p, otherFeeName: e.target.value }))
+                }
+                className={fieldClass(false)}
+              />
+              <input
+                inputMode="numeric"
+                placeholder="Amount"
+                value={draft.otherFee}
+                onChange={(e) =>
+                  setDraft((p) => ({
+                    ...p,
+                    otherFee: digitsOnly(e.target.value),
+                  }))
+                }
+                className={fieldClass(false)}
+              />
+            </div>
           </div>
 
-          {/* Payment Methods */}
-          <div className="flex flex-col">
-            <label className="text-sm font-medium mb-2">
-              Payment Methods Accepted <span className="text-red-500">*</span>
-            </label>
-            <input
-              name="paymentMethods"
-              value={formData.paymentMethods}
-              onChange={handleChange}
-              className={inputClass("paymentMethods")}
-            />
-            {errors.paymentMethods && (
-              <span className="text-red-500 text-sm mt-1">
-                {errors.paymentMethods}
-              </span>
-            )}
-          </div>
-
-          {/* Refund Policy */}
-          <div className="flex flex-col md:col-span-2">
-            <label className="text-sm font-medium mb-2">
-              Refund Policy <span className="text-red-500">*</span>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">
+              What students should know
             </label>
             <textarea
-              name="refundPolicy"
-              value={formData.refundPolicy}
-              onChange={handleChange}
-              rows={4}
-              className={inputClass("refundPolicy")}
+              rows={2}
+              placeholder="e.g. Includes 12 sessions / month. Uniform extra."
+              value={draft.notes}
+              onChange={(e) =>
+                setDraft((p) => ({ ...p, notes: e.target.value }))
+              }
+              className={`${fieldClass(false)} min-h-[72px] resize-none`}
             />
-            {errors.refundPolicy && (
-              <span className="text-red-500 text-sm mt-1">
-                {errors.refundPolicy}
-              </span>
-            )}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setEditingIndex(null);
+              }}
+              className="flex-1 min-h-[44px] rounded-xl border border-gray-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveDraft}
+              className="flex-1 min-h-[44px] rounded-xl bg-orange-500 text-white font-semibold"
+            >
+              {editingIndex !== null ? "Update fees" : "Add fees"}
+            </button>
           </div>
         </div>
+      )}
 
-        {/* Buttons */}
-        <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="text-gray-600 hover:text-black transition"
-          >
-            Cancel
-          </button>
+      {!showForm && (
+        <button
+          type="button"
+          onClick={openAdd}
+          className="w-full min-h-[48px] rounded-xl border-2 border-dashed border-orange-400 text-orange-500 font-semibold mb-5"
+        >
+          + Add fees for a sport
+        </button>
+      )}
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-md transition shadow-sm disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
+      <div className="space-y-4 mt-2">
+        <p className="text-sm font-semibold text-gray-900">Payment policies</p>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
+            Payment methods students can use{" "}
+            <span className="text-red-500">*</span>
+          </label>
+          <input
+            name="paymentMethods"
+            placeholder="UPI / Cash / Card / Bank transfer"
+            value={formData.paymentMethods}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (!/^[A-Za-z/, ]*$/.test(value)) return;
+              setFormData((p) => ({
+                ...p,
+                paymentMethods: value.replace(/\b\w/g, (c) => c.toUpperCase()),
+              }));
+              setErrors((p) => ({ ...p, paymentMethods: "" }));
+            }}
+            className={fieldClass(errors.paymentMethods)}
+          />
+          {errors.paymentMethods && (
+            <p className="text-red-500 text-xs mt-1">{errors.paymentMethods}</p>
+          )}
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
+            Refund policy <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            rows={3}
+            placeholder="e.g. Registration fee is non-refundable. Monthly fee can be paused with 7 days notice."
+            value={formData.refundPolicy}
+            onChange={(e) => {
+              setFormData((p) => ({ ...p, refundPolicy: e.target.value }));
+              setErrors((p) => ({ ...p, refundPolicy: "" }));
+            }}
+            className={`${fieldClass(errors.refundPolicy)} min-h-[88px] resize-none`}
+          />
+          {errors.refundPolicy && (
+            <p className="text-red-500 text-xs mt-1">{errors.refundPolicy}</p>
+          )}
         </div>
       </div>
     </div>

@@ -11,6 +11,8 @@
 
 # Capacitor / Cordova specific rules
 -keep class com.getcapacitor.** { *; }
--keep  class com.google.android.gms.internal.** { *; }
+-keep class com.capacitorjs.** { *; }
+-keep class * extends com.getcapacitor.Plugin { *; }
+-keep class com.google.android.gms.internal.** { *; }
 -dontwarn com.google.android.gms.**
 

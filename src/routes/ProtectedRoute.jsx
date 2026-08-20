@@ -37,8 +37,15 @@ export default function ProtectedRoute({ children, role }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        Checking access...
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-3 px-6"
+        style={{
+          background:
+            "linear-gradient(180deg, #2A1608 0%, #1A0F08 100%)",
+        }}
+      >
+        <div className="w-10 h-10 rounded-xl bg-[#FF6A00] animate-pulse" />
+        <p className="text-white/70 text-sm">Checking access…</p>
       </div>
     );
   }

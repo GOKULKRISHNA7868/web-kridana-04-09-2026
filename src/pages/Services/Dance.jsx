@@ -56,7 +56,7 @@ const Dance = () => {
     { name: "Hip Hop", image: "/dance/HIppop.png" },
     { name: "Salsa", image: "/dance/Salsa F.png" },
     { name: "Zumba", image: "/dance/Zumba F.png" },
-    { name: "Salsa", image: "/dance/Salsa F.png" },
+    // { name: "Salsa", image: "/dance/Salsa F.png" },
     //{ name: "Yakshagana", image: "/dance/yakshagana.png" },
     // { name: "Lavani", image: "/dance/lavani.png" },
   ];

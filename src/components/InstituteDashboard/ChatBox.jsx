@@ -1,17 +1,31 @@
 import React, { useState, useEffect, useRef } from "react";
-
 import {
   ArrowLeft,
   Search,
-  Phone,
   MoreVertical,
-  Smile,
-  Paperclip,
-  Camera,
-  Mic,
   Send,
+  BellOff,
+  Bell,
+  Info,
+  X,
+  Check,
+  CheckCheck,
 } from "lucide-react";
 import { db, auth } from "../../firebase";
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
+import { App } from "@capacitor/app";
+import ChatMuteMenuItems from "../chat/ChatMuteMenuItems";
+import { getChatDayKey, getChatDayLabel } from "../../utils/chatDayLabel";
+import {
+  ensureChatNotifications,
+  isChatMuted,
+  isConversationMuted,
+  loadNotificationSettings,
+  setActiveChatId,
+  setConversationMute,
+  setGlobalMute,
+} from "../../utils/chatNotifications";
 import {
   collection,
   doc,
@@ -25,25 +39,40 @@ import {
   query,
   where,
   orderBy,
+  limit,
   serverTimestamp,
   arrayRemove,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useLocation, useNavigate } from "react-router-dom";
-const ChatBox = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [activeTab, setActiveTab] = useState("chats");
-  const [screen, setScreen] = useState("chat");
-  const [showMenu, setShowMenu] = useState(false);
 
+const USER_COLLECTIONS = [
+  "users",
+  "students",
+  "institutes",
+  "trainers",
+  "InstituteTrainers",
+  "trainerstudents",
+];
+
+const ChatBox = () => {
+  const [activeTab, setActiveTab] = useState("chats");
+  const [showMenu, setShowMenu] = useState(false);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  const [messageSearch, setMessageSearch] = useState("");
+  const [incomingBanner, setIncomingBanner] = useState(null);
+  const [isMuted, setIsMuted] = useState(isChatMuted);
+  const [conversationMuted, setConversationMuted] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [user, setUser] = useState(null);
   const [instituteId, setInstituteId] = useState(null);
-
   const [users, setUsers] = useState([]);
   const [groups, setGroups] = useState([]);
   const [messages, setMessages] = useState([]);
-  const [showRecentChats, setShowRecentChats] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [activeChat, setActiveChat] = useState(null);
   const [activeChatName, setActiveChatName] = useState("");
   const [text, setText] = useState("");
@@ -53,234 +82,312 @@ const ChatBox = () => {
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [unreadCounts, setUnreadCounts] = useState({});
   const [renameValue, setRenameValue] = useState("");
-  const [chatUsers, setChatUsers] = useState([]);
   const [chatList, setChatList] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [onlineUsers, setOnlineUsers] = useState({});
+  const [selectedMessages, setSelectedMessages] = useState([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const longPressTimer = useRef(null);
+  const longPressTriggered = useRef(false);
+  const appState = useRef(true);
+  const mutedRef = useRef(isMuted);
+  const notifiedMessages = useRef(new Set());
+  const initializedNotificationChats = useRef(new Set());
+  const pendingNotifications = useRef(new Map());
+  const notificationTimers = useRef(new Map());
+  const notificationIds = useRef(new Map());
+  const userDetailsCache = useRef(new Map());
+  const unreadUnsubs = useRef({});
+  const notificationUnsubs = useRef({});
+  const activeChatRef = useRef(null);
+  const usersRef = useRef([]);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+    setActiveChatId(activeChat?.id || null);
+  }, [activeChat]);
+
+  useEffect(() => {
+    return () => setActiveChatId(null);
+  }, []);
+
+  useEffect(() => {
+    mutedRef.current = isMuted;
+  }, [isMuted]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadNotificationSettings(user.uid).then((settings) => {
+      setIsMuted(Boolean(settings.globalMute));
+      setConversationMuted(isConversationMuted(activeChat?.id));
+    });
+  }, [user, activeChat?.id]);
+
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
+
+  useEffect(() => {
+    const navbar = document.getElementById("bottom-navbar");
+    const previousHeight =
+      document.documentElement.style.getPropertyValue("--bottom-navbar-height");
+    const previousDisplay = navbar?.style.display || "";
+
+    document.body.classList.add("chat-fullscreen");
+    document.documentElement.style.setProperty("--bottom-navbar-height", "0px");
+    if (navbar) navbar.style.display = "none";
+
+    return () => {
+      document.body.classList.remove("chat-fullscreen");
+      document.documentElement.style.setProperty(
+        "--bottom-navbar-height",
+        previousHeight || "",
+      );
+      if (navbar) navbar.style.display = previousDisplay;
+    };
+  }, []);
+
   const getValidImage = (url, name) => {
     if (!url)
-      return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        name || "User",
+      )}`;
     if (url.startsWith("blob:"))
-      return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}`;
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        name || "User",
+      )}`;
     return url;
   };
 
-  /* ================= AUTH + INSTITUTE ================= */
-  /* ================= AUTH + INSTITUTE (FIXED) ================= */
-  /* ================= CHAT MEMBERS (OUTER USERS ONLY) ================= */
-  /* ================= CHAT MEMBERS (OUTER USERS ONLY — MESSAGE FILTERED) ================= */
-  /* ================= CHAT MEMBERS (OUTER USERS ONLY — MESSAGE FILTERED) ================= */
-  /* ================= CHAT MEMBERS (OUTER / SOLO TRAINER / TRAINER STUDENT) ================= */
-  /* ================= CHAT MEMBERS (OUTER / SOLO TRAINER / INSTITUTE / TRAINER STUDENT) ================= */
+  const updatePresence = async (online) => {
+    if (!auth.currentUser) return;
+    try {
+      await setDoc(
+        doc(db, "presence", auth.currentUser.uid),
+        { online, lastSeen: serverTimestamp() },
+        { merge: true },
+      );
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const getUserDetails = async (uid) => {
+    if (!uid) {
+      return { uid, name: "Unknown User", photo: "", role: "" };
+    }
+    if (userDetailsCache.current.has(uid)) {
+      return userDetailsCache.current.get(uid);
+    }
+
+    for (const col of USER_COLLECTIONS) {
+      const snap = await getDoc(doc(db, col, uid));
+      if (!snap.exists()) continue;
+      const data = snap.data();
+      const details = {
+        uid,
+        name:
+          data.name ||
+          data.instituteName ||
+          data.trainerName ||
+          data.organization ||
+          `${data.firstName || data.ownerFirstName || ""} ${
+            data.lastName || data.ownerLastName || ""
+          }`.trim() ||
+          "User",
+        photo:
+          data.profileImageUrl ||
+          data.profileImage ||
+          data.studentPhotoUrl ||
+          data.ownerPhotoUrl ||
+          "",
+        role: col,
+      };
+      userDetailsCache.current.set(uid, details);
+      return details;
+    }
+
+    const fallback = { uid, name: "Unknown User", photo: "", role: "" };
+    userDetailsCache.current.set(uid, fallback);
+    return fallback;
+  };
+
   useEffect(() => {
-    if (!user) return;
+    const params = new URLSearchParams(location.search);
+    const chatId = params.get("chatId");
+    if (!chatId) return;
 
-    const q = query(
-      collection(db, "chats"),
-      where("members", "array-contains", user.uid),
-    );
+    setActiveChat({ id: chatId, type: "individual" });
+    setActiveChatName("Chat");
+  }, [location.search]);
 
-    const unsub = onSnapshot(q, async (snap) => {
-      let validOuterUids = new Set();
-
-      for (let d of snap.docs) {
-        const chatId = d.id;
-
-        const msgsSnap = await getDocs(
-          query(
-            collection(db, "chats", chatId, "messages"),
-            orderBy("createdAt", "asc"),
-          ),
-        );
-
-        msgsSnap.forEach((m) => {
-          const msg = m.data();
-
-          if (msg.senderId && msg.senderId !== user.uid) {
-            validOuterUids.add(msg.senderId);
-          }
-        });
-      }
-
-      const externalUsers = [];
-
-      for (let uid of validOuterUids) {
-        if (users.find((u) => u.uid === uid)) continue;
-
-        let found = null;
-
-        /* ================= 1. USERS ================= */
-        const userSnap = await getDoc(doc(db, "users", uid));
-        if (userSnap.exists()) {
-          const data = userSnap.data();
-
-          found = {
-            uid,
-            id: uid,
-            name:
-              data.name ||
-              `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
-              data.email ||
-              "User",
-            role: "outer",
-            badge: "Outer",
-            profileImageUrl: data.profileImage || data.profileImageUrl || "",
-          };
-        }
-
-        /* ================= 2. TRAINER STUDENTS ================= */
-        if (!found) {
-          const tsSnap = await getDoc(doc(db, "trainerstudents", uid));
-
-          if (tsSnap.exists()) {
-            const data = tsSnap.data();
-
-            found = {
-              uid,
-              id: uid,
-              name:
-                `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
-                "Student",
-              role: "outer",
-              badge: "Outer",
-              profileImageUrl: data.profileImageUrl || "",
-            };
-          }
-        }
-
-        /* ================= 3. SOLO TRAINERS ================= */
-        if (!found) {
-          const trainerSnap = await getDoc(doc(db, "trainers", uid));
-
-          if (trainerSnap.exists()) {
-            const data = trainerSnap.data();
-
-            found = {
-              uid,
-              id: uid,
-              name:
-                data.trainerName ||
-                `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
-                "Trainer",
-              role: "solotrainer",
-              badge: "Solo Trainer",
-              profileImageUrl: data.profileImageUrl || "",
-            };
-          }
-        }
-
-        /* ================= 4. INSTITUTES ================= */
-        if (!found) {
-          const instSnap = await getDoc(doc(db, "institutes", uid));
-
-          if (instSnap.exists()) {
-            const data = instSnap.data();
-
-            found = {
-              uid,
-              id: uid,
-              name: data.instituteName || data.organization || "Institute",
-              role: "outerinstitute",
-              badge: "Institute",
-              profileImageUrl: data.profileImageUrl || "",
-            };
-          }
-        }
-
-        if (found) externalUsers.push(found);
-      }
-
-      setChatUsers(externalUsers);
-    });
-
-    return () => unsub();
-  }, [user, users]);
   useEffect(() => {
     const data = location.state;
-
     if (!data?.openChatId) return;
 
     setActiveChat({
       id: data.openChatId,
       type: "individual",
+      uid: data?.targetUser?.uid || null,
     });
-
     setActiveChatName(data?.targetUser?.name || "Chat");
-
-    setScreen("chat");
   }, [location.state]);
+
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) return;
-      setUser(u);
+    if (!user) return;
 
-      /* -------- 1. Check Institute Owner -------- */
-      const instRef = doc(db, "institutes", u.uid);
-      const instSnap = await getDoc(instRef);
-      if (instSnap.exists()) {
-        setInstituteId(u.uid);
-        return;
-      }
+    const handleAppState = ({ isActive }) => {
+      appState.current = isActive;
+      updatePresence(isActive);
+    };
 
-      /* -------- 2. Check Student -------- */
-      const studentRef = doc(db, "students", u.uid);
-      const studentSnap = await getDoc(studentRef);
-      if (studentSnap.exists()) {
-        const data = studentSnap.data();
-        setInstituteId(data.instituteId); // ✅ IMPORTANT
-        return;
-      }
+    updatePresence(true);
+    let listener;
+    const setup = async () => {
+      listener = await App.addListener("appStateChange", handleAppState);
+    };
+    setup();
 
-      /* -------- 3. Check Trainer -------- */
-      const trainerQ = query(
-        collection(db, "InstituteTrainers"),
-        where("trainerUid", "==", u.uid),
+    return () => {
+      updatePresence(false);
+      listener?.remove();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    ensureChatNotifications();
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let listener;
+    const setup = async () => {
+      listener = await LocalNotifications.addListener(
+        "localNotificationActionPerformed",
+        async (event) => {
+          const extra = event?.notification?.extra || {};
+          const chatId = extra.chatId;
+          if (!chatId) return;
+
+          const sender = extra.senderName || "Chat";
+          setActiveChat({
+            id: chatId,
+            type: extra.type || "individual",
+            uid: extra.senderId || null,
+          });
+          setActiveChatName(sender);
+
+          if (location.pathname.includes("InstituteDashboard/ChatBox")) {
+            navigate(
+              `/components/InstituteDashboard/ChatBox?chatId=${encodeURIComponent(
+                chatId,
+              )}`,
+              { replace: true },
+            );
+          }
+        },
       );
-      const trainerSnap = await getDocs(trainerQ);
+    };
 
-      if (!trainerSnap.empty) {
-        const data = trainerSnap.docs[0].data();
-        setInstituteId(data.instituteId); // ✅ IMPORTANT
+    setup();
+    return () => listener?.remove();
+  }, [navigate, location.pathname]);
+
+  useEffect(() => {
+    const handler = (event) => {
+      const detail = event.detail || {};
+      if (!detail.chatId) return;
+      if (activeChatRef.current?.id === detail.chatId) return;
+      setIncomingBanner(detail);
+      window.setTimeout(() => setIncomingBanner(null), 4000);
+    };
+    window.addEventListener("kridana-incoming-chat", handler);
+    return () => window.removeEventListener("kridana-incoming-chat", handler);
+  }, []);
+
+  /* ── Hardware / swipe-back: close chat before leaving page ── */
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let handle;
+    const setup = async () => {
+      handle = await App.addListener("backButton", () => {
+        if (activeChatRef.current) {
+          setActiveChat(null);
+          setActiveChatName("");
+          setMessages([]);
+        } else {
+          navigate(-1);
+        }
+      });
+    };
+    setup();
+    return () => handle?.remove();
+  }, [navigate]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) return;
+      setUser(currentUser);
+
+      const instSnap = await getDoc(doc(db, "institutes", currentUser.uid));
+      if (instSnap.exists()) {
+        setInstituteId(currentUser.uid);
         return;
+      }
+
+      const studentSnap = await getDoc(doc(db, "students", currentUser.uid));
+      if (studentSnap.exists()) {
+        setInstituteId(studentSnap.data().instituteId);
+        return;
+      }
+
+      const trainerSnap = await getDocs(
+        query(
+          collection(db, "InstituteTrainers"),
+          where("trainerUid", "==", currentUser.uid),
+        ),
+      );
+      if (!trainerSnap.empty) {
+        setInstituteId(trainerSnap.docs[0].data().instituteId);
       }
     });
 
     return () => unsub();
   }, []);
 
-  /* ================= USERS ================= */
-  /* ================= USERS (FIXED & STABLE) ================= */
   useEffect(() => {
     if (!instituteId) return;
 
     const loadOwner = async () => {
-      const instRef = doc(db, "institutes", instituteId); // 👑 OWNER
-      const instSnap = await getDoc(instRef);
-
-      if (instSnap.exists()) {
-        const data = instSnap.data();
-
-        const ownerUser = {
-          id: instituteId,
-          uid: instituteId, // 🔑 important: UID = instituteId
-          name:
-            `${data.ownerFirstName || data.firstName || ""} ${
-              data.ownerLastName || data.lastName || ""
-            }`.trim() || "Institute Admin",
-          role: "owner",
-          profileImageUrl: data.ownerPhotoUrl || data.profileImageUrl || "",
-        };
-
-        setUsers((prev) => {
-          const exists = prev.find((u) => u.uid === instituteId);
-          if (exists) return prev; // avoid duplicates
-          return [ownerUser, ...prev]; // 👑 owner always on top
-        });
-      }
+      const instSnap = await getDoc(doc(db, "institutes", instituteId));
+      if (!instSnap.exists()) return;
+      const data = instSnap.data();
+      const ownerUser = {
+        id: instituteId,
+        uid: instituteId,
+        name:
+          `${data.ownerFirstName || data.firstName || ""} ${
+            data.ownerLastName || data.lastName || ""
+          }`.trim() ||
+          data.instituteName ||
+          "Institute Admin",
+        role: "owner",
+        profileImageUrl: data.ownerPhotoUrl || data.profileImageUrl || "",
+      };
+      setUsers((prev) => {
+        if (prev.find((person) => person.uid === instituteId)) return prev;
+        return [ownerUser, ...prev];
+      });
     };
 
     loadOwner();
   }, [instituteId]);
-  /* ================= USERS ================= */
+
   useEffect(() => {
     if (!instituteId) return;
 
@@ -290,17 +397,24 @@ const ChatBox = () => {
         where("instituteId", "==", instituteId),
       ),
       (snap) => {
-        const s = snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            uid: data.customerUid,
-            name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
-            role: "student",
-            profileImageUrl: data.studentPhotoUrl || data.profileImageUrl || "", // ✅ FETCH CLOUDINARY URL
-          };
-        });
-        setUsers((prev) => [...prev.filter((u) => u.role !== "student"), ...s]);
+        const students = snap.docs
+          .map((item) => {
+            const data = item.data();
+            const uid = data.customerUid || item.id;
+            if (!uid) return null;
+            return {
+              id: item.id,
+              uid,
+              name: `${data.firstName || ""} ${data.lastName || ""}`.trim() || "Student",
+              role: "student",
+              profileImageUrl: data.studentPhotoUrl || data.profileImageUrl || "",
+            };
+          })
+          .filter(Boolean);
+        setUsers((prev) => [
+          ...prev.filter((person) => person.role !== "student"),
+          ...students,
+        ]);
       },
     );
 
@@ -310,17 +424,24 @@ const ChatBox = () => {
         where("instituteId", "==", instituteId),
       ),
       (snap) => {
-        const t = snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            uid: data.trainerUid,
-            name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
-            role: "trainer",
-            profileImageUrl: data.profileImageUrl || "", // ✅ FETCH CLOUDINARY URL
-          };
-        });
-        setUsers((prev) => [...prev.filter((u) => u.role !== "trainer"), ...t]);
+        const trainers = snap.docs
+          .map((item) => {
+            const data = item.data();
+            const uid = data.trainerUid || item.id;
+            if (!uid) return null;
+            return {
+              id: item.id,
+              uid,
+              name: `${data.firstName || ""} ${data.lastName || ""}`.trim() || "Trainer",
+              role: "trainer",
+              profileImageUrl: data.profileImageUrl || "",
+            };
+          })
+          .filter(Boolean);
+        setUsers((prev) => [
+          ...prev.filter((person) => person.role !== "trainer"),
+          ...trainers,
+        ]);
       },
     );
 
@@ -330,346 +451,352 @@ const ChatBox = () => {
     };
   }, [instituteId]);
 
-  /* ================= GROUPS ================= */
-  /* ================= GROUPS ================= */
   useEffect(() => {
     if (!user || !instituteId) return;
 
-    const q = query(
+    const groupsQuery = query(
       collection(db, "groups"),
       where("members", "array-contains", user.uid),
       where("instituteId", "==", instituteId),
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      setGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const unsub = onSnapshot(groupsQuery, (snap) => {
+      setGroups(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
     });
 
     return () => unsub();
   }, [user, instituteId]);
-  /* ================= REALTIME CHAT LIST ================= */
-  useEffect(() => {
-    if (!user) return;
 
-    const q = query(
+  useEffect(() => {
+    const people = users.filter((person) => person.uid);
+    if (!people.length) return;
+
+    const unsubscribers = people.map((person) =>
+      onSnapshot(doc(db, "presence", person.uid), (snap) => {
+        if (!snap.exists()) return;
+        setOnlineUsers((prev) => ({
+          ...prev,
+          [person.uid]: snap.data(),
+        }));
+      }),
+    );
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+  }, [users]);
+
+  useEffect(() => {
+    if (!user) {
+      setListLoading(false);
+      return;
+    }
+
+    setListLoading(true);
+
+    const chatsQuery = query(
       collection(db, "chats"),
       where("members", "array-contains", user.uid),
     );
 
-    const unsub = onSnapshot(q, async (snap) => {
-      let chats = [];
+    const unsub = onSnapshot(chatsQuery, async (snap) => {
+      const chats = await Promise.all(
+        snap.docs.map(async (chatDoc) => {
+          const data = chatDoc.data();
+          if (!Array.isArray(data.members) || !data.members.includes(user.uid)) {
+            return null;
+          }
 
-      for (const d of snap.docs) {
-        const data = d.data();
+          if (data.type === "group") {
+            return {
+              id: chatDoc.id,
+              type: "group",
+              name: data.name || "Group",
+              members: data.members || [],
+              lastMessage: data.lastMessage || "",
+              lastAt: data.lastAt || data.createdAt || null,
+              profileImageUrl: "",
+            };
+          }
 
-        /* GROUP */
-        if (data.type === "group") {
-          chats.push({
-            id: d.id,
-            type: "group",
-            name: data.name || "Group",
-            members: data.members || [],
-            lastMessage: data.lastMessage || "",
-            lastAt: data.lastAt || data.createdAt || null,
-            createdAt: data.createdAt || null,
-            profileImageUrl: "",
-          });
+          const otherUid = (data.members || []).find(
+            (memberId) => memberId !== user.uid,
+          );
+          if (!otherUid) return null;
 
-          continue;
-        }
+          const localUser = usersRef.current.find(
+            (person) => person.uid === otherUid,
+          );
+          const otherUser = localUser
+            ? {
+                name: localUser.name,
+                photo: localUser.profileImageUrl,
+                role: localUser.role,
+              }
+            : await getUserDetails(otherUid);
 
-        /* INDIVIDUAL */
-        const otherUid = (data.members || []).find((m) => m !== user.uid);
-
-        if (!otherUid) continue;
-
-        let foundUser = null;
-
-        /* USERS */
-        const userSnap = await getDoc(doc(db, "users", otherUid));
-
-        if (userSnap.exists()) {
-          const u = userSnap.data();
-
-          foundUser = {
+          return {
+            id: chatDoc.id,
             uid: otherUid,
-            id: d.id,
             type: "individual",
-            name:
-              u.name ||
-              `${u.firstName || ""} ${u.lastName || ""}`.trim() ||
-              "User",
-            profileImageUrl: u.profileImage || u.profileImageUrl || "",
-          };
-        }
-
-        /* STUDENTS */
-        if (!foundUser) {
-          const sSnap = await getDoc(doc(db, "students", otherUid));
-
-          if (sSnap.exists()) {
-            const s = sSnap.data();
-
-            foundUser = {
-              uid: otherUid,
-              id: d.id,
-              type: "individual",
-              name:
-                `${s.firstName || ""} ${s.lastName || ""}`.trim() || "Student",
-              profileImageUrl: s.profileImageUrl || s.studentPhotoUrl || "",
-            };
-          }
-        }
-
-        /* TRAINERS */
-        if (!foundUser) {
-          const tSnap = await getDoc(doc(db, "trainers", otherUid));
-
-          if (tSnap.exists()) {
-            const t = tSnap.data();
-
-            foundUser = {
-              uid: otherUid,
-              id: d.id,
-              type: "individual",
-              name:
-                `${t.firstName || ""} ${t.lastName || ""}`.trim() || "Trainer",
-              profileImageUrl: t.profileImageUrl || "",
-            };
-          }
-        }
-
-        /* INSTITUTE */
-        if (!foundUser) {
-          const iSnap = await getDoc(doc(db, "institutes", otherUid));
-
-          if (iSnap.exists()) {
-            const i = iSnap.data();
-
-            foundUser = {
-              uid: otherUid,
-              id: d.id,
-              type: "individual",
-              name: i.instituteName || i.organization || "Institute",
-              profileImageUrl: i.profileImageUrl || "",
-            };
-          }
-        }
-
-        if (foundUser) {
-          chats.push({
-            ...foundUser,
+            name: otherUser.name,
+            profileImageUrl: otherUser.photo || localUser?.profileImageUrl || "",
+            role: otherUser.role || localUser?.role || "",
             lastMessage: data.lastMessage || "",
             lastAt: data.lastAt || data.createdAt || null,
-            createdAt: data.createdAt || null,
-          });
-        }
-      }
+          };
+        }),
+      );
 
-      /* SORT BY:
-       1. UNREAD FIRST
-       2. LATEST MESSAGE FIRST
-    */
-
-      chats.sort((a, b) => {
-        const aUnread = unreadCounts[a.id] || 0;
-        const bUnread = unreadCounts[b.id] || 0;
-
-        if (bUnread !== aUnread) {
-          return bUnread - aUnread;
-        }
-
-        const aTime = a.lastAt?.seconds || a.createdAt?.seconds || 0;
-
-        const bTime = b.lastAt?.seconds || b.createdAt?.seconds || 0;
-
+      const validChats = chats.filter(Boolean);
+      validChats.sort((a, b) => {
+        const aTime = a.lastAt?.seconds || 0;
+        const bTime = b.lastAt?.seconds || 0;
         return bTime - aTime;
       });
 
-      setChatList(chats);
-    });
-
-    return () => unsub();
-  }, [user, unreadCounts]);
-  /* ================= REPLACE UNREAD COUNT useEffect ================= */
-
-  useEffect(() => {
-    if (!user) return;
-
-    const q = query(
-      collection(db, "chats"),
-      where("members", "array-contains", user.uid),
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const unsubMessages = [];
-
-      snap.docs.forEach((chatDoc) => {
-        const chatId = chatDoc.id;
-
-        /* realtime listen messages */
-        const msgQ = query(
-          collection(db, "chats", chatId, "messages"),
-          orderBy("createdAt", "asc"),
-        );
-
-        const unsubMsg = onSnapshot(msgQ, (msgSnap) => {
-          let unread = 0;
-
-          msgSnap.forEach((m) => {
-            const data = m.data();
-
-            if (
-              data.senderId !== user.uid &&
-              !data.readBy?.includes(user.uid)
-            ) {
-              unread++;
-            }
-          });
-
-          /* instant update */
-          setUnreadCounts((prev) => ({
-            ...prev,
-            [chatId]: unread,
-          }));
-        });
-
-        unsubMessages.push(unsubMsg);
-      });
-
-      return () => unsubMessages.forEach((fn) => fn());
+      setChatList(validChats);
+      setListLoading(false);
     });
 
     return () => unsub();
   }, [user]);
-  /* ================= MESSAGES ================= */
+
+  useEffect(() => {
+    if (!user) return;
+
+    const chatsQuery = query(
+      collection(db, "chats"),
+      where("members", "array-contains", user.uid),
+    );
+
+    const unsubChats = onSnapshot(chatsQuery, (snap) => {
+      const liveIds = new Set(snap.docs.map((chatDoc) => chatDoc.id));
+
+      Object.keys(unreadUnsubs.current).forEach((chatId) => {
+        if (!liveIds.has(chatId)) {
+          unreadUnsubs.current[chatId]();
+          delete unreadUnsubs.current[chatId];
+        }
+      });
+
+      snap.docs.forEach((chatDoc) => {
+        const chatId = chatDoc.id;
+        if (unreadUnsubs.current[chatId]) return;
+
+        const messagesQuery = query(
+          collection(db, "chats", chatId, "messages"),
+          orderBy("createdAt", "desc"),
+          limit(40),
+        );
+
+        unreadUnsubs.current[chatId] = onSnapshot(messagesQuery, (msgSnap) => {
+          let unread = 0;
+          msgSnap.forEach((messageDoc) => {
+            const data = messageDoc.data();
+            if (
+              data.senderId !== user.uid &&
+              !data.readBy?.includes(user.uid)
+            ) {
+              unread += 1;
+            }
+          });
+          setUnreadCounts((prev) => ({ ...prev, [chatId]: unread }));
+        });
+      });
+    });
+
+    return () => {
+      unsubChats();
+      Object.values(unreadUnsubs.current).forEach((unsubscribe) =>
+        unsubscribe(),
+      );
+      unreadUnsubs.current = {};
+    };
+  }, [user]);
+
   useEffect(() => {
     if (!activeChat?.id) return;
 
-    const q = query(
+    setMessages([]);
+    setMessagesLoading(true);
+    const messagesQuery = query(
       collection(db, "chats", activeChat.id, "messages"),
       orderBy("createdAt", "asc"),
+      limit(200),
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    const unsub = onSnapshot(messagesQuery, (snap) => {
+      setMessages(snap.docs.map((item) => ({ id: item.id, ...item.data() })));
+      setMessagesLoading(false);
     });
 
     return () => unsub();
-  }, [activeChat]);
+  }, [activeChat?.id]);
+
+  useEffect(() => {
+    if (!activeChat?.id || !user) return;
+
+    const markRead = async () => {
+      const recentSnap = await getDocs(
+        query(
+          collection(db, "chats", activeChat.id, "messages"),
+          orderBy("createdAt", "desc"),
+          limit(40),
+        ),
+      );
+
+      const updates = recentSnap.docs.filter((item) => {
+        const data = item.data();
+        return data.senderId !== user.uid && !data.readBy?.includes(user.uid);
+      });
+
+      await Promise.all(
+        updates.map((item) =>
+          updateDoc(doc(db, "chats", activeChat.id, "messages", item.id), {
+            readBy: [...new Set([...(item.data().readBy || []), user.uid])],
+          }),
+        ),
+      );
+
+      setUnreadCounts((prev) => ({ ...prev, [activeChat.id]: 0 }));
+    };
+
+    markRead();
+  }, [activeChat?.id, user, messages[messages.length - 1]?.id]);
 
   const isAdmin = () => {
-    const g = groups.find((g) => g.id === activeChat?.id);
-    return g?.adminId === user?.uid;
+    const group = groups.find((item) => item.id === activeChat?.id);
+    return group?.adminId === user?.uid;
   };
 
-  /* ================= START CHAT ================= */
+  const openChat = (chat) => {
+    setActiveChat({
+      id: chat.id,
+      type: chat.type || "individual",
+      uid: chat.uid || null,
+    });
+    setActiveChatName(chat.name || "Chat");
+    setShowMenu(false);
+    setShowChatMenu(false);
+    setShowChatSearch(false);
+    setMessageSearch("");
+    setSelectedMessages([]);
+    setSelectionMode(false);
+    setUnreadCounts((prev) => ({ ...prev, [chat.id]: 0 }));
+  };
+
   const startChat = async (target) => {
-    if (!user || !instituteId || !target?.uid) return;
+    if (!user || !target?.uid || target.uid === user.uid) return;
 
     try {
       const chatId = [user.uid, target.uid].sort().join("_");
-
       const chatRef = doc(db, "chats", chatId);
       const snap = await getDoc(chatRef);
 
       if (!snap.exists()) {
         await setDoc(chatRef, {
           type: "individual",
-          instituteId,
+          instituteId: instituteId || null,
           members: [user.uid, target.uid],
           createdAt: serverTimestamp(),
           lastMessage: "",
+          lastAt: serverTimestamp(),
         });
       }
 
-      setActiveChat({
+      openChat({
         id: chatId,
         type: "individual",
+        uid: target.uid,
+        name: target.name || "Chat",
       });
-
-      setActiveChatName(target.name || "Chat");
-      setMessages([]);
-      setScreen("chat");
-    } catch (err) {
-      console.error("Start chat error:", err);
+    } catch (error) {
+      console.error("Start chat error:", error);
     }
   };
-  /* ================= GROUP RENAME ================= */
+
   const renameGroup = async () => {
-    if (!activeChat?.id || !renameValue.trim()) return;
+    if (!activeChat?.id || !renameValue.trim() || !user) return;
+    const groupRef = doc(db, "groups", activeChat.id);
+    const groupSnap = await getDoc(groupRef);
+    if (!groupSnap.exists() || groupSnap.data().adminId !== user.uid) return;
 
-    const gRef = doc(db, "groups", activeChat.id);
-    const gSnap = await getDoc(gRef);
-    if (!gSnap.exists()) return;
-    if (gSnap.data().adminId !== user.uid) return;
-
-    await updateDoc(gRef, { name: renameValue });
-    await updateDoc(doc(db, "chats", activeChat.id), { name: renameValue });
-
-    setActiveChatName(renameValue);
+    await updateDoc(groupRef, { name: renameValue.trim() });
+    await updateDoc(doc(db, "chats", activeChat.id), {
+      name: renameValue.trim(),
+    });
+    setActiveChatName(renameValue.trim());
     setRenameValue("");
   };
 
-  /* ================= GROUP DELETE ================= */
   const deleteGroup = async () => {
-    if (!activeChat?.id) return;
-
-    const gRef = doc(db, "groups", activeChat.id);
-    const gSnap = await getDoc(gRef);
-    if (!gSnap.exists()) return;
-    if (gSnap.data().adminId !== user.uid) return;
+    if (!activeChat?.id || !user) return;
+    const groupRef = doc(db, "groups", activeChat.id);
+    const groupSnap = await getDoc(groupRef);
+    if (!groupSnap.exists() || groupSnap.data().adminId !== user.uid) return;
 
     const msgs = await getDocs(
-      collection(db, "chats", activeChat.id, "messages"),
+      query(
+        collection(db, "chats", activeChat.id, "messages"),
+        limit(200),
+      ),
     );
-    for (let m of msgs.docs) {
-      await deleteDoc(doc(db, "chats", activeChat.id, "messages", m.id));
-    }
-
+    await Promise.all(
+      msgs.docs.map((item) =>
+        deleteDoc(doc(db, "chats", activeChat.id, "messages", item.id)),
+      ),
+    );
     await deleteDoc(doc(db, "chats", activeChat.id));
-    await deleteDoc(gRef);
-
+    await deleteDoc(groupRef);
     setActiveChat(null);
     setActiveChatName("");
     setMessages([]);
+    setShowMenu(false);
   };
 
-  /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
-    if (!text.trim() || !activeChat?.id || !user) return;
+    const message = text.trim();
+    if (!message || !activeChat?.id || !user || sending) return;
+    if (message.length > 2000) return;
 
-    await addDoc(collection(db, "chats", activeChat.id, "messages"), {
-      text: text.trim(),
-      senderId: user.uid,
-      createdAt: serverTimestamp(),
-      readBy: [user.uid],
-    });
-
-    await updateDoc(doc(db, "chats", activeChat.id), {
-      lastMessage: text.trim(),
-      lastAt: serverTimestamp(),
-    });
-
+    setSending(true);
     setText("");
-  };
-  const handleMic = async () => {
-    if (!activeChat?.id) {
-      alert("Open a chat first");
-      return;
-    }
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Microphone not supported in this browser");
-        return;
-      }
+      const chatRef = doc(db, "chats", activeChat.id);
+      const chatSnap = await getDoc(chatRef);
+      if (!chatSnap.exists()) return;
+      if (!(chatSnap.data().members || []).includes(user.uid)) return;
+
+      await addDoc(collection(db, "chats", activeChat.id, "messages"), {
+        text: message,
+        senderId: user.uid,
+        createdAt: serverTimestamp(),
+        readBy: [user.uid],
+      });
+
+      await updateDoc(chatRef, {
+        lastMessage: message,
+        lastAt: serverTimestamp(),
+        lastSenderId: user.uid,
+      });
+    } catch (error) {
+      console.error("Send message error:", error);
+      setText(message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleMic = async () => {
+    if (!activeChat?.id || !user) return;
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) return;
 
       if (!isRecording) {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
-
         const recorder = new MediaRecorder(stream);
         const chunks = [];
 
@@ -679,8 +806,10 @@ const ChatBox = () => {
 
         recorder.onstop = async () => {
           const blob = new Blob(chunks, { type: "audio/webm" });
-
           const audioURL = URL.createObjectURL(blob);
+          const chatSnap = await getDoc(doc(db, "chats", activeChat.id));
+          if (!chatSnap.exists()) return;
+          if (!(chatSnap.data().members || []).includes(user.uid)) return;
 
           await addDoc(collection(db, "chats", activeChat.id, "messages"), {
             audio: audioURL,
@@ -688,168 +817,37 @@ const ChatBox = () => {
             createdAt: serverTimestamp(),
             readBy: [user.uid],
           });
-
           await updateDoc(doc(db, "chats", activeChat.id), {
-            lastMessage: "🎤 Voice message",
+            lastMessage: "Voice message",
             lastAt: serverTimestamp(),
+            lastSenderId: user.uid,
           });
         };
 
         recorder.start();
         setMediaRecorder(recorder);
         setIsRecording(true);
-
-        console.log("Recording started 🎤");
-      } else {
-        if (mediaRecorder) {
-          mediaRecorder.stop();
-        }
+      } else if (mediaRecorder) {
+        mediaRecorder.stop();
         setIsRecording(false);
       }
     } catch (error) {
       console.error("Mic error:", error);
-      alert("Microphone permission denied or not available.");
+      setIsRecording(false);
     }
   };
-  /* ================= CHAT PREVIEW REALTIME ================= */
-  useEffect(() => {
-    if (!user) return;
 
-    const q = query(
-      collection(db, "chats"),
-      where("members", "array-contains", user.uid),
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      const chatMap = {};
-
-      snap.forEach((d) => {
-        const data = d.data();
-
-        chatMap[d.id] = {
-          id: d.id,
-          ...data,
-        };
-      });
-
-      setUsers((prev) =>
-        prev.map((u) => {
-          const chatId = [user.uid, u.uid].sort().join("_");
-
-          if (chatMap[chatId]) {
-            return {
-              ...u,
-              lastMessage: chatMap[chatId].lastMessage || "",
-              lastAt: chatMap[chatId].lastAt || null,
-            };
-          }
-
-          return u;
-        }),
-      );
-
-      setChatUsers((prev) =>
-        prev.map((u) => {
-          const chatId = [user.uid, u.uid].sort().join("_");
-
-          if (chatMap[chatId]) {
-            return {
-              ...u,
-              lastMessage: chatMap[chatId].lastMessage || "",
-              lastAt: chatMap[chatId].lastAt || null,
-            };
-          }
-
-          return u;
-        }),
-      );
-
-      setGroups((prev) =>
-        prev.map((g) => {
-          if (chatMap[g.id]) {
-            return {
-              ...g,
-              lastMessage: chatMap[g.id].lastMessage || "",
-              lastAt: chatMap[g.id].lastAt || null,
-            };
-          }
-
-          return g;
-        }),
-      );
-    });
-
-    return () => unsub();
-  }, [user]);
-  /* ================= AUTO READ ================= */
-  useEffect(() => {
-    if (!activeChat?.id || !user) return;
-
-    const markRead = async () => {
-      const msgs = await getDocs(
-        collection(db, "chats", activeChat.id, "messages"),
-      );
-      for (let m of msgs.docs) {
-        const data = m.data();
-        if (!data.readBy?.includes(user.uid)) {
-          await updateDoc(doc(db, "chats", activeChat.id, "messages", m.id), {
-            readBy: [...(data.readBy || []), user.uid],
-          });
-        }
-      }
-    };
-
-    markRead();
-  }, [activeChat, user]);
-
-  /* ================= UNREAD COUNT ================= */
-  useEffect(() => {
-    if (!user || !instituteId) return;
-
-    const q = query(
-      collection(db, "chats"),
-      where("members", "array-contains", user.uid),
-    );
-
-    const unsub = onSnapshot(q, async (snap) => {
-      let counts = {};
-
-      for (let d of snap.docs) {
-        const chatId = d.id;
-        const msgs = await getDocs(collection(db, "chats", chatId, "messages"));
-
-        let unread = 0;
-        msgs.forEach((m) => {
-          const data = m.data();
-          if (!data.readBy?.includes(user.uid)) unread++;
-        });
-
-        counts[chatId] = unread;
-      }
-
-      setUnreadCounts(counts);
-    });
-
-    return () => unsub();
-  }, [user, instituteId]);
-
-  /* ================= CREATE GROUP ================= */
   const submitCreateGroup = async () => {
-    if (!groupName.trim()) {
-      alert("Enter group name");
-      return;
-    }
-
-    if (selectedMembers.length === 0) {
-      alert("Select members");
+    if (!user || !instituteId || !groupName.trim() || !selectedMembers.length) {
       return;
     }
 
     try {
-      const members = [...new Set([user.uid, ...selectedMembers])];
-
+      const members = [...new Set([user.uid, ...selectedMembers])].filter(
+        Boolean,
+      );
       const groupRef = await addDoc(collection(db, "groups"), {
-        name: groupName,
+        name: groupName.trim(),
         instituteId,
         members,
         adminId: user.uid,
@@ -860,1044 +858,879 @@ const ChatBox = () => {
         type: "group",
         instituteId,
         members,
-        name: groupName,
+        name: groupName.trim(),
         createdAt: serverTimestamp(),
         lastMessage: "",
+        lastAt: serverTimestamp(),
       });
 
-      setActiveChat({
+      openChat({
         id: groupRef.id,
         type: "group",
+        name: groupName.trim(),
       });
-
-      setActiveChatName(groupName);
       setGroupName("");
       setSelectedMembers([]);
-      setScreen("chat");
+      setShowCreateGroup(false);
     } catch (error) {
       console.error("Create group error:", error);
     }
   };
-  useEffect(() => {
-    if (!activeChat?.id || !user) return;
 
-    const markRead = async () => {
-      const msgs = await getDocs(
-        collection(db, "chats", activeChat.id, "messages"),
-      );
-
-      let hasUnread = false;
-
-      for (let m of msgs.docs) {
-        const data = m.data();
-
-        if (data.senderId !== user.uid && !data.readBy?.includes(user.uid)) {
-          hasUnread = true;
-
-          await updateDoc(doc(db, "chats", activeChat.id, "messages", m.id), {
-            readBy: [...(data.readBy || []), user.uid],
-          });
-        }
-      }
-
-      /* ✅ remove unread instantly in UI */
-      if (hasUnread) {
-        setUnreadCounts((prev) => ({
-          ...prev,
-          [activeChat.id]: 0,
-        }));
-      }
-    };
-
-    markRead();
-  }, [activeChat, user]);
-  /* ================= REMOVE PARTICIPANT ================= */
   const removeParticipant = async (uid) => {
-    if (!activeChat?.id) return;
+    if (!activeChat?.id || !user || !uid) return;
+    const groupRef = doc(db, "groups", activeChat.id);
+    const snap = await getDoc(groupRef);
+    if (!snap.exists() || snap.data().adminId !== user.uid) return;
 
-    const gRef = doc(db, "groups", activeChat.id);
-    const snap = await getDoc(gRef);
-    if (!snap.exists()) return;
-    if (snap.data().adminId !== user.uid) return;
-
-    await updateDoc(gRef, { members: arrayRemove(uid) });
+    await updateDoc(groupRef, { members: arrayRemove(uid) });
     await updateDoc(doc(db, "chats", activeChat.id), {
       members: arrayRemove(uid),
     });
   };
 
+  const closeSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedMessages([]);
+    setShowDeleteConfirm(false);
+  };
+
+  const toggleMessageSelection = (message) => {
+    if (message.senderId !== user?.uid) return;
+    setSelectionMode(true);
+    setSelectedMessages((prev) => {
+      if (prev.includes(message.id)) {
+        const next = prev.filter((id) => id !== message.id);
+        if (next.length === 0) setSelectionMode(false);
+        return next;
+      }
+      return [...prev, message.id];
+    });
+  };
+
+  const startMessageLongPress = (message) => {
+    if (message.senderId !== user?.uid) return;
+    longPressTriggered.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      toggleMessageSelection(message);
+      if (navigator.vibrate) navigator.vibrate(40);
+    }, 550);
+  };
+
+  const cancelMessageLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  const deleteSelectedMessages = async () => {
+    if (!activeChat?.id || !user?.uid || !selectedMessages.length) return;
+
+    try {
+      for (const messageId of selectedMessages) {
+        const messageRef = doc(
+          db,
+          "chats",
+          activeChat.id,
+          "messages",
+          messageId,
+        );
+        const messageSnap = await getDoc(messageRef);
+        if (!messageSnap.exists()) continue;
+        if (messageSnap.data().senderId !== user.uid) continue;
+        await deleteDoc(messageRef);
+      }
+
+      const remainingSnap = await getDocs(
+        query(
+          collection(db, "chats", activeChat.id, "messages"),
+          orderBy("createdAt", "desc"),
+          limit(1),
+        ),
+      );
+
+      if (remainingSnap.empty) {
+        await updateDoc(doc(db, "chats", activeChat.id), {
+          lastMessage: "",
+          lastAt: null,
+          lastSenderId: null,
+        });
+      } else {
+        const latest = remainingSnap.docs[0].data();
+        await updateDoc(doc(db, "chats", activeChat.id), {
+          lastMessage:
+            latest.text || (latest.audio ? "Voice message" : ""),
+          lastAt: latest.createdAt || serverTimestamp(),
+          lastSenderId: latest.senderId || null,
+        });
+      }
+
+      closeSelectionMode();
+    } catch (error) {
+      console.error("Delete selected messages error:", error);
+    }
+  };
+
   const memberObjects = (
-    groups.find((g) => g.id === activeChat?.id)?.members || []
+    groups.find((group) => group.id === activeChat?.id)?.members || []
   )
     .map(
       (uid) =>
-        users.find((u) => u.uid === uid) || { uid, name: "Unknown User" },
+        users.find((person) => person.uid === uid) || {
+          uid,
+          name: "Unknown User",
+        },
     )
     .filter(Boolean);
-  const filteredChats =
-    activeTab === "group"
-      ? groups.filter((g) =>
-          (g.name || "").toLowerCase().includes(searchTerm.toLowerCase()),
-        )
-      : [...users, ...chatUsers].filter((u) =>
-          (u.name || "").toLowerCase().includes(searchTerm.toLowerCase()),
-        );
+
+  const keyword = searchTerm.trim().toLowerCase();
+  const filteredChats = chatList.filter((chat) => {
+    if (activeTab === "group" && chat.type !== "group") return false;
+    if (activeTab === "chats" && chat.type === "group") return false;
+    if (!keyword) return true;
+    return (
+      (chat.name || "").toLowerCase().includes(keyword) ||
+      (chat.lastMessage || "").toLowerCase().includes(keyword)
+    );
+  });
+
+  const visiblePeople = users
+    .filter((person) => person.uid && person.uid !== user?.uid)
+    .filter(
+      (person, index, self) =>
+        index === self.findIndex((item) => item.uid === person.uid),
+    )
+    .filter((person) =>
+      keyword ? (person.name || "").toLowerCase().includes(keyword) : true,
+    );
+
+  const visibleMessages = messageSearch.trim()
+    ? messages.filter((message) =>
+        (message.text || "")
+          .toLowerCase()
+          .includes(messageSearch.trim().toLowerCase()),
+      )
+    : messages;
+
+  const formatTime = (createdAt) => {
+    if (!createdAt?.seconds) return "";
+    return new Date(createdAt.seconds * 1000).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   return (
-    <div
-      className="
-    flex
-    h-[100dvh]
-    w-full
-    bg-[#ECE5DD]
-    overflow-hidden
-    fixed
-    inset-0
-    overscroll-none
-    touch-pan-y
-    md:rounded-3xl
-  "
-    >
-      {/* ================= CHAT LIST ================= */}
-      <div
-        className={`
-    ${activeChat ? "hidden md:flex" : "flex"}
-    w-full
-    md:w-[380px]
-    lg:w-[420px]
-    flex-col
-    bg-[#F8F9FB]
-    border-r
-    border-gray-200
-    relative
-    z-20
-  `}
-      >
-        {/* HEADER */}
-        <div
-          className="
-    px-4
-    md:px-5
-    pt-[max(env(safe-area-inset-top),16px)]
-    pb-4
-    flex
-    items-center
-    justify-between
-    sticky
-    top-0
-    z-20
-    bg-[#F8F9FB]
-    backdrop-blur-xl
-  "
+    <div className="fixed inset-0 z-[10050] flex h-[100dvh] w-full max-w-[100vw] bg-[#f3f3f3] overflow-hidden overscroll-none">
+      {incomingBanner && (
+        <button
+          type="button"
+          onClick={() => {
+            openChat({
+              id: incomingBanner.chatId,
+              type: incomingBanner.type || "individual",
+              uid: incomingBanner.senderId,
+              name: incomingBanner.senderName,
+            });
+            setIncomingBanner(null);
+          }}
+          className="absolute top-[max(env(safe-area-inset-top),12px)] left-3 right-3 z-[80] bg-white rounded-2xl shadow-lg border border-orange-100 px-4 py-3 text-left"
         >
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate(-1)}
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition"
-            >
-              <ArrowLeft size={22} />
-            </button>
+          <p className="text-sm font-semibold text-gray-900">
+            {incomingBanner.senderName}
+          </p>
+          <p className="text-xs text-gray-500 truncate mt-0.5">
+            {incomingBanner.text}
+          </p>
+        </button>
+      )}
 
-            <h1 className="text-3xl font-bold text-black">Chat</h1>
+      <div
+        className={`${
+          activeChat ? "hidden md:flex" : "flex"
+        } flex-col w-full md:w-[380px] md:max-w-[42%] min-w-0 bg-[#F8F8F8] border-r border-gray-100 h-full overflow-hidden`}
+      >
+        <div className="px-3 sm:px-4 pt-[max(env(safe-area-inset-top),20px)] pb-3 flex-shrink-0">
+          <div className="flex items-center gap-3 mb-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (activeChat) {
+                  setActiveChat(null);
+                  setActiveChatName("");
+                  setMessages([]);
+                  closeSelectionMode();
+                } else {
+                  navigate(-1);
+                }
+              }}
+              className="w-10 h-10 rounded-full bg-white shadow-sm border border-gray-200 flex items-center justify-center shrink-0"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <h1 className="text-2xl sm:text-3xl font-bold text-black truncate">
+              Chat
+            </h1>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Chats */}
-            <button
-              onClick={() => setActiveTab("chats")}
-              className={`
-      px-4 py-2 rounded-full text-sm font-medium transition-all
-      ${
-        activeTab === "chats"
-          ? "bg-[#FF6B00] text-white shadow-md"
-          : "bg-white text-gray-700 border border-gray-200"
-      }
-    `}
-            >
-              Chats
-            </button>
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search students, trainers, groups..."
+            className="w-full mt-4 bg-white rounded-2xl px-4 py-3 text-sm outline-none border border-gray-200 shadow-sm"
+          />
 
-            {/* Groups */}
+          <div className="flex gap-2 mt-3 overflow-x-auto scrollbar-hide">
+            {[
+              { id: "chats", label: "Chats" },
+              { id: "group", label: "Groups" },
+              { id: "people", label: "People" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
+                  activeTab === tab.id
+                    ? "bg-orange-500 text-white"
+                    : "bg-white text-gray-600 border"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
             <button
-              onClick={() => setActiveTab("group")}
-              className={`
-      px-4 py-2 rounded-full text-sm font-medium transition-all
-      flex items-center gap-2
-      ${
-        activeTab === "group"
-          ? "bg-[#FF6B00] text-white shadow-md"
-          : "bg-white text-gray-700 border border-gray-200"
-      }
-    `}
-            >
-              Groups
-            </button>
-
-            {/* Create Group */}
-            <button
-              onClick={() => {
-                setActiveTab("group");
-                setShowRecentChats(true);
-              }}
-              className="
-      h-11
-      w-11
-      rounded-full
-      bg-[#FF6B00]
-      text-white
-      flex
-      items-center
-      justify-center
-      shadow-lg
-      hover:scale-105
-      active:scale-95
-      transition-all
-    "
-              title="Create Group"
+              type="button"
+              onClick={() => setShowCreateGroup(true)}
+              className="ml-auto h-9 w-9 rounded-full bg-[#FF6B00] text-white flex items-center justify-center shadow-sm"
+              title="Create group"
             >
               +
             </button>
           </div>
         </div>
 
-        {/* SEARCH */}
-        <div className="px-4 mt-2 pb-2">
-          <div className="relative">
-            <Search
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={
-                activeTab === "group"
-                  ? "Search groups..."
-                  : "Search conversations..."
-              }
-              className="
-    w-full
-    bg-white
-    rounded-2xl
-    py-3
-    pl-11
-    pr-4
-    outline-none
-    text-sm
-    shadow-sm
-    border
-    border-gray-100
-  "
-            />
-          </div>
-        </div>
-
-        {/* ACTIVE USERS */}
-        {activeTab !== "group" && (
-          <div className="px-4 mt-5">
-            <h2 className="font-semibold text-[15px] mb-3">Active Users</h2>
-
-            <div className="overflow-x-auto whitespace-nowrap scrollbar-hide pb-2">
+        {activeTab !== "group" && visiblePeople.length > 0 && (
+          <div className="px-4 pb-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
+              Institute people
+            </p>
+            <div className="overflow-x-auto scrollbar-hide">
               <div className="flex gap-4">
-                {[...users, ...chatUsers].slice(0, 15).map((u) => (
-                  <div
-                    key={u.uid}
-                    onClick={() => startChat(u)}
-                    className="flex flex-col items-center cursor-pointer min-w-[70px]"
+                {visiblePeople.slice(0, 16).map((person) => (
+                  <button
+                    key={person.uid}
+                    type="button"
+                    onClick={() => startChat(person)}
+                    className="flex flex-col items-center min-w-[68px]"
                   >
                     <div className="relative">
                       <img
-                        src={getValidImage(u.profileImageUrl, u.name)}
-                        className="
-  w-14
-  h-14
-  md:w-16
-  md:h-16
-  rounded-full
-  object-cover
-  border-2
-  border-white
-  shadow-md
-"
+                        src={getValidImage(person.profileImageUrl, person.name)}
+                        alt=""
+                        className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm"
                       />
-
-                      <div
-                        className="
-                absolute
-                bottom-1
-                right-1
-                w-4
-                h-4
-                bg-green-500
-                border-2
-                border-white
-                rounded-full
-              "
-                      ></div>
+                      {onlineUsers[person.uid]?.online && (
+                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+                      )}
                     </div>
-
-                    <span
-                      className="
-              text-xs
-              mt-2
-              font-medium
-              text-gray-700
-              truncate
-              w-full
-              text-center
-            "
-                    >
-                      {u.name?.split(" ")[0]}
+                    <span className="text-xs mt-1 truncate w-full text-center text-gray-700">
+                      {person.name?.split(" ")[0]}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
           </div>
         )}
-        {/* EMPTY STATE */}
-        {filteredChats.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-[60vh] px-6 text-center">
-            <div className="w-28 h-28 rounded-full bg-orange-100 flex items-center justify-center mb-5">
-              <span className="text-5xl">👋</span>
-            </div>
 
-            <h2 className="text-xl font-bold text-gray-800">
-              Make New Friends
-            </h2>
-
-            <p className="text-gray-500 text-sm mt-3 max-w-[280px] leading-6">
-              You don't have any chats yet. Connect with students, trainers, and
-              other people to start conversations, build your network, and make
-              new friends.
-            </p>
-
-            <button
-              onClick={() => navigate("/allpeoplepage")}
-              className="
-        mt-6
-        bg-[#FF6B00]
-        text-white
-        px-8
-        py-3
-        rounded-2xl
-        font-semibold
-        shadow-lg
-        hover:scale-105
-        active:scale-95
-        transition-all
-      "
-            >
-              Find People
-            </button>
-          </div>
-        )}
-        {/* CHAT / GROUP LIST */}
-        <div
-          className="
-  flex-1
-  overflow-y-auto
-  mt-4
-  px-3
-  pb-32
-"
-        >
-          {activeTab === "group" && groups.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-[50vh] text-center">
-              <div className="w-20 h-20 rounded-full bg-orange-100 flex items-center justify-center mb-4">
-                <span className="text-3xl">👥</span>
-              </div>
-
-              <h3 className="text-lg font-semibold text-gray-700">
-                No Groups Found
-              </h3>
-
-              <p className="text-sm text-gray-500 mt-2 max-w-[250px]">
-                You haven't created or joined any groups yet.
-              </p>
-
-              <button
-                onClick={() => setShowRecentChats(true)}
-                className="mt-5 bg-[#FF6B00] text-white px-6 py-3 rounded-xl font-medium shadow-md hover:scale-105 transition"
-              >
-                + Create Group
-              </button>
-            </div>
-          )}
-          {filteredChats
-            /* REMOVE DUPLICATES */
-            .filter(
-              (item, index, self) =>
-                index ===
-                self.findIndex(
-                  (t) => (t.uid || t.id) === (item.uid || item.id),
-                ),
-            )
-
-            /* ATTACH CHAT DATA */
-            .map((u) => {
-              const chatId =
-                activeTab === "group"
-                  ? u.id
-                  : [user?.uid, u.uid].sort().join("_");
-
-              const chatData =
-                groups.find((g) => g.id === chatId) ||
-                users.find((x) => {
-                  const id =
-                    activeTab === "group"
-                      ? x.id
-                      : [user?.uid, x.uid].sort().join("_");
-
-                  return id === chatId;
-                }) ||
-                {};
-
-              return {
-                ...u,
-                chatId,
-                lastMessage: u.lastMessage || chatData?.lastMessage || "",
-
-                lastAt: u.lastAt || chatData?.lastAt || u.createdAt || null,
-              };
-            })
-
-            /* SHOW LATEST MESSAGE FIRST */
-            .sort((a, b) => {
-              const aTime = a.lastAt?.seconds || a.lastAt?.toMillis?.() || 0;
-
-              const bTime = b.lastAt?.seconds || b.lastAt?.toMillis?.() || 0;
-
-              /* unread chats first */
-              const aUnread = unreadCounts[a.chatId] || 0;
-              const bUnread = unreadCounts[b.chatId] || 0;
-
-              if (aUnread > 0 && bUnread === 0) return -1;
-              if (bUnread > 0 && aUnread === 0) return 1;
-
-              return bTime - aTime;
-            })
-
-            .map((u) => {
-              const chatId = u.chatId;
-
-              return (
+        <div className="flex-1 overflow-y-auto px-3 pb-6 min-h-0">
+          {listLoading ? (
+            <div className="space-y-3 pt-2">
+              {[1, 2, 3, 4].map((item) => (
                 <div
-                  key={u.uid || u.id}
-                  onClick={() => {
-                    if (activeTab === "group") {
-                      setActiveChat({
-                        id: u.id,
-                        type: u.type === "group" ? "group" : "individual",
-                      });
-
-                      setActiveChatName(u.name);
-                    } else {
-                      startChat(u);
-                    }
-                  }}
-                  className="
-bg-white
-rounded-2xl
-px-3
-md:px-4
-py-3
-mb-3
-flex
-items-center
-gap-3
-shadow-sm
-hover:shadow-md
-active:scale-[0.98]
-transition-all
-duration-200
-cursor-pointer
-border
-border-gray-100
-"
+                  key={item}
+                  className="bg-white rounded-3xl px-4 py-4 flex items-center gap-4 animate-pulse"
                 >
-                  {/* AVATAR */}
+                  <div className="w-14 h-14 rounded-full bg-gray-200" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-1/2 bg-gray-200 rounded-full" />
+                    <div className="h-3 w-3/4 bg-gray-100 rounded-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {!listLoading && activeTab !== "people" && filteredChats.length > 0 && (
+            <>
+              <p className="px-2 mb-3 text-xs font-semibold text-gray-500 uppercase">
+                {activeTab === "group" ? "Groups" : "Recent chats"}
+              </p>
+              {filteredChats.map((chat) => (
+                <button
+                  key={chat.id}
+                  type="button"
+                  onClick={() => openChat(chat)}
+                  className="w-full bg-white rounded-3xl px-4 py-4 mb-3 flex items-center gap-4 shadow-sm text-left"
+                >
                   <div className="relative shrink-0">
                     <img
-                      src={getValidImage(
-                        u.profileImageUrl,
-                        u.name || u.groupName,
-                      )}
+                      src={getValidImage(chat.profileImageUrl, chat.name)}
+                      alt=""
                       className="w-14 h-14 rounded-full object-cover"
                     />
-
-                    {activeTab !== "group" && (
-                      <div
-                        className="
-absolute
-bottom-0
-right-0
-w-3.5
-h-3.5
-bg-green-500
-border-2
-border-white
-rounded-full
-"
-                      ></div>
+                    {chat.uid && onlineUsers[chat.uid]?.online && (
+                      <span className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
                     )}
                   </div>
-
-                  {/* INFO */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-[15px] truncate">
-                        {u.name}
-                      </h3>
-
-                      {u.lastAt && (
-                        <span className="text-[11px] text-gray-400">
-                          {new Date(
-                            u.lastAt?.seconds
-                              ? u.lastAt.seconds * 1000
-                              : u.lastAt,
-                          ).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-semibold truncate">{chat.name}</h3>
+                      {chat.lastAt?.seconds && (
+                        <span className="text-[11px] text-gray-400 shrink-0">
+                          {formatTime(chat.lastAt)}
                         </span>
                       )}
                     </div>
-
-                    <div className="flex items-center justify-between mt-1">
-                      <p className="text-sm text-gray-400 truncate pr-3">
-                        {u.lastMessage ||
-                          (activeTab === "group"
-                            ? "Group conversation"
-                            : "Start conversation")}
-                      </p>
-
-                      {unreadCounts[chatId] > 0 && (
-                        <div
-                          className="
-min-w-[22px]
-h-[22px]
-px-1
-rounded-full
-bg-[#FF6B00]
-flex
-items-center
-justify-center
-text-white
-text-[11px]
-font-semibold
-"
-                        >
-                          {unreadCounts[chatId]}
-                        </div>
-                      )}
-                    </div>
+                    <p className="text-sm text-gray-500 truncate">
+                      {chat.lastMessage ||
+                        (chat.type === "group"
+                          ? "Group conversation"
+                          : "Start conversation")}
+                    </p>
                   </div>
-                </div>
-              );
-            })}
-        </div>
-
-        {/* FLOATING CREATE GROUP BUTTON */}
-
-        {/* CREATE GROUP MODAL */}
-        {showRecentChats && (
-          <div
-            className="
-    fixed
-    inset-0
-    bg-black/40
-    z-[100]
-    flex
-    items-end
-    md:items-center
-    justify-center
-    pb-[90px]
-    md:pb-0
-  "
-          >
-            <div
-              className="
-    bg-white
-    w-full
-    md:w-[430px]
-    rounded-t-[30px]
-    md:rounded-[30px]
-    p-5
-    max-h-[82dvh]
-    overflow-y-auto
-    animate-slideUp
-    shadow-2xl
-    mb-[env(safe-area-inset-bottom)]
-  "
-            >
-              {/* TOP */}
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-xl font-bold">Create Group</h2>
-
-                <button
-                  onClick={() => setShowRecentChats(false)}
-                  className="text-2xl"
-                >
-                  ×
+                  {unreadCounts[chat.id] > 0 && (
+                    <div className="bg-orange-500 text-white min-w-[22px] h-[22px] rounded-full flex items-center justify-center text-xs">
+                      {unreadCounts[chat.id]}
+                    </div>
+                  )}
                 </button>
+              ))}
+            </>
+          )}
+
+          {!listLoading && activeTab === "people" && (
+            <>
+              {visiblePeople.map((person) => (
+                <button
+                  key={person.uid}
+                  type="button"
+                  onClick={() => startChat(person)}
+                  className="w-full bg-white rounded-3xl px-4 py-4 mb-3 flex items-center gap-4 shadow-sm text-left"
+                >
+                  <div className="relative">
+                    <img
+                      src={getValidImage(person.profileImageUrl, person.name)}
+                      alt=""
+                      className="w-14 h-14 rounded-full object-cover"
+                    />
+                    {onlineUsers[person.uid]?.online && (
+                      <span className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">{person.name}</h3>
+                    <p className="text-xs text-gray-400 capitalize">
+                      {person.role}
+                    </p>
+                  </div>
+                </button>
+              ))}
+              {visiblePeople.length === 0 && (
+                <div className="text-center py-16 px-6">
+                  <p className="text-sm font-semibold text-gray-700">
+                    No people found
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Students and trainers from this institute will appear here.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+
+          {!listLoading &&
+            activeTab !== "people" &&
+            filteredChats.length === 0 && (
+              <div className="text-center py-16 px-6">
+                <p className="text-sm font-semibold text-gray-700">
+                  {activeTab === "group" ? "No groups yet" : "No chats yet"}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {activeTab === "group"
+                    ? "Create a group to message students and trainers together."
+                    : "Start a conversation from Institute people above."}
+                </p>
+                {activeTab === "group" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateGroup(true)}
+                    className="mt-4 bg-[#FF6B00] text-white px-6 py-3 rounded-xl text-sm font-medium"
+                  >
+                    Create group
+                  </button>
+                )}
               </div>
-
-              {/* GROUP NAME */}
-              <input
-                type="text"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Enter group name"
-                className="
-  w-full
-  bg-white
-  rounded-2xl
-  py-3.5
-  pl-11
-  pr-4
-  outline-none
-  text-sm
-  shadow-sm
-  border
-  border-gray-200
-  focus:border-[#FF6B00]
-  transition
-"
-              />
-
-              {/* MEMBERS */}
-              <div className="space-y-3 max-h-[45vh] overflow-y-auto">
-                {users
-                  .filter((u) => u.uid !== user?.uid)
-                  .map((u) => (
-                    <label
-                      key={u.uid}
-                      className="
-              flex
-              items-center
-              gap-3
-              bg-[#F8F8F8]
-              rounded-2xl
-              p-3
-              cursor-pointer
-            "
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedMembers.includes(u.uid)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedMembers((prev) => [...prev, u.uid]);
-                          } else {
-                            setSelectedMembers((prev) =>
-                              prev.filter((id) => id !== u.uid),
-                            );
-                          }
-                        }}
-                        className="w-4 h-4"
-                      />
-
-                      <img
-                        src={getValidImage(u.profileImageUrl, u.name)}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-sm truncate">
-                          {u.name}
-                        </h3>
-
-                        <p className="text-xs text-gray-400 capitalize">
-                          {u.role}
-                        </p>
-                      </div>
-                    </label>
-                  ))}
-              </div>
-
-              {/* CREATE BUTTON */}
-              <button
-                onClick={() => {
-                  submitCreateGroup();
-                  setShowRecentChats(false);
-                }}
-                className="
-        w-full
-        mt-5
-        bg-[#FF6B00]
-        text-white
-        py-3
-        rounded-2xl
-        font-semibold
-      "
-              >
-                Create Group
-              </button>
-            </div>
-          </div>
-        )}
+            )}
+        </div>
       </div>
 
-      {/* ================= ACTIVE CHAT ================= */}
       <div
-        className={`
-    ${activeChat ? "flex" : "hidden md:flex"}
-    flex-1
-    flex-col
-    bg-[#ECE5DD]
-    relative
-    min-w-0
-    h-[100dvh]
-    md:h-full
-    overflow-hidden
-  `}
+        className={`${
+          activeChat ? "flex" : "hidden md:flex"
+        } flex-1 min-w-0 flex-col bg-[#F4F4F4] h-full overflow-hidden`}
       >
-        {/* HEADER */}
-        <div
-          className="
-    shrink-0
-    sticky
-    top-0
-    pt-[max(env(safe-area-inset-top),0px)]
-    z-30
-    bg-white/95
-    backdrop-blur-xl
-    border-b
-    border-gray-200
-    px-3
-    md:px-4
-    py-3
-    shadow-sm
-  "
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => {
-                  setActiveChat(null);
-                  setMessages([]);
-                }}
-                className="md:hidden"
+        <div className="sticky top-0 bg-white border-b border-gray-100 px-3 sm:px-4 pt-[max(env(safe-area-inset-top),12px)] pb-3 flex items-center justify-between flex-shrink-0 z-20">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveChat(null);
+                setActiveChatName("");
+                setMessages([]);
+                closeSelectionMode();
+              }}
+              className="md:hidden text-xl"
+            >
+              ←
+            </button>
+            <img
+              src={getValidImage("", activeChatName)}
+              alt=""
+              className="w-11 h-11 rounded-full object-cover"
+            />
+            <div className="min-w-0">
+              <h2 className="font-semibold text-[15px] truncate">
+                {activeChatName || "Select a chat"}
+              </h2>
+              <p
+                className={`text-xs ${
+                  activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                    ? "text-green-500"
+                    : "text-gray-400"
+                }`}
               >
-                <ArrowLeft size={22} />
-              </button>
-
-              <img
-                src={getValidImage("", activeChatName)}
-                className="w-11 h-11 rounded-full object-cover"
-              />
-
-              <div>
-                <h2 className="font-semibold text-[15px]">
-                  {activeChatName || "Chat"}
-                </h2>
-
-                <p className="text-xs text-green-500">Online</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <Phone size={20} className="text-gray-700" />
-
-              <MoreVertical
-                size={20}
-                className="text-gray-700 cursor-pointer"
-                onClick={() => setShowMenu(!showMenu)}
-              />
+                {activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                  ? "Online"
+                  : onlineUsers[activeChat?.uid]?.lastSeen?.toDate
+                    ? `Last seen ${onlineUsers[activeChat.uid].lastSeen
+                        .toDate()
+                        .toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
+                    : activeChat
+                      ? "Offline"
+                      : ""}
+              </p>
             </div>
           </div>
 
-          {/* GROUP SETTINGS */}
-          {showMenu && activeChat?.type === "group" && (
-            <div className="mt-4 bg-[#F8F8F8] rounded-2xl p-4 space-y-4">
-              {/* RENAME */}
-              {isAdmin() && (
-                <div>
-                  <h3 className="font-semibold mb-2">Rename Group</h3>
+          {activeChat && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedMessages.length > 0) {
+                    setShowMenu((prev) => !prev);
+                    setShowChatMenu(false);
+                  } else {
+                    setShowChatMenu((prev) => !prev);
+                    setShowMenu(false);
+                  }
+                }}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500"
+              >
+                <MoreVertical size={21} />
+              </button>
 
-                  <div className="flex gap-2">
-                    <input
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      placeholder="New group name"
-                      className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none"
-                    />
-
-                    <button
-                      onClick={renameGroup}
-                      className="bg-[#FF6B00] text-white px-4 rounded-xl"
-                    >
-                      Save
-                    </button>
-                  </div>
+              {showChatMenu && selectedMessages.length === 0 && (
+                <div className="absolute right-0 top-11 z-[100] w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowChatSearch(true);
+                      setShowChatMenu(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                  >
+                    <Search size={16} />
+                    Search messages
+                  </button>
+                  <ChatMuteMenuItems
+                    conversationMuted={conversationMuted}
+                    globalMuted={isMuted}
+                    onToggleConversation={async () => {
+                      if (!user || !activeChat?.id) return;
+                      const next = !conversationMuted;
+                      setConversationMuted(next);
+                      setShowChatMenu(false);
+                      await setConversationMute(user.uid, activeChat.id, next);
+                    }}
+                    onToggleGlobal={async () => {
+                      if (!user) return;
+                      const next = !isMuted;
+                      setIsMuted(next);
+                      setShowChatMenu(false);
+                      await setGlobalMute(user.uid, next);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowChatMenu(false);
+                      setShowMenu(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                  >
+                    <Info size={16} />
+                    Chat info
+                  </button>
                 </div>
               )}
 
-              {/* MEMBERS */}
-              <div>
-                <h3 className="font-semibold mb-2">Participants</h3>
-
-                <div className="space-y-2">
-                  {memberObjects.map((m) => (
-                    <div
-                      key={m.uid}
-                      className="flex items-center justify-between bg-white rounded-xl px-3 py-2"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={getValidImage(m.profileImageUrl, m.name)}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-
-                        <span className="text-sm">{m.name}</span>
-                      </div>
-
-                      {isAdmin() && m.uid !== user?.uid && (
-                        <button
-                          onClick={() => removeParticipant(m.uid)}
-                          className="text-red-500 text-sm"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  ))}
+              {selectedMessages.length > 0 && showMenu && (
+                <div className="absolute right-0 top-11 z-[100] w-48 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="w-full px-4 py-3 text-left text-red-600 text-sm font-semibold hover:bg-red-50"
+                  >
+                    Delete {selectedMessages.length} selected
+                  </button>
                 </div>
-              </div>
-
-              {/* ADD MEMBERS */}
-              {isAdmin() && (
-                <div>
-                  <h3 className="font-semibold mb-2">Add Participants</h3>
-
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {users
-                      .filter(
-                        (u) =>
-                          !memberObjects.find((m) => m.uid === u.uid) &&
-                          u.uid !== user?.uid,
-                      )
-                      .map((u) => (
-                        <div
-                          key={u.uid}
-                          className="flex items-center justify-between bg-white rounded-xl px-3 py-2"
-                        >
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={getValidImage(u.profileImageUrl, u.name)}
-                              className="w-10 h-10 rounded-full object-cover"
-                            />
-
-                            <span className="text-sm">{u.name}</span>
-                          </div>
-
-                          <button
-                            onClick={async () => {
-                              const gRef = doc(db, "groups", activeChat.id);
-
-                              const cRef = doc(db, "chats", activeChat.id);
-
-                              const gSnap = await getDoc(gRef);
-
-                              const members = [
-                                ...(gSnap.data().members || []),
-                                u.uid,
-                              ];
-
-                              await updateDoc(gRef, { members });
-                              await updateDoc(cRef, { members });
-                            }}
-                            className="text-[#FF6B00] text-sm"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* DELETE */}
-              {isAdmin() && (
-                <button
-                  onClick={deleteGroup}
-                  className="w-full bg-red-500 text-white py-3 rounded-2xl"
-                >
-                  Delete Group
-                </button>
               )}
             </div>
           )}
         </div>
 
-        {/* MESSAGES */}
-        <div
-          className="
-    flex-1
-    min-h-0
-    overflow-y-auto
-    px-3
-    md:px-5
-    py-5
-    space-y-3
-    pb-32
-    scroll-smooth
-  "
-        >
-          {messages.map((m) => {
-            const sender = users.find((u) => u.uid === m.senderId);
+        {showChatSearch && (
+          <div className="px-3 py-2 bg-white border-b border-gray-100 flex items-center gap-2">
+            <Search size={16} className="text-gray-400" />
+            <input
+              value={messageSearch}
+              onChange={(event) => setMessageSearch(event.target.value)}
+              placeholder="Search in this chat"
+              className="flex-1 min-h-[40px] text-sm outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setShowChatSearch(false);
+                setMessageSearch("");
+              }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
-            const isMine = m.senderId === user?.uid;
+        {showMenu && activeChat?.type === "group" && (
+          <div className="bg-white border-b border-gray-100 p-4 space-y-4 max-h-[40%] overflow-y-auto">
+            {isAdmin() && (
+              <div>
+                <h3 className="font-semibold mb-2 text-sm">Rename group</h3>
+                <div className="flex gap-2">
+                  <input
+                    value={renameValue}
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    placeholder="New group name"
+                    className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={renameGroup}
+                    className="bg-[#FF6B00] text-white px-4 rounded-xl text-sm"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
+            <div>
+              <h3 className="font-semibold mb-2 text-sm">Participants</h3>
+              <div className="space-y-2">
+                {memberObjects.map((member) => (
+                  <div
+                    key={member.uid}
+                    className="flex items-center justify-between bg-[#F8F8F8] rounded-xl px-3 py-2"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={getValidImage(member.profileImageUrl, member.name)}
+                        alt=""
+                        className="w-9 h-9 rounded-full object-cover"
+                      />
+                      <span className="text-sm truncate">{member.name}</span>
+                    </div>
+                    {isAdmin() && member.uid !== user?.uid && (
+                      <button
+                        type="button"
+                        onClick={() => removeParticipant(member.uid)}
+                        className="text-red-500 text-sm"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {isAdmin() && (
+              <button
+                type="button"
+                onClick={deleteGroup}
+                className="w-full bg-red-500 text-white py-3 rounded-2xl text-sm font-semibold"
+              >
+                Delete group
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col-reverse overscroll-contain">
+          <div className="px-3 sm:px-4 py-4 sm:py-5 space-y-4">
+          {messagesLoading && (
+            <div className="flex justify-center py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-200 border-t-[#FF6B00]" />
+            </div>
+          )}
+
+          {messages.length === 0 && activeChat && !messagesLoading && (
+            <div className="flex justify-center mt-8">
+              <div className="bg-white rounded-3xl p-6 shadow-sm max-w-sm text-center">
+                <img
+                  src={getValidImage("", activeChatName)}
+                  alt=""
+                  className="w-16 h-16 rounded-full mx-auto mb-3"
+                />
+                <h3 className="font-semibold text-lg">{activeChatName}</h3>
+                <p className="text-sm text-gray-500 mt-2">
+                  Start your conversation with {activeChatName}.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!activeChat && !messagesLoading && (
+            <div className="flex justify-center mt-16 text-sm text-gray-400">
+              Select a chat to start messaging
+            </div>
+          )}
+
+          {visibleMessages.map((message, index) => {
+            const sender = users.find((person) => person.uid === message.senderId);
+            const isMine = message.senderId === user?.uid;
+            const isSelected = selectedMessages.includes(message.id);
+            const showDay =
+              getChatDayKey(message.createdAt) !==
+              getChatDayKey(visibleMessages[index - 1]?.createdAt);
 
             return (
+              <React.Fragment key={message.id}>
+                {showDay && (
+                  <div className="flex justify-center py-1">
+                    <span className="bg-white text-gray-500 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
+                      {getChatDayLabel(message.createdAt) || "Today"}
+                    </span>
+                  </div>
+                )}
               <div
-                key={m.id}
-                className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                className={`flex ${isMine ? "justify-end" : "justify-start"} relative`}
+                onTouchStart={() => startMessageLongPress(message)}
+                onTouchEnd={cancelMessageLongPress}
+                onTouchMove={cancelMessageLongPress}
+                onMouseDown={() => startMessageLongPress(message)}
+                onMouseUp={cancelMessageLongPress}
+                onMouseLeave={cancelMessageLongPress}
+                onClick={() => {
+                  if (longPressTriggered.current) {
+                    longPressTriggered.current = false;
+                    return;
+                  }
+                  if (selectionMode) toggleMessageSelection(message);
+                }}
               >
                 <div
-                  className={`max-w-[85%] md:max-w-[72%] px-4 py-2.5 text-[14px] md:text-sm shadow-sm ${
+                  className={`relative max-w-[78%] px-4 py-3 text-sm shadow-sm ${
                     isMine
-                      ? "bg-[#DCF8C6] rounded-2xl rounded-br-md"
-                      : "bg-white rounded-2xl rounded-bl-md"
-                  }`}
+                      ? "bg-[#FFE2CF] rounded-2xl rounded-tr-sm"
+                      : "bg-white rounded-2xl rounded-tl-sm"
+                  } ${isSelected ? "ring-2 ring-orange-500" : ""}`}
                 >
                   {activeChat?.type === "group" && !isMine && (
                     <p className="text-[11px] font-semibold text-[#FF6B00] mb-1">
-                      {sender?.name}
+                      {sender?.name || "User"}
                     </p>
                   )}
-
-                  {m.text && <p>{m.text}</p>}
-
-                  {m.audio && (
-                    <audio controls className="w-full mt-2">
-                      <source src={m.audio} type="audio/webm" />
+                  {message.text && (
+                    <p className="whitespace-pre-wrap break-words">
+                      {message.text}
+                    </p>
+                  )}
+                  {message.audio && (
+                    <audio controls className="w-full mt-2 max-w-[240px]">
+                      <source src={message.audio} type="audio/webm" />
                     </audio>
                   )}
-
-                  {/* Time + Tick */}
-                  <div
-                    className={`flex items-center gap-1 mt-1 ${
-                      isMine ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    {m.createdAt?.seconds && (
-                      <span className="text-[10px] text-gray-500">
-                        {new Date(
-                          m.createdAt.seconds * 1000,
-                        ).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    )}
-
-                    {/* Mobile Only */}
-                    {isMine && (
-                      <div className="md:hidden flex items-center">
-                        {m.readBy?.length > 1 ? (
-                          <span className="text-[#53BDEB] text-xs font-bold tracking-[-1px]">
-                            ✓✓
-                          </span>
-                        ) : (
-                          <span className="text-gray-500 text-xs font-bold">
-                            ✓
-                          </span>
-                        )}
-                      </div>
-                    )}
+                  <div className="flex justify-end items-center gap-1 mt-2">
+                    <span className="text-[10px] text-gray-500">
+                      {formatTime(message.createdAt)}
+                    </span>
+                    {isMine &&
+                      ((message.readBy?.length || 0) > 1 ? (
+                        <CheckCheck size={15} className="text-blue-500" />
+                      ) : (
+                        <Check size={15} className="text-gray-400" />
+                      ))}
                   </div>
                 </div>
               </div>
+              </React.Fragment>
             );
           })}
+          </div>
         </div>
 
-        {/* INPUT */}
-        <div
-          className="
-    sticky
-    bottom-0
-    bg-[#ECE5DD]
-    px-2
-    md:px-3
-    py-2
-    border-t
-    border-gray-200
-    backdrop-blur-xl
-  "
-        >
-          <div className="flex items-end gap-2">
-            <div
-              className="
-  flex-1
-  bg-white
-  rounded-[28px]
-  px-4
-  py-2
-  flex
-  items-end
-  gap-3
-  shadow-md
-  border
-  border-gray-200
-"
-            >
-              <textarea
+        <div className="bg-[#F4F4F4] border-t border-gray-100 px-3 pt-2 pb-[max(env(safe-area-inset-bottom),12px)] flex-shrink-0">
+          <div className="flex items-end gap-2 sm:gap-3 min-w-0">
+            <div className="flex-1 min-w-0 bg-white rounded-full px-3 sm:px-4 py-3 flex items-center gap-3 shadow-sm">
+              <input
                 value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows={1}
-                placeholder="Type a message..."
-                className="
-  flex-1
-  
-  resize-none
-  outline-none
-  text-sm
-  bg-transparent
-  max-h-60
-  overflow-y-auto
-  py-2
-  leading-5
-"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
+                onChange={(event) => setText(event.target.value)}
+                placeholder={activeChat ? "Message" : "Select a chat first"}
+                disabled={!activeChat || sending}
+                className="flex-1 outline-none text-sm bg-transparent"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") sendMessage();
                 }}
               />
-
-              <div className="flex items-center gap-2 shrink-0 mb-1"></div>
             </div>
-
             <button
-              onClick={sendMessage}
-              disabled={!text.trim()}
-              className={`
-    w-14
-    h-14
-    rounded-full
-    flex
-    items-center
-    justify-center
-    shadow-lg
-    transition
-    ${
-      text.trim()
-        ? "bg-[#FF6B00] active:scale-95"
-        : "bg-gray-300 cursor-not-allowed"
-    }
-  `}
+              type="button"
+              onClick={text.trim() ? sendMessage : handleMic}
+              disabled={sending || !activeChat}
+              className="w-14 h-12 rounded-full bg-[#FF6B00] flex items-center justify-center shadow-lg shrink-0 disabled:opacity-50"
             >
-              <Send size={20} className="text-white" />
+              {sending ? (
+                <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              ) : text.trim() ? (
+                <Send size={20} className="text-white" />
+              ) : (
+                <span className="text-white text-lg">
+                  {isRecording ? "■" : "🎤"}
+                </span>
+              )}
             </button>
           </div>
         </div>
       </div>
+
+      {showCreateGroup && (
+        <div className="fixed inset-0 bg-black/40 z-[10100] flex items-end md:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full md:w-[430px] rounded-t-[30px] md:rounded-[30px] p-5 max-h-[85dvh] overflow-y-auto shadow-2xl pb-[max(env(safe-area-inset-bottom),20px)]">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xl font-bold">Create group</h2>
+              <button type="button" onClick={() => setShowCreateGroup(false)}>
+                ×
+              </button>
+            </div>
+            <input
+              type="text"
+              value={groupName}
+              onChange={(event) => setGroupName(event.target.value)}
+              placeholder="Enter group name"
+              className="w-full bg-white rounded-2xl py-3.5 px-4 outline-none text-sm border border-gray-200 mb-4"
+            />
+            <div className="space-y-3 max-h-[45vh] overflow-y-auto">
+              {visiblePeople.map((person) => (
+                <label
+                  key={person.uid}
+                  className="flex items-center gap-3 bg-[#F8F8F8] rounded-2xl p-3 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedMembers.includes(person.uid)}
+                    onChange={(event) => {
+                      if (event.target.checked) {
+                        setSelectedMembers((prev) => [...prev, person.uid]);
+                      } else {
+                        setSelectedMembers((prev) =>
+                          prev.filter((id) => id !== person.uid),
+                        );
+                      }
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <img
+                    src={getValidImage(person.profileImageUrl, person.name)}
+                    alt=""
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
+                  <div className="min-w-0">
+                    <h3 className="font-medium text-sm truncate">
+                      {person.name}
+                    </h3>
+                    <p className="text-xs text-gray-400 capitalize">
+                      {person.role}
+                    </p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={submitCreateGroup}
+              disabled={!groupName.trim() || selectedMembers.length === 0}
+              className="w-full mt-5 bg-[#FF6B00] text-white py-3 rounded-2xl font-semibold disabled:opacity-50"
+            >
+              Create group
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-[10120] bg-black/50 flex items-center justify-center px-5"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="w-full max-w-[370px] bg-white rounded-[28px] p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-center text-lg font-bold text-gray-900">
+              Delete selected messages?
+            </h3>
+            <p className="text-center text-sm text-gray-500 mt-2">
+              Only your own messages will be removed.
+            </p>
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="py-3 rounded-2xl bg-gray-100 text-gray-700 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={deleteSelectedMessages}
+                className="py-3 rounded-2xl bg-red-500 text-white font-semibold"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

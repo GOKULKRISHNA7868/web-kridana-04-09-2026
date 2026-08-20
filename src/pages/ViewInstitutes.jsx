@@ -4,9 +4,7 @@ import { db, auth } from "../firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
-import { Filter } from "lucide-react";
-import { ArrowLeft } from "lucide-react";
+import { ChevronDown, Filter, ArrowLeft, MapPin, Star, Users } from "lucide-react";
 
 export default function ViewInstitutes() {
   const navigate = useNavigate();
@@ -357,36 +355,55 @@ export default function ViewInstitutes() {
 
   if (loading)
     return (
-      <div className="min-h-screen flex items-center justify-center text-xl">
-        Loading Institutes...
+      <div className="min-h-[100dvh] bg-[#F4F6FB] flex items-center justify-center px-6">
+        <div className="text-center animate-moreFadeUp">
+          <div className="w-10 h-10 mx-auto mb-3 rounded-full border-2 border-orange-200 border-t-[#FF6A00] animate-spin" />
+          <p className="text-gray-500 text-sm">Loading Institutes...</p>
+        </div>
       </div>
     );
 
   return (
-    <div className="min-h-screen bg-white px-6 md:px-16 py-12">
-      <button
-        onClick={() => navigate(-1)}
-        className="flex  left-0 items-center gap-2 text-[#FF6A00] font-semibold mb-6"
+    <div className="min-h-[100dvh] bg-[#F4F6FB] flex flex-col pb-[calc(var(--bottom-navbar-height,64px)+12px)]">
+      <div
+        className="sticky top-0 z-40 bg-[#F4F6FB]/95 backdrop-blur-md border-b border-orange-100"
+        style={{ paddingTop: "max(10px, env(safe-area-inset-top, 0px))" }}
       >
-        <ArrowLeft size={18} />
-        Back
-      </button>
-      <h1 className="text-4xl font-bold text-[#ff7a00] mb-8">Institutes</h1>
-      <div className="md:hidden flex justify-between items-center px-4 py-3 border-b bg-white sticky top-0 z-40">
-        <h1 className="text-lg font-bold text-[#ff7a00]">
-          {category || "Institutes"}
-        </h1>
+        <div className="px-3 sm:px-5 md:px-8 lg:px-12 py-2.5 flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="w-10 h-10 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center text-[#FF6A00] active:scale-95 transition"
+            aria-label="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
 
-        <button
-          onClick={() => setShowFilters(true)}
-          className="flex items-center gap-2 border px-3 py-1.5 rounded-md text-sm"
-        >
-          <Filter size={16} />
-          Filters
-        </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base sm:text-lg font-bold text-[#FF6A00] truncate">
+              {category || "Institutes"}
+            </h1>
+            <p className="text-[11px] text-gray-400 truncate">
+              {filteredInstitutes.length}{" "}
+              {filteredInstitutes.length === 1 ? "result" : "results"}
+              {subCategory ? ` · ${subCategory}` : ""}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFilters(true)}
+            className="inline-flex items-center gap-1.5 bg-white border border-gray-200 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-gray-700 shadow-sm active:scale-95 transition md:hidden"
+          >
+            <Filter size={14} />
+            Filters
+          </button>
+        </div>
       </div>
+
+      <div className="flex-1 min-h-0 px-3 sm:px-5 md:px-8 lg:px-12 pt-3 pb-4">
       {/* FILTERS */}
-      <div className="hidden md:grid grid-cols-1 md:grid-cols-[repeat(4,minmax(180px,1fr))] gap-4 mb-8">
+      <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5 animate-moreFadeUp">
         {/* Category */}
         {/* CATEGORY CUSTOM DROPDOWN */}
         <div className="relative">
@@ -397,8 +414,8 @@ export default function ViewInstitutes() {
           <div
             onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
             className={`w-full flex items-center justify-between bg-white 
-border ${showCategoryDropdown ? "border-orange-500" : "border-gray-300"} 
-rounded-md px-3 h-[45px] cursor-pointer`}
+border ${showCategoryDropdown ? "border-orange-500" : "border-gray-200"} 
+rounded-xl px-3 h-11 cursor-pointer shadow-sm`}
           >
             <span className={category ? "text-black" : "text-gray-400"}>
               {category || "Select Category"}
@@ -407,7 +424,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
           </div>
 
           {showCategoryDropdown && (
-            <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-md shadow max-h-[200px] overflow-y-auto">
+            <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-[200px] overflow-y-auto animate-moreFadeUp">
               {categories.map((cat) => (
                 <div
                   key={cat}
@@ -416,7 +433,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
                     setSubCategory("");
                     setShowCategoryDropdown(false);
                   }}
-                  className="px-4 py-3 text-sm hover:bg-blue-600 hover:text-white active:bg-orange-500 active:text-white cursor-pointer"
+                  className="px-4 py-3 text-sm hover:bg-orange-50 hover:text-[#FF6A00] active:bg-orange-500 active:text-white cursor-pointer"
                 >
                   {cat}
                 </div>
@@ -436,7 +453,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
               category && setShowSubCategoryDropdown(!showSubCategoryDropdown)
             }
             className={`w-full flex items-center justify-between bg-white 
-    border border-orange-500 rounded-md px-3 h-[45px] 
+    border ${showSubCategoryDropdown ? "border-orange-500" : "border-gray-200"} rounded-xl px-3 h-11 shadow-sm
     ${!category && "cursor-not-allowed opacity-50"}`}
           >
             <span className={subCategory ? "text-black" : "text-gray-400"}>
@@ -446,7 +463,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
           </div>
 
           {showSubCategoryDropdown && category && (
-            <div className="fixed left-4 right-4 top-[140px] z-[999] bg-white border rounded-md shadow max-h-[250px] overflow-y-auto">
+            <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-lg max-h-[250px] overflow-y-auto animate-moreFadeUp">
               {(subCategoryMap[category] || []).map((sub) => (
                 <div
                   key={sub}
@@ -454,7 +471,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
                     setSubCategory(sub);
                     setShowSubCategoryDropdown(false);
                   }}
-                  className="px-4 py-2 hover:bg-blue-600 cursor-pointer"
+                  className="px-4 py-2.5 text-sm hover:bg-orange-50 hover:text-[#FF6A00] cursor-pointer"
                 >
                   {sub}
                 </div>
@@ -466,7 +483,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
         <div>
           <label className="block text-sm font-semibold mb-1">City</label>
           <select
-            className="w-full bg-white border border-gray-300 rounded-md px-3 h-[42px]
+            className="w-full bg-white border border-gray-200 rounded-xl px-3 h-11 shadow-sm
             focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
             value={city}
             onChange={(e) => setCity(e.target.value)}
@@ -497,7 +514,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
             Minimum Rating
           </label>
           <select
-            className="w-full bg-white border border-gray-300 rounded-md px-3 h-[42px]
+            className="w-full bg-white border border-gray-200 rounded-xl px-3 h-11 shadow-sm
             focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
             value={minRating}
             onChange={(e) => setMinRating(e.target.value)}
@@ -511,174 +528,120 @@ rounded-md px-3 h-[45px] cursor-pointer`}
 
       {/* LIST */}
       {filteredInstitutes.length === 0 ? (
-        <div className="text-center mt-12">
+        <div className="text-center mt-10 px-4 animate-moreFadeUp">
           <img
             src="/institue.png"
-            alt="No trainers"
-            className="mx-auto w-32 mb-4 opacity-80"
+            alt="No institutes"
+            className="mx-auto w-28 sm:w-32 mb-4 opacity-80"
           />
-          <h1 className="text-2xl font-bold mb-2">
+          <h2 className="text-lg sm:text-xl font-bold mb-2 text-gray-900">
             We're curating the best institutes for you
-          </h1>
-          <p className="text-gray-500 text-xl">
+          </h2>
+          <p className="text-gray-500 text-sm sm:text-base max-w-md mx-auto">
             Our team is reviewing and adding top-notch institutes to ensure you
             get the best options. Please check back soon!
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-2 md:mt-4">
-          {/* LIST */}
-          {filteredInstitutes.length === 0 ? (
-            <div className="text-center mt-12">
-              <img
-                src="/institue.png"
-                alt="No trainers"
-                className="mx-auto w-32 mb-4 opacity-80"
-              />
-              <h1 className="text-2xl font-bold mb-2">
-                We're curating the best institutes for you
-              </h1>
-              <p className="text-gray-500 text-xl">
-                Our team is reviewing and adding top-notch institutes.
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* ================= MOBILE VIEW ================= */}
-              <div className="md:hidden flex flex-col gap-4 mt-6">
-                {filteredInstitutes.map((inst) => (
-                  <div
-                    key={inst.id}
-                    className="bg-[#FFF7F2] rounded-xl p-4 shadow-sm border border-gray-100"
-                  >
-                    {/* TOP ROW */}
-                    <div className="flex gap-4 items-center">
-                      {/* Avatar */}
-                      <div className="w-16 h-16 rounded-full overflow-hidden bg-white border">
-                        {inst.profileImageUrl ? (
-                          <img
-                            src={inst.profileImageUrl}
-                            alt={inst.instituteName}
-                            className="w-full h-full object-cover"
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+          {filteredInstitutes.map((inst, index) => (
+            <div
+              key={inst.id}
+              style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
+              onClick={() => navigate(`/institutes/${inst.id}`)}
+              className="bg-white rounded-2xl p-3.5 sm:p-4 shadow-sm border border-gray-100 animate-moreFadeUp active:scale-[0.99] transition cursor-pointer"
+            >
+              <div className="flex sm:flex-col gap-3 sm:gap-3 items-center sm:items-stretch">
+                <div className="w-16 h-16 sm:w-full sm:h-36 rounded-2xl sm:rounded-xl overflow-hidden bg-orange-50 border border-orange-50 shrink-0">
+                  {inst.profileImageUrl ? (
+                    <img
+                      src={inst.profileImageUrl}
+                      alt={inst.instituteName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center text-[#FF6A00] font-bold text-lg">
+                      {(inst.instituteName || "I").charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 sm:text-center">
+                  <h2 className="font-bold text-sm sm:text-base text-gray-900 truncate">
+                    {inst.instituteName}
+                  </h2>
+
+                  <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">
+                    {Object.keys(inst.categories || {})[0] || "Institute"}
+                  </p>
+
+                  <p className="text-[11px] sm:text-xs text-gray-400 mt-1 flex items-center gap-1 sm:justify-center">
+                    <MapPin size={12} className="shrink-0" />
+                    <span className="truncate">
+                      {inst.city}
+                      {inst.state ? `, ${inst.state}` : ""}
+                    </span>
+                  </p>
+
+                  <div className="flex items-center gap-2 mt-1.5 sm:justify-center text-[11px] sm:text-xs text-gray-500">
+                    <span className="inline-flex items-center gap-1">
+                      <Users size={12} />
+                      {inst.students || 0}
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-medium">
+                      {inst.rating ? (
+                        <>
+                          <Star
+                            size={12}
+                            className="text-yellow-500 fill-yellow-500"
                           />
-                        ) : (
-                          <div className="w-full h-full bg-gray-200" />
-                        )}
-                      </div>
-
-                      {/* TEXT */}
-                      <div className="flex-1">
-                        <h2 className="font-bold text-base text-gray-900">
-                          {inst.instituteName}
-                        </h2>
-
-                        <p className="text-sm text-gray-500">
-                          {Object.keys(inst.categories || {})[0] || "Institute"}
-                        </p>
-
-                        <p className="text-xs text-gray-400">
-                          {inst.city}, {inst.state} ({inst.students || 0}{" "}
-                          Students)
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* BUTTONS */}
-                    <div className="flex gap-3 mt-4">
-                      <button className="bg-[#FF6A00] text-white rounded-md py-2 px-4 font-bold flex-1 active:scale-95 transition">
-                        Message
-                      </button>
-
-                      <button
-                        onClick={() => navigate(`/institutes/${inst.id}`)}
-                        className="border-2 border-[#FF6A00] text-[#FF6A00] rounded-md py-2 px-4 font-bold flex-1 bg-white active:scale-95 transition"
-                      >
-                        View Profile
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* ================= DESKTOP VIEW ================= */}
-              <div className="hidden md:grid grid-cols-1 md:grid-cols-[repeat(4,minmax(180px,1fr))] gap-4 mb-8">
-                {filteredInstitutes.map((inst) => (
-                  <div
-                    key={inst.id}
-                    onClick={() => navigate(`/institutes/${inst.id}`)}
-                    className="bg-white rounded-[18px] shadow-lg border cursor-pointer hover:scale-[1.02] transition-transform flex flex-col justify-between h-[320px]"
-                  >
-                    <div className="h-[160px] rounded-t-[18px] overflow-hidden flex items-center justify-center bg-white">
-                      {inst.profileImageUrl ? (
-                        <img
-                          src={inst.profileImageUrl}
-                          alt={inst.instituteName}
-                          className="w-full h-full object-contain"
-                        />
+                          {inst.rating.toFixed(1)}
+                        </>
                       ) : (
-                        <div className="w-full h-full bg-white" />
+                        <span className="text-gray-400">No ratings</span>
                       )}
-                    </div>
-
-                    <div className="p-4 text-center flex flex-col justify-between h-full">
-                      <h2 className="text-lg font-bold line-clamp-1">
-                        {inst.instituteName}
-                      </h2>
-
-                      <p className="text-gray-500 text-sm">
-                        {inst.city}, {inst.state}
-                      </p>
-
-                      <p className="font-semibold text-sm flex justify-center gap-1">
-                        {inst.rating ? (
-                          <>
-                            <span className="text-yellow-500">⭐</span>
-                            {inst.rating.toFixed(1)}
-                          </>
-                        ) : (
-                          <span className="text-gray-400">No ratings</span>
-                        )}
-                      </p>
-
-                      <button className="mt-3 w-full bg-[#ff7a00] text-white py-2 rounded-lg text-sm">
-                        View Details
-                      </button>
-                    </div>
+                    </span>
                   </div>
-                ))}
+                </div>
               </div>
-            </>
-          )}{" "}
+
+              <button
+                type="button"
+                onClick={() => navigate(`/institutes/${inst.id}`)}
+                className="mt-3 w-full border-2 border-[#FF6A00] text-[#FF6A00] rounded-xl py-2 px-4 text-sm font-bold bg-white active:scale-95 transition"
+              >
+                View Profile
+              </button>
+            </div>
+          ))}
         </div>
       )}
-      {/* ✅ FILTER POPUP - ALWAYS AVAILABLE */}
+      </div>
+
       {showFilters && (
-        <div className="fixed inset-0 z-50 flex items-end">
-          {/* BACKDROP */}
+        <div className="fixed inset-0 z-[10050] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-moreFadeUp">
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowFilters(false)}
           />
 
-          {/* BOTTOM SHEET */}
-          <div className="relative bg-white w-full rounded-t-2xl p-5 max-h-[85vh] overflow-y-auto animate-slideUp">
-            {/* HEADER */}
+          <div className="relative bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl p-5 pb-[calc(var(--bottom-navbar-height,64px)+16px)] sm:pb-5 max-h-[85vh] overflow-y-auto shadow-2xl animate-slideUp sm:animate-moreFadeUp">
             <div className="flex justify-between items-center mb-4 sticky top-0 bg-white">
-              <h2 className="text-lg font-bold">Filters</h2>
+              <h2 className="text-lg font-bold text-[#FF6A00]">Filters</h2>
               <button
+                type="button"
                 onClick={() => setShowFilters(false)}
-                className="text-gray-500 text-sm"
+                className="text-gray-500 text-sm font-medium px-2 py-1"
               >
                 Close
               </button>
             </div>
 
-            {/* FILTERS */}
             <div className="flex flex-col gap-4">
               <div>
                 <label className="text-sm font-semibold">Category</label>
                 <select
-                  className="w-full border rounded-md p-2 mt-1"
+                  className="w-full border border-gray-200 rounded-xl p-2.5 mt-1 bg-gray-50 outline-none focus:border-orange-400"
                   value={category}
                   onChange={(e) => {
                     setCategory(e.target.value);
@@ -695,7 +658,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
               <div>
                 <label className="text-sm font-semibold">Sub Category</label>
                 <select
-                  className="w-full border rounded-md p-2 mt-1"
+                  className="w-full border border-gray-200 rounded-xl p-2.5 mt-1 bg-gray-50 outline-none focus:border-orange-400"
                   value={subCategory}
                   onChange={(e) => setSubCategory(e.target.value)}
                   disabled={!category}
@@ -710,7 +673,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
               <div>
                 <label className="text-sm font-semibold">City</label>
                 <select
-                  className="w-full border rounded-md p-2 mt-1"
+                  className="w-full border border-gray-200 rounded-xl p-2.5 mt-1 bg-gray-50 outline-none focus:border-orange-400"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
                 >
@@ -726,7 +689,7 @@ rounded-md px-3 h-[45px] cursor-pointer`}
               <div>
                 <label className="text-sm font-semibold">Minimum Rating</label>
                 <select
-                  className="w-full border rounded-md p-2 mt-1"
+                  className="w-full border border-gray-200 rounded-xl p-2.5 mt-1 bg-gray-50 outline-none focus:border-orange-400"
                   value={minRating}
                   onChange={(e) => setMinRating(e.target.value)}
                 >
@@ -736,22 +699,24 @@ rounded-md px-3 h-[45px] cursor-pointer`}
                 </select>
               </div>
 
-              <div className="flex gap-3 mt-4">
+              <div className="flex gap-3 mt-2">
                 <button
+                  type="button"
                   onClick={() => {
                     setCategory("");
                     setSubCategory("");
                     setCity("");
                     setMinRating("");
                   }}
-                  className="flex-1 border rounded-md py-2"
+                  className="flex-1 border border-gray-200 rounded-xl py-2.5 font-medium"
                 >
                   Reset
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setShowFilters(false)}
-                  className="flex-1 bg-[#FF6A00] text-white py-2 rounded-md font-bold"
+                  className="flex-1 bg-[#FF6A00] text-white py-2.5 rounded-xl font-bold active:scale-95 transition"
                 >
                   Apply
                 </button>

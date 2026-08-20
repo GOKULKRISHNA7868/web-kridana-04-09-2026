@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-import { Info, CheckCircle, Lock, ChevronLeft } from "lucide-react";
+import { Info, CheckCircle, Lock, ChevronLeft, Copy } from "lucide-react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -29,7 +29,7 @@ export default function PaymentSelection() {
   const [loading, setLoading] = useState(false);
 
   const [upiLoading, setUpiLoading] = useState(true);
-
+  const [copied, setCopied] = useState(false);
   const [upiData, setUpiData] = useState({
     upiId: "",
     upiName: "",
@@ -117,107 +117,193 @@ export default function PaymentSelection() {
     try {
       setLoading(true);
 
+      console.log("🚀 Starting Razorpay Payment...");
+
+      // Load Razorpay SDK
       const isLoaded = await loadRazorpayScript();
 
-      if (!isLoaded) {
-        alert("Razorpay SDK failed");
+      console.log("SDK Loaded:", isLoaded);
+      console.log("window.Razorpay:", window.Razorpay);
+
+      if (!isLoaded || !window.Razorpay) {
+        setLoading(false);
+
+        alert("Unable to load payment gateway.");
+
         return;
       }
 
-      const res = await fetch(`${API_URL}/create-order`, {
-        method: "POST",
+      // Create Order
+      //console.log("Checking Backend Connection...");
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+      try {
+        const testRes = await fetch(`${API_URL}/`, {
+          method: "GET",
+        });
 
-        body: JSON.stringify({
-          amount: totalAmount * 100,
-        }),
-      });
+        const text = await testRes.text();
 
-      const order = await res.json();
+        console.log("Backend Response:", text);
 
+        //alert("Backend Connected: " + text);
+      } catch (err) {
+        console.error("Backend Error:", err);
+
+        alert(
+          JSON.stringify({
+            name: err.name,
+            message: err.message,
+          }),
+        );
+
+        return;
+      }
+
+      // Create Order
+      let order;
+
+      try {
+        const res = await fetch(`${API_URL}/create-order`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: Number(totalAmount) * 100,
+          }),
+        });
+
+        const text = await res.text();
+
+        order = JSON.parse(text);
+
+        console.log(order);
+      } catch (e) {
+        console.log(e);
+        return;
+      }
       const options = {
         key: "rzp_live_SUjQtjkrUIwaHm",
 
         amount: order.amount,
-
-        currency: "INR",
+        order_id: order.id,
+        currency: order.currency || "INR",
 
         name: "Kridana Sports",
 
         description: `Fee Payment - ${month}`,
 
+        image: "https://kridana.net/logo192.png",
+
         order_id: order.id,
 
         prefill: {
-          name: studentName,
+          name: studentName || "",
           email: student?.email || "",
           contact: student?.phone || "",
         },
 
-        handler: async function (response) {
-          await fetch(`${API_URL}/verify-payment`, {
-            method: "POST",
-
-            headers: {
-              "Content-Type": "application/json",
-            },
-
-            body: JSON.stringify(response),
-          });
-
-          const paymentData = {
-            studentId,
-            studentName,
-            month,
-            items,
-            totalAmount,
-
-            paymentId: response.razorpay_payment_id,
-
-            orderId: response.razorpay_order_id,
-
-            signature: response.razorpay_signature,
-
-            paymentMethod: "razorpay",
-
-            status: "success",
-
-            instituteUpiId: upiData?.upiId || "",
-
-            instituteUpiName: upiData?.upiName || "",
-
-            date: new Date().toLocaleDateString(),
-
-            time: new Date().toLocaleTimeString(),
-          };
-
-          localStorage.setItem("paymentData", JSON.stringify(paymentData));
-
-          navigate("/Instfeepaymentsuccess", {
-            state: paymentData,
-          });
+        notes: {
+          studentId: studentId || "",
+          month: month || "",
         },
 
         theme: {
           color: "#f97316",
         },
+
+        modal: {
+          ondismiss: function () {
+            console.log("Razorpay popup closed.");
+            setLoading(false);
+          },
+        },
+
+        handler: async function (response) {
+          console.log("Payment Success:", response);
+
+          try {
+            const verifyRes = await fetch(`${API_URL}/verify-payment`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(response),
+            });
+
+            const verifyData = await verifyRes.json();
+
+            console.log("Verify Response:", verifyData);
+
+            if (!verifyData.success) {
+              alert("Payment verification failed.");
+              return;
+            }
+
+            const paymentData = {
+              studentId,
+              studentName,
+              month,
+              items,
+              totalAmount,
+
+              paymentId: response.razorpay_payment_id,
+              orderId: response.razorpay_order_id,
+              signature: response.razorpay_signature,
+
+              paymentMethod: "razorpay",
+              status: "success",
+
+              instituteUpiId: upiData?.upiId || "",
+              instituteUpiName: upiData?.upiName || "",
+
+              date: new Date().toLocaleDateString(),
+              time: new Date().toLocaleTimeString(),
+            };
+
+            localStorage.setItem("paymentData", JSON.stringify(paymentData));
+
+            navigate("/Instfeepaymentsuccess", {
+              state: paymentData,
+            });
+          } catch (verifyError) {
+            console.error("Verification Error:", verifyError);
+            alert("Payment verification failed.");
+          }
+        },
       };
 
-      const rzp = new window.Razorpay(options);
+      console.log("Opening Razorpay...");
 
-      rzp.open();
+      const razorpay = new window.Razorpay(options);
+
+      razorpay.on("payment.failed", function (response) {
+        console.error("Payment Failed:", response.error);
+
+        alert(
+          response.error.description ||
+            response.error.reason ||
+            "Payment Failed",
+        );
+      });
+
+      razorpay.open();
     } catch (err) {
-      console.log(err);
-
-      alert("Payment failed");
-    } finally {
-      setLoading(false);
+      console.error("Razorpay Error:", err);
+      alert(err.message || "Payment Failed");
     }
   };
+  const copyUPI = async () => {
+    try {
+      await navigator.clipboard.writeText(upiData.upiId);
 
+      setCopied(true);
+
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.log(err);
+    }
+  };
   // ✅ UTR SUBMIT
   const handleUTRSubmit = async () => {
     if (!utr) {
@@ -372,11 +458,32 @@ export default function PaymentSelection() {
                         {/* UPI DETAILS */}
                         <div className="w-full mt-4 space-y-3">
                           <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
-                            <p className="text-xs text-gray-500 mb-1">UPI ID</p>
+                            <p className="text-xs text-gray-500 mb-2">UPI ID</p>
 
-                            <p className="font-semibold text-sm break-all text-gray-800">
-                              {upiData?.upiId}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-white rounded-lg border px-3 py-2 overflow-hidden">
+                                <p className="font-semibold text-sm text-gray-800 break-all">
+                                  {upiData?.upiId}
+                                </p>
+                              </div>
+
+                              <button
+                                onClick={copyUPI}
+                                className="flex items-center gap-1 bg-orange-500 text-white px-3 py-2 rounded-lg active:scale-95 transition"
+                              >
+                                <Copy size={16} />
+
+                                <span className="text-sm">
+                                  {copied ? "Copied" : "Copy"}
+                                </span>
+                              </button>
+                            </div>
+
+                            {copied && (
+                              <p className="mt-2 text-xs text-green-600 font-medium">
+                                ✓ UPI ID copied successfully
+                              </p>
+                            )}
                           </div>
 
                           <div className="bg-orange-50 border border-orange-100 rounded-xl p-3">
@@ -393,7 +500,12 @@ export default function PaymentSelection() {
                         <p className="mt-4 font-semibold text-sm sm:text-base text-center">
                           Scan & Pay ₹{totalAmount}
                         </p>
-
+                        {/*<a
+                          href={`upi://pay?pa=${upiData?.upiId}&pn=${upiData?.upiName}&am=${totalAmount}&cu=INR`}
+                          className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white text-center py-3 rounded-xl font-semibold"
+                        >
+                          Open Any UPI App
+                        </a>*/}
                         <input
                           value={utr}
                           onChange={(e) =>
@@ -490,7 +602,14 @@ export default function PaymentSelection() {
                     disabled={loading}
                     className="mt-5 w-full sm:w-auto sm:min-w-[180px] bg-orange-500 hover:bg-orange-600 active:scale-[0.99] transition text-white py-3 px-6 rounded-xl font-semibold text-sm sm:text-base disabled:opacity-60"
                   >
-                    {loading ? "Processing..." : `Pay ₹${totalAmount}`}
+                    {loading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        <span>Preparing...</span>
+                      </div>
+                    ) : (
+                      `Pay ₹${totalAmount}`
+                    )}
                   </button>
                 )}
               </div>
@@ -517,6 +636,21 @@ export default function PaymentSelection() {
           </div>
         </div>
       </div>
+      {loading && (
+        <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-sm flex items-center justify-center">
+          <div className="text-center max-w-xs px-6">
+            <div className="mx-auto w-16 h-16 rounded-full border-4 border-orange-200 border-t-orange-500 animate-spin" />
+
+            <h2 className="mt-6 text-xl font-bold text-gray-800">
+              Preparing Secure Payment
+            </h2>
+
+            <p className="mt-2 text-gray-500 text-sm leading-relaxed">
+              Please wait while we securely connect to our payment gateway.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

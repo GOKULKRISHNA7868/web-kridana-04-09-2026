@@ -15,15 +15,16 @@ import {
 
 import { serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
-import { User, Users, ImageUp } from "lucide-react";
+import { User, Users, Search, Plus, ArrowUpRight, ArrowDownRight, Circle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import AccountPageShell from "./MyAccount/AccountPageShell";
 
 const MyAccountPage = ({ setActiveMenu }) => {
   const { user } = useAuth();
 
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState("edit");
+  const [activeTab] = useState("customers");
 
   const [profile, setProfile] = useState({
     fullName: "",
@@ -836,133 +837,146 @@ const MyAccountPage = ({ setActiveMenu }) => {
   };
 
   return (
-    <div className="px-4 sm:px-6 md:px-8 lg:px-10 py-6 bg-[#FAFAFA] min-h-screen">
-      {/* ================= HEADER ================= */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-6 mb-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-black">
-            My Account
-          </h1>
-          <p className="text-orange-500 text-sm">
-            Manage your team and customers
-          </p>
-        </div>
-
-        {/* PROFILE */}
-        <div className="flex items-center gap-4">
-          {profile.profileImage ? (
-            <img
-              src={profile.profileImage}
-              className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover border shadow"
-            />
-          ) : (
-            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-200 rounded-xl flex items-center justify-center">
-              <User />
+    <AccountPageShell wide fill>
+    <div className="h-full min-h-0 flex flex-col bg-[#F4F6FB] rounded-2xl overflow-hidden">
+      <div className="shrink-0 bg-white/95 backdrop-blur-md border-b border-orange-100 shadow-sm z-20">
+        <div className="px-3 py-2.5 sm:px-5 sm:py-3 md:px-6">
+          <div className="flex items-center justify-between gap-3 animate-moreFadeUp">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-[#FF6A00] truncate">
+                My Account
+              </h1>
+              <p className="text-[10px] sm:text-xs text-gray-400 truncate">
+                Manage your customers
+              </p>
             </div>
-          )}
 
-          <div className="flex flex-col gap-2">
-            <label className="cursor-pointer bg-orange-500 text-white px-3 py-1 rounded text-sm text-center">
-              Change
-              <input
-                type="file"
-                className="hidden"
-                onChange={handleProfileUpload}
-              />
-            </label>
+            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+              {profile.profileImage ? (
+                <img
+                  src={profile.profileImage}
+                  alt="Profile"
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl object-cover border border-orange-100 shadow-sm"
+                />
+              ) : (
+                <div className="w-10 h-10 sm:w-11 sm:h-11 bg-orange-50 rounded-xl flex items-center justify-center border border-orange-100">
+                  <User size={18} className="text-orange-400" />
+                </div>
+              )}
 
-            {profile.profileImage && (
-              <button
-                onClick={removeProfileImage}
-                className="text-red-500 text-sm"
-              >
-                Remove
-              </button>
-            )}
+              <div className="flex flex-col gap-0.5">
+                <label className="cursor-pointer bg-[#FF6A00] text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-medium text-center active:scale-95 transition">
+                  Change
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={handleProfileUpload}
+                  />
+                </label>
+
+                {profile.profileImage && (
+                  <button
+                    type="button"
+                    onClick={removeProfileImage}
+                    className="text-red-500 text-[10px] sm:text-xs font-medium"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ================= TABS ================= */}
-      <div className="flex gap-4 border-b pb-2 mb-6 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab("customers")}
-          className={`flex items-center gap-2 pb-2 border-b-2 whitespace-nowrap ${
-            activeTab === "customers"
-              ? "text-orange-500 border-orange-500 font-semibold"
-              : "text-gray-600 border-transparent"
-          }`}
-        >
-          <Users size={18} /> Customers
-        </button>
-      </div>
-
-      {/* ================= CUSTOMERS ================= */}
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-3 sm:px-5 md:px-6 py-3 pb-5">
       {activeTab === "customers" && (
-        <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm">
-          {/* SUMMARY CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div className="border rounded-lg p-4 bg-[#FFFDF9]">
-              <p className="text-sm text-gray-500">Active Customers</p>
-              <p className="text-orange-500 text-lg font-semibold">
-                {activeCount}
+        <div className="animate-moreFadeUp">
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="bg-white border border-orange-100 rounded-xl p-2.5 sm:p-3 shadow-sm">
+              <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                Active
               </p>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-[#FF6A00] text-base sm:text-lg font-bold">
+                  {activeCount}
+                </span>
+                <div className="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center">
+                  <ArrowUpRight size={12} className="text-orange-500" />
+                </div>
+              </div>
             </div>
-
-            <div className="border rounded-lg p-4 bg-[#FFFDF9]">
-              <p className="text-sm text-gray-500">Left Customers</p>
-              <p className="text-orange-500 text-lg font-semibold">
-                {leftCount}
+            <div className="bg-white border border-orange-100 rounded-xl p-2.5 sm:p-3 shadow-sm">
+              <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                Left
               </p>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-[#FF6A00] text-base sm:text-lg font-bold">
+                  {leftCount}
+                </span>
+                <div className="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center">
+                  <ArrowDownRight size={12} className="text-orange-500" />
+                </div>
+              </div>
             </div>
-
-            <div className="border rounded-lg p-4 bg-[#FFFDF9]">
-              <p className="text-sm text-gray-500">New (30 days)</p>
-              <p className="text-orange-500 text-lg font-semibold">
-                {newCount}
+            <div className="bg-white border border-orange-100 rounded-xl p-2.5 sm:p-3 shadow-sm">
+              <p className="text-[10px] sm:text-xs text-gray-500 truncate">
+                New 30d
               </p>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-[#FF6A00] text-base sm:text-lg font-bold">
+                  {newCount}
+                </span>
+                <div className="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center">
+                  <Circle size={10} className="text-orange-500 fill-orange-500" />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* HEADER ACTIONS */}
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-            <div>
-              <h2 className="text-orange-500 text-lg font-semibold">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-semibold text-[#FF6A00]">
                 Customer Management
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-[11px] sm:text-xs text-gray-500">
                 Track and manage your customers
               </p>
             </div>
 
             <button
+              type="button"
               onClick={() => setActiveMenu("Customer Details")}
-              className="bg-orange-500 text-white px-4 py-2 rounded-md"
+              className="shrink-0 inline-flex items-center gap-1 bg-[#FF6A00] text-white px-3 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-sm active:scale-95 transition"
             >
-              + Add Customer
+              <Plus size={14} /> Add
             </button>
           </div>
 
-          {/* SEARCH + FILTER */}
-          <div className="flex flex-col md:flex-row gap-3 mb-4">
-            <div className="relative w-full md:w-[320px]">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
               <input
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
                 placeholder="Search Customer..."
-                className="w-full pl-10 pr-3 py-2 border rounded-md"
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:border-orange-400 bg-white text-sm"
               />
             </div>
 
-            <div className="flex gap-2 flex-wrap">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-gray-100 sm:w-auto sm:flex">
               {["All", "Active", "Left"].map((item) => (
                 <button
                   key={item}
+                  type="button"
                   onClick={() => setStatusFilter(item)}
-                  className={`px-4 py-1.5 rounded-md text-sm ${
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition ${
                     statusFilter === item
-                      ? "bg-orange-500 text-white"
-                      : "bg-gray-200"
+                      ? "bg-[#FF6A00] text-white shadow-sm"
+                      : "text-gray-600"
                   }`}
                 >
                   {item}
@@ -971,631 +985,688 @@ const MyAccountPage = ({ setActiveMenu }) => {
             </div>
           </div>
 
-          {/* ================= DESKTOP TABLE ================= */}
-          <div className="hidden md:block overflow-x-auto rounded-lg border">
-            <div className="grid grid-cols-[2fr_.8fr_.8fr_1fr_1.2fr_1fr_1fr_.8fr] bg-gray-900 text-orange-400 text-sm font-semibold px-4 py-3">
-              <p>Name</p>
-              <p className="text-center">Age</p>
-              <p>Belt</p>
-              <p>Status</p>
-              {statusFilter === "Left" && <p>Reason</p>}
-              <p className="text-center">Added</p>
-              <p className="text-center">Left</p>
-              <p className="text-center">Action</p>
-            </div>
-
-            {filteredStudents.map((student, index) => (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="hidden md:block">
               <div
-                key={student.id}
-                className="grid grid-cols-[2fr_.8fr_.8fr_1fr_1.2fr_1fr_1fr_.8fr] px-4 py-3 border-t text-sm items-center"
+                className={`grid ${
+                  statusFilter === "Left" ? "grid-cols-8" : "grid-cols-7"
+                } bg-black text-orange-500 px-4 lg:px-6 py-3 font-semibold text-xs sm:text-sm sticky top-0 z-10`}
               >
-                <p>
-                  {index + 1}. {student.firstName} {student.lastName}
-                </p>
-                <p className="text-center">{student.age}</p>
-                <p>{student.sports?.[0]?.belt || "-"}</p>
-
-                <p>
-                  <span
-                    className={`px-2 py-1 rounded text-xs ${
-                      student.status === "Left"
-                        ? "bg-red-500 text-white"
-                        : "bg-green-500 text-white"
-                    }`}
-                  >
-                    {student.status}
-                  </span>
-                </p>
-
-                {statusFilter === "Left" && <p>{student.leftReason || "-"}</p>}
-
-                <p className="text-center">
-                  {student.createdAt?.toDate?.().toLocaleDateString() || "-"}
-                </p>
-
-                <p className="text-center">
-                  {student.leftDate?.toDate?.().toLocaleDateString() || "-"}
-                </p>
-
-                <div className="flex justify-center gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingStudent(student);
-                      setShowEditStudentModal(true);
-                    }}
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() =>
-                      statusFilter === "Left"
-                        ? permanentlyDeleteStudent(student)
-                        : markAsLeftConfirm(student)
-                    }
-                  >
-                    🗑️
-                  </button>
-                </div>
+                <div>Name</div>
+                <div className="text-center">Age</div>
+                <div className="text-center">Belt</div>
+                <div className="text-center">Status</div>
+                {statusFilter === "Left" && (
+                  <div className="text-center">Reason</div>
+                )}
+                <div className="text-center">Added</div>
+                <div className="text-center">Left</div>
+                <div className="text-center">Action</div>
               </div>
-            ))}
-          </div>
 
-          {/* ================= MOBILE CARDS ================= */}
-          <div className="md:hidden space-y-3">
-            {filteredStudents.map((student, index) => (
-              <div
-                key={student.id}
-                className="border rounded-lg p-4 bg-white shadow-sm"
-              >
-                <div className="flex justify-between">
-                  <p className="font-semibold">
+              {filteredStudents.map((student, index) => (
+                <div
+                  key={student.id}
+                  className={`grid ${
+                    statusFilter === "Left" ? "grid-cols-8" : "grid-cols-7"
+                  } px-4 lg:px-6 py-3.5 border-t text-sm items-center hover:bg-gray-50 transition`}
+                >
+                  <p className="font-medium text-gray-800 truncate">
                     {index + 1}. {student.firstName} {student.lastName}
                   </p>
+                  <p className="text-center">{student.age}</p>
+                  <p className="text-center">
+                    {student.sports?.[0]?.belt || "-"}
+                  </p>
 
-                  <span
-                    className={`text-xs px-2 py-1 rounded ${
-                      student.status === "Left"
-                        ? "bg-red-500 text-white"
-                        : "bg-green-500 text-white"
-                    }`}
-                  >
-                    {student.status}
-                  </span>
+                  <div className="text-center">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        student.status === "Left"
+                          ? "bg-red-100 text-red-600"
+                          : "bg-green-100 text-green-700"
+                      }`}
+                    >
+                      {student.status}
+                    </span>
+                  </div>
+
+                  {statusFilter === "Left" && (
+                    <p className="text-center text-gray-600 text-xs">
+                      {student.leftReason || "-"}
+                    </p>
+                  )}
+
+                  <p className="text-center">
+                    {student.createdAt?.toDate?.().toLocaleDateString() || "-"}
+                  </p>
+
+                  <p className="text-center">
+                    {student.leftDate?.toDate?.().toLocaleDateString() || "-"}
+                  </p>
+
+                  <div className="flex justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingStudent(student);
+                        setShowEditStudentModal(true);
+                      }}
+                      className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center active:scale-95 transition"
+                    >
+                      <img src="/edit-icon.png" alt="edit" className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        statusFilter === "Left"
+                          ? permanentlyDeleteStudent(student)
+                          : markAsLeftConfirm(student)
+                      }
+                      className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center active:scale-95 transition"
+                    >
+                      <img
+                        src="/delete-icon.png"
+                        alt="delete"
+                        className="w-4 h-4"
+                      />
+                    </button>
+                  </div>
                 </div>
+              ))}
+            </div>
 
-                <p className="text-sm text-gray-600 mt-1">Age: {student.age}</p>
+            <div className="md:hidden divide-y divide-gray-100">
+              {filteredStudents.map((student, index) => (
+                <div key={student.id} className="p-3.5 space-y-3">
+                  <div className="flex justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 truncate">
+                        {index + 1}. {student.firstName} {student.lastName}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Belt: {student.sports?.[0]?.belt || "-"}
+                      </p>
+                    </div>
 
-                <p className="text-sm">
-                  Belt: {student.sports?.[0]?.belt || "-"}
+                    <span
+                      className={`px-2.5 h-fit py-1 rounded-full text-[10px] font-semibold ${
+                        student.status === "Left"
+                          ? "bg-red-100 text-red-600"
+                          : "bg-green-100 text-green-700"
+                      }`}
+                    >
+                      {student.status}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="bg-gray-50 rounded-xl p-2">
+                      <p className="text-[10px] text-gray-500">Age</p>
+                      <p className="font-medium text-xs">{student.age} yrs</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-2">
+                      <p className="text-[10px] text-gray-500">Added</p>
+                      <p className="font-medium text-xs">
+                        {student.createdAt?.toDate?.().toLocaleDateString() ||
+                          "-"}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-2">
+                      <p className="text-[10px] text-gray-500">Left Date</p>
+                      <p className="font-medium text-xs">
+                        {student.leftDate?.toDate?.().toLocaleDateString() ||
+                          "-"}
+                      </p>
+                    </div>
+                    {statusFilter === "Left" && (
+                      <div className="bg-gray-50 rounded-xl p-2">
+                        <p className="text-[10px] text-gray-500">Reason</p>
+                        <p className="font-medium text-xs truncate">
+                          {student.leftReason || "-"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingStudent(student);
+                        setShowEditStudentModal(true);
+                      }}
+                      className="flex-1 border border-orange-200 text-[#FF6A00] rounded-xl py-2 text-sm font-medium active:scale-95 transition"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        statusFilter === "Left"
+                          ? permanentlyDeleteStudent(student)
+                          : markAsLeftConfirm(student)
+                      }
+                      className={`flex-1 rounded-xl py-2 text-sm font-medium text-white active:scale-95 transition ${
+                        statusFilter === "Left" ? "bg-red-500" : "bg-black"
+                      }`}
+                    >
+                      {statusFilter === "Left" ? "Delete" : "Mark Left"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {filteredStudents.length === 0 && (
+              <div className="p-8 text-center">
+                <div className="mx-auto w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center mb-3">
+                  <Users size={22} className="text-orange-400" />
+                </div>
+                <p className="text-sm font-medium text-gray-700">
+                  No customers found
                 </p>
-
-                <div className="flex justify-end gap-3 mt-3">
-                  <button
-                    onClick={() => {
-                      setEditingStudent(student);
-                      setShowEditStudentModal(true);
-                    }}
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() =>
-                      statusFilter === "Left"
-                        ? permanentlyDeleteStudent(student)
-                        : markAsLeftConfirm(student)
-                    }
-                  >
-                    🗑️
-                  </button>
-                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Try a different search or filter.
+                </p>
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}
-
-      {/* ================= UPLOAD TYPE MODAL ================= */}
+      </div>
 
       {showEditStudentModal && editingStudent && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 lg:pl-[220px]">
-          <div className="bg-white w-[95%] max-w-[700px] sm:max-w-[800px] md:max-w-[900px] rounded-2xl shadow-2xl mx-auto">
-            <div className="max-h-[80vh] sm:max-h-[85vh] overflow-y-auto">
-              {/* HEADER */}
-              <div className="flex justify-between items-center px-6 py-4 border-b bg-orange-50 rounded-t-2xl">
-                <div className="flex items-center gap-2">
-                  <img
-                    src="/edit-icon.png"
-                    alt="edit"
-                    className="w-4 h-4 opacity-70"
-                  />
-                  <h2 className="text-xl font-semibold text-gray-800">
-                    Edit Customer Details
-                  </h2>
-                </div>
-
-                <button
-                  onClick={() => setShowEditStudentModal(false)}
-                  className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 transition"
-                  title="Close"
-                >
-                  <span className="text-black-500 text-lg font-light">✕</span>
-                </button>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white w-full sm:w-[95%] max-w-[800px] rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[88dvh] flex flex-col animate-slideUp sm:animate-moreFadeUp">
+            <div className="flex justify-between items-center px-4 sm:px-6 py-3.5 border-b shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <img
+                  src="/edit-icon.png"
+                  alt="edit"
+                  className="w-4 h-4 opacity-70"
+                />
+                <h2 className="text-base sm:text-lg font-semibold text-gray-800 truncate">
+                  Edit Customer Details
+                </h2>
               </div>
 
-              {/* BODY */}
-              <div className="p-6 space-y-8">
-                {/* ================= PROFILE SECTION ================= */}
-                <div>
-                  <h3 className="text-lg font-semibold text-orange-500 mb-4">
-                    Profile Information
-                  </h3>
+              <button
+                type="button"
+                onClick={() => setShowEditStudentModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 transition"
+                title="Close"
+              >
+                <span className="text-gray-500 text-lg font-light">✕</span>
+              </button>
+            </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-start gap-6">
-                    <div className="flex flex-col items-center">
-                      <p className="text-sm font-medium mb-2">Profile Image</p>
+            <div className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto space-y-6 sm:space-y-8">
+              {/* ================= PROFILE SECTION ================= */}
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-orange-500 mb-4">
+                  Profile Information
+                </h3>
 
-                      {editingStudent.profileImageUrl ? (
-                        <img
-                          src={editingStudent.profileImageUrl}
-                          className="w-24 h-24 sm:w-28 sm:h-28 rounded-xl object-cover border shadow"
+                <div className="flex flex-col sm:flex-row sm:items-start gap-6">
+                  <div className="flex flex-col items-center">
+                    <p className="text-sm font-medium mb-2">Profile Image</p>
+
+                    {editingStudent.profileImageUrl ? (
+                      <img
+                        src={editingStudent.profileImageUrl}
+                        className="w-20 h-20 sm:w-24 sm:h-24 rounded-xl object-cover border shadow"
+                      />
+                    ) : (
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-200 rounded-xl flex items-center justify-center text-xs text-gray-500">
+                        No Image
+                      </div>
+                    )}
+
+                    <div className="flex flex-col items-center gap-2 mt-3">
+                      <label className="cursor-pointer bg-[#FF6A00] text-white px-3 py-1.5 rounded-lg text-sm">
+                        Change Photo
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleStudentProfileUpload}
                         />
-                      ) : (
-                        <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-200 rounded-xl flex items-center justify-center">
-                          No Image
-                        </div>
+                      </label>
+
+                      {editingStudent.profileImageUrl && (
+                        <button
+                          type="button"
+                          onClick={removeCustomerImage}
+                          className="text-red-500 text-sm hover:underline"
+                        >
+                          Remove
+                        </button>
                       )}
+                    </div>
+                  </div>
 
-                      <div className="flex flex-col items-center gap-2 mt-3">
-                        <label className="cursor-pointer bg-orange-500 text-white px-3 py-1 rounded text-sm">
-                          Change Photo
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleStudentProfileUpload}
-                          />
-                        </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 min-w-0">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        First Name
+                      </label>
+                      <input
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 outline-none focus:border-orange-400"
+                        value={editingStudent.firstName || ""}
+                        onChange={(e) => {
+                          let value = e.target.value.replace(
+                            /[^A-Za-z ]/g,
+                            "",
+                          );
 
-                        {editingStudent.profileImageUrl && (
-                          <button
-                            onClick={removeCustomerImage}
-                            className="text-red-500 text-sm hover:underline"
+                          if (value.length > 0) {
+                            value =
+                              value.charAt(0).toUpperCase() + value.slice(1);
+                          }
+
+                          setEditingStudent({
+                            ...editingStudent,
+                            firstName: value,
+                          });
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Last Name
+                      </label>
+                      <input
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 outline-none focus:border-orange-400"
+                        value={editingStudent.lastName || ""}
+                        onChange={(e) => {
+                          let value = e.target.value.replace(
+                            /[^A-Za-z ]/g,
+                            "",
+                          );
+
+                          if (value.length > 0) {
+                            value =
+                              value.charAt(0).toUpperCase() + value.slice(1);
+                          }
+
+                          setEditingStudent({
+                            ...editingStudent,
+                            lastName: value,
+                          });
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Date of Birth
+                      </label>
+                      <input
+                        type="date"
+                        value={editingStudent.dateOfBirth || ""}
+                        onChange={(e) =>
+                          setEditingStudent({
+                            ...editingStudent,
+                            dateOfBirth: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 outline-none focus:border-orange-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">
+                        Phone Number
+                      </label>
+                      <input
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 outline-none focus:border-orange-400"
+                        value={editingStudent.phone || ""}
+                        maxLength={10}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, "");
+                          setEditingStudent({
+                            ...editingStudent,
+                            phone: value,
+                          });
+                        }}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium mb-1">
+                        Email Address
+                      </label>
+                      <input
+                        value={editingStudent.email || ""}
+                        onChange={(e) =>
+                          setEditingStudent({
+                            ...editingStudent,
+                            email: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 outline-none focus:border-orange-400"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-medium mb-1">
+                        Address
+                      </label>
+                      <input
+                        value={editingStudent.address || ""}
+                        onChange={(e) =>
+                          setEditingStudent({
+                            ...editingStudent,
+                            address: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 outline-none focus:border-orange-400"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <h3 className="text-base sm:text-lg font-semibold text-orange-500 mb-4">
+                Training Details
+              </h3>
+
+              {(editingStudent.sports || []).map((sport, index) => (
+                <div
+                  key={index}
+                  className="border border-gray-100 rounded-xl p-4 mb-4 bg-gray-50"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">Category</label>
+                      <select
+                        value={sport.category || ""}
+                        onChange={(e) => {
+                          const updated = [...editingStudent.sports];
+
+                          updated[index].category = e.target.value;
+
+                          updated[index].subCategory = "";
+
+                          setEditingStudent({
+                            ...editingStudent,
+                            sports: updated,
+                          });
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none"
+                      >
+                        <option value="">Select Category</option>
+
+                        {categories.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium">
+                        Sub Category
+                      </label>
+                      <select
+                        value={sport.subCategory || ""}
+                        onChange={(e) => {
+                          const updated = [...editingStudent.sports];
+                          updated[index].subCategory = e.target.value;
+
+                          setEditingStudent({
+                            ...editingStudent,
+                            sports: updated,
+                          });
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none"
+                      >
+                        <option value="">Select Sub Category</option>
+
+                        {(subCategoryMap[sport.category] || []).map((sub) => (
+                          <option key={sub} value={sub}>
+                            {sub}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium">
+                        {sport.category === "Martial Arts"
+                          ? "Belt"
+                          : "Skill Level"}
+                      </label>
+                      <div>
+                        {sport.category === "Martial Arts" ? (
+                          <select
+                            value={sport.belt || ""}
+                            onChange={(e) => {
+                              const updated = [...editingStudent.sports];
+                              updated[index].belt = e.target.value;
+
+                              setEditingStudent({
+                                ...editingStudent,
+                                sports: updated,
+                              });
+                            }}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none"
                           >
-                            Remove
-                          </button>
+                            <option value="">Select Belt</option>
+                            <option value="White">White</option>
+                            <option value="Yellow">Yellow</option>
+                            <option value="Orange">Orange</option>
+                            <option value="Blue">Blue</option>
+                            <option value="Brown">Brown</option>
+                            <option value="Black">Black</option>
+                            <option value="Green">Green</option>
+                          </select>
+                        ) : (
+                          <select
+                            value={sport.skillLevel || ""}
+                            onChange={(e) => {
+                              const updated = [...editingStudent.sports];
+                              updated[index].skillLevel = e.target.value;
+
+                              setEditingStudent({
+                                ...editingStudent,
+                                sports: updated,
+                              });
+                            }}
+                            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none"
+                          >
+                            <option value="">Select Skill Level</option>
+                            <option value="Beginner">Beginner</option>
+                            <option value="Intermediate">Intermediate</option>
+                            <option value="Advanced">Advanced</option>
+                          </select>
                         )}
                       </div>
                     </div>
 
-                    {/* Basic Info */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 min-w-0">
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          First Name
-                        </label>
-                        <input
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                          value={editingStudent.firstName || ""}
-                          onChange={(e) => {
-                            let value = e.target.value.replace(
-                              /[^A-Za-z ]/g,
-                              "",
-                            );
+                    <div>
+                      <label className="text-sm font-medium">Sessions</label>
 
-                            // ✅ Capitalize first letter
-                            if (value.length > 0) {
-                              value =
-                                value.charAt(0).toUpperCase() + value.slice(1);
-                            }
+                      <select
+                        value={sport.sessions || ""}
+                        onChange={(e) => {
+                          const updated = [...editingStudent.sports];
+                          updated[index].sessions = e.target.value;
 
-                            setEditingStudent({
-                              ...editingStudent,
-                              firstName: value,
-                            });
-                          }}
-                        />
-                      </div>
+                          setEditingStudent({
+                            ...editingStudent,
+                            sports: updated,
+                          });
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none"
+                      >
+                        <option value="">Select Session</option>
+                        <option value="Morning">Morning</option>
+                        <option value="Afternoon">Afternoon</option>
+                        <option value="Evening">Evening</option>
+                      </select>
+                    </div>
 
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          Last Name
-                        </label>
-                        <input
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                          value={editingStudent.lastName || ""}
-                          onChange={(e) => {
-                            let value = e.target.value.replace(
-                              /[^A-Za-z ]/g,
-                              "",
-                            );
+                    <div>
+                      <label className="text-sm font-medium">Timings</label>
 
-                            // ✅ Capitalize first letter
-                            if (value.length > 0) {
-                              value =
-                                value.charAt(0).toUpperCase() + value.slice(1);
-                            }
+                      <input
+                        type="time"
+                        value={sport.timings || ""}
+                        onChange={(e) => {
+                          const updated = [...editingStudent.sports];
+                          updated[index].timings = e.target.value;
 
-                            setEditingStudent({
-                              ...editingStudent,
-                              lastName: value,
-                            });
-                          }}
-                        />
-                      </div>
+                          setEditingStudent({
+                            ...editingStudent,
+                            sports: updated,
+                          });
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Fee</label>
+                      <input
+                        value={sport.fee || ""}
+                        onChange={(e) => {
+                          const updated = [...editingStudent.sports];
 
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          Date of Birth
-                        </label>
-                        <input
-                          type="date"
-                          value={editingStudent.dateOfBirth || ""}
-                          onChange={(e) =>
-                            setEditingStudent({
-                              ...editingStudent,
-                              dateOfBirth: e.target.value,
-                            })
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                        />
-                      </div>
+                          const value = e.target.value.replace(/\D/g, "");
 
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          Phone Number
-                        </label>
-                        <input
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                          value={editingStudent.phone || ""}
-                          maxLength={10}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, "");
-                            setEditingStudent({
-                              ...editingStudent,
-                              phone: value,
-                            });
-                          }}
-                        />
-                      </div>
+                          updated[index].fee = value;
 
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium mb-1">
-                          Email Address
-                        </label>
-                        <input
-                          value={editingStudent.email || ""}
-                          onChange={(e) =>
-                            setEditingStudent({
-                              ...editingStudent,
-                              email: e.target.value,
-                            })
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="block text-sm font-medium mb-1">
-                          Address
-                        </label>
-                        <input
-                          value={editingStudent.address || ""}
-                          onChange={(e) =>
-                            setEditingStudent({
-                              ...editingStudent,
-                              address: e.target.value,
-                            })
-                          }
-                          className="w-full border rounded-lg px-3 py-2"
-                        />
-                      </div>
+                          setEditingStudent({
+                            ...editingStudent,
+                            sports: updated,
+                          });
+                        }}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-white outline-none"
+                      />
                     </div>
                   </div>
-                </div>
 
-                {/* ================= TRAINING SECTION ================= */}
-                <h3 className="text-lg font-semibold text-orange-500 mb-4">
-                  Training Details
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = editingStudent.sports.filter(
+                        (_, i) => i !== index,
+                      );
+
+                      setEditingStudent({
+                        ...editingStudent,
+                        sports: updated,
+                      });
+                    }}
+                    className="mt-3 text-red-500 text-sm"
+                  >
+                    Remove Sport
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingStudent({
+                    ...editingStudent,
+                    sports: [
+                      ...(editingStudent.sports || []),
+                      {
+                        category: "",
+                        subCategory: "",
+                        belt: "",
+                        sessions: "",
+                        timings: "",
+                        fee: "",
+                      },
+                    ],
+                  });
+                }}
+                className="bg-[#FF6A00] text-white px-4 py-2 rounded-xl text-sm font-medium"
+              >
+                + Add Sport
+              </button>
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-orange-500 mb-4">
+                  Aadhaar Documents
                 </h3>
 
-                {(editingStudent.sports || []).map((sport, index) => (
-                  <div
-                    key={index}
-                    className="border rounded-lg p-4 mb-4 bg-gray-50"
-                  >
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* CATEGORY */}
-                      <div>
-                        <label className="text-sm font-medium">Category</label>
-                        <select
-                          value={sport.category || ""}
-                          onChange={(e) => {
-                            const updated = [...editingStudent.sports];
+                <div className="flex flex-wrap gap-4 mb-3">
+                  {(editingStudent.aadharUrls || []).map((url, i) => (
+                    <div key={i} className="relative">
+                      <img
+                        src={url}
+                        className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border shadow"
+                      />
 
-                            updated[index].category = e.target.value;
-
-                            // reset subcategory when category changes
-                            updated[index].subCategory = "";
-
-                            setEditingStudent({
-                              ...editingStudent,
-                              sports: updated,
-                            });
-                          }}
-                          className="w-full border rounded-lg px-3 py-2"
-                        >
-                          <option value="">Select Category</option>
-
-                          {categories.map((cat) => (
-                            <option key={cat} value={cat}>
-                              {cat}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* SUBCATEGORY */}
-                      <div>
-                        <label className="text-sm font-medium">
-                          Sub Category
-                        </label>
-                        <select
-                          value={sport.subCategory || ""}
-                          onChange={(e) => {
-                            const updated = [...editingStudent.sports];
-                            updated[index].subCategory = e.target.value;
-
-                            setEditingStudent({
-                              ...editingStudent,
-                              sports: updated,
-                            });
-                          }}
-                          className="w-full border rounded-lg px-3 py-2"
-                        >
-                          <option value="">Select Sub Category</option>
-
-                          {(subCategoryMap[sport.category] || []).map((sub) => (
-                            <option key={sub} value={sub}>
-                              {sub}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* BELT */}
-                      {/* Belt / Skill Level */}
-                      <div>
-                        <label className="text-sm font-medium">
-                          {sport.category === "Martial Arts"
-                            ? "Belt"
-                            : "Skill Level"}
-                        </label>
-                        <div>
-                          {sport.category === "Martial Arts" ? (
-                            // ✅ Martial Arts → Show Belt
-                            <select
-                              value={sport.belt || ""}
-                              onChange={(e) => {
-                                const updated = [...editingStudent.sports];
-                                updated[index].belt = e.target.value;
-
-                                setEditingStudent({
-                                  ...editingStudent,
-                                  sports: updated,
-                                });
-                              }}
-                              className="w-full border rounded-lg px-3 py-2 focus:outline-none"
-                            >
-                              <option value="">Select Belt</option>
-                              <option value="White">White</option>
-                              <option value="Yellow">Yellow</option>
-                              <option value="Orange">Orange</option>
-                              <option value="Blue">Blue</option>
-                              <option value="Brown">Brown</option>
-                              <option value="Black">Black</option>
-                              <option value="Green">Green</option>
-                            </select>
-                          ) : (
-                            // ✅ Other Categories → Show Skill Level
-                            <select
-                              value={sport.skillLevel || ""}
-                              onChange={(e) => {
-                                const updated = [...editingStudent.sports];
-                                updated[index].skillLevel = e.target.value;
-
-                                setEditingStudent({
-                                  ...editingStudent,
-                                  sports: updated,
-                                });
-                              }}
-                              className="w-full border rounded-lg px-3 py-2 focus:outline-none"
-                            >
-                              <option value="">Select Skill Level</option>
-                              <option value="Beginner">Beginner</option>
-                              <option value="Intermediate">Intermediate</option>
-                              <option value="Advanced">Advanced</option>
-                            </select>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* SESSION */}
-                      <div>
-                        <label className="text-sm font-medium">Sessions</label>
-
-                        <select
-                          value={sport.sessions || ""}
-                          onChange={(e) => {
-                            const updated = [...editingStudent.sports];
-                            updated[index].sessions = e.target.value;
-
-                            setEditingStudent({
-                              ...editingStudent,
-                              sports: updated,
-                            });
-                          }}
-                          className="w-full border rounded-lg px-3 py-2 bg-white"
-                        >
-                          <option value="">Select Session</option>
-                          <option value="Morning">Morning</option>
-                          <option value="Afternoon">Afternoon</option>
-                          <option value="Evening">Evening</option>
-                        </select>
-                      </div>
-
-                      {/* TIMING */}
-                      <div>
-                        <label className="text-sm font-medium">Timings</label>
-
-                        <input
-                          type="time"
-                          value={sport.timings || ""}
-                          onChange={(e) => {
-                            const updated = [...editingStudent.sports];
-                            updated[index].timings = e.target.value;
-
-                            setEditingStudent({
-                              ...editingStudent,
-                              sports: updated,
-                            });
-                          }}
-                          className="w-full border rounded-lg px-3 py-2 bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium">Fee</label>
-                        <input
-                          value={sport.fee || ""}
-                          onChange={(e) => {
-                            const updated = [...editingStudent.sports];
-
-                            const value = e.target.value.replace(/\D/g, ""); // ✅ ONLY NUMBERS
-
-                            updated[index].fee = value;
-
-                            setEditingStudent({
-                              ...editingStudent,
-                              sports: updated,
-                            });
-                          }}
-                          className="w-full border rounded-lg px-3 py-2"
-                        />
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAadharImage(i)}
+                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white text-xs rounded-full"
+                      >
+                        ✕
+                      </button>
                     </div>
-
-                    {/* REMOVE BUTTON */}
-                    <button
-                      onClick={() => {
-                        const updated = editingStudent.sports.filter(
-                          (_, i) => i !== index,
-                        );
-
-                        setEditingStudent({
-                          ...editingStudent,
-                          sports: updated,
-                        });
-                      }}
-                      className="mt-3 text-red-500 text-sm"
-                    >
-                      Remove Sport
-                    </button>
-                  </div>
-                ))}
-                <button
-                  onClick={() => {
-                    setEditingStudent({
-                      ...editingStudent,
-                      sports: [
-                        ...(editingStudent.sports || []),
-                        {
-                          category: "",
-                          subCategory: "",
-                          belt: "",
-                          sessions: "",
-                          timings: "",
-                          fee: "",
-                        },
-                      ],
-                    });
-                  }}
-                  className="bg-orange-500 text-white px-4 py-2 rounded-md"
-                >
-                  + Add Sport
-                </button>
-                {/* ================= AADHAAR SECTION ================= */}
-                <div>
-                  <h3 className="text-lg font-semibold text-orange-500 mb-4">
-                    Aadhaar Documents
-                  </h3>
-
-                  <div className="flex flex-wrap gap-4 mb-3">
-                    {(editingStudent.aadharUrls || []).map((url, i) => (
-                      <div key={i} className="relative">
-                        <img
-                          src={url}
-                          className="w-24 h-24 object-cover rounded-lg border shadow"
-                        />
-
-                        <button
-                          onClick={() => removeAadharImage(i)}
-                          className="absolute top-0 right-0 bg-red-500 text-white text-xs px-1 rounded"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Upload */}
-                  <label className="cursor-pointer bg-orange-500 text-white px-4 py-2 rounded-md text-sm">
-                    + Add Aadhaar
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={handleAadharUpload}
-                    />
-                  </label>
-
-                  <p className="text-sm text-gray-500 mt-2">
-                    Total Files: {editingStudent.aadharFilesCount || 0}
-                  </p>
+                  ))}
                 </div>
+
+                <label className="cursor-pointer inline-flex bg-[#FF6A00] text-white px-4 py-2 rounded-xl text-sm font-medium">
+                  + Add Aadhaar
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleAadharUpload}
+                  />
+                </label>
+
+                <p className="text-sm text-gray-500 mt-2">
+                  Total Files: {editingStudent.aadharFilesCount || 0}
+                </p>
               </div>
+            </div>
 
-              {/* FOOTER */}
-              <div className="p-4 border-t flex justify-end gap-3">
-                <button onClick={() => setShowEditStudentModal(false)}>
-                  Cancel
-                </button>
+            <div className="p-3.5 sm:p-4 border-t flex justify-end gap-3 shrink-0 bg-white">
+              <button
+                type="button"
+                onClick={() => setShowEditStudentModal(false)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 bg-gray-100"
+              >
+                Cancel
+              </button>
 
-                <button
-                  onClick={async () => {
-                    await updateDoc(
-                      doc(db, "trainerstudents", editingStudent.id),
-                      editingStudent,
-                    );
+              <button
+                type="button"
+                onClick={async () => {
+                  await updateDoc(
+                    doc(db, "trainerstudents", editingStudent.id),
+                    editingStudent,
+                  );
 
-                    setStudents((prev) =>
-                      prev.map((s) =>
-                        s.id === editingStudent.id ? editingStudent : s,
-                      ),
-                    );
+                  setStudents((prev) =>
+                    prev.map((s) =>
+                      s.id === editingStudent.id ? editingStudent : s,
+                    ),
+                  );
 
-                    setShowEditStudentModal(false);
-                  }}
-                  className="bg-orange-500 text-white px-4 py-2 rounded"
-                >
-                  Save
-                </button>
-              </div>
+                  setShowEditStudentModal(false);
+                }}
+                className="bg-[#FF6A00] text-white px-5 py-2 rounded-xl text-sm font-medium active:scale-95 transition"
+              >
+                Save
+              </button>
             </div>
           </div>
         </div>
       )}
     </div>
+    </AccountPageShell>
   );
 };
+
 
 export default MyAccountPage;

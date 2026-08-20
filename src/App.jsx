@@ -1,13 +1,22 @@
 import React, { useEffect } from "react";
 import { initializeAdMob } from "./utils/admob";
 import { Routes, Route, useLocation } from "react-router-dom";
-
-import { LocalNotifications } from "@capacitor/local-notifications";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "./firebase";
+import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { App as CapApp } from "@capacitor/app";
 
 import { CartProvider } from "./context/CartContext";
 import { WishlistProvider } from "./context/WishlistContext";
 import { AuthProvider } from "./context/AuthContext";
+import {
+  ensureChatNotifications,
+  isAppForeground,
+  previewChatBody,
+  resolveChatSenderName,
+  showChatMessageNotification,
+} from "./utils/chatNotifications";
 
 import ScrollToTop from "./components/ScrollToTop";
 
@@ -78,7 +87,8 @@ import IceSports from "./pages/Services/IceSports.jsx";
 import Wellness from "./pages/Services/Wellness.jsx";
 import Dance from "./pages/Services/Dance.jsx";
 import AquaticSports from "./pages/Services/AquaticSports.jsx";
-
+import FitnessDashboard from "./pages/Fitness/FitnessDashboard.jsx";
+import ActiveWalk from "./pages/Fitness/ActiveWalk.jsx";
 import Categories from "./pages/Categories";
 
 import AvailableDemoClasses from "./pages/AvailableDemoClasses.jsx";
@@ -172,7 +182,6 @@ function App() {
   const showNavbar = !hideNavbarPaths.includes(location.pathname);
 
   const showFooter = !hideFooterPaths.includes(location.pathname);
-
   /* =========================================================
      BLOCK ONLY EDGE GESTURES
      FIXED MOBILE SIDE SCROLL ISSUE
@@ -230,27 +239,23 @@ function App() {
   /* =========================================================
      MOBILE NOTIFICATIONS
   ========================================================= */
+  /* =========================================================
+   LOCAL NOTIFICATION CHANNEL
+========================================================= */
   useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let appStateListener;
+
     const initNotifications = async () => {
       try {
-        await LocalNotifications.requestPermissions();
-
-        await LocalNotifications.createChannel({
-          id: "chat_messages",
-          name: "Chat Messages",
-          description: "New message alerts",
-          importance: 5,
-          sound: "beep.wav",
-          visibility: 1,
-        });
+        await ensureChatNotifications();
       } catch (error) {
-        console.log(error);
+        console.error("Notification initialization error:", error);
       }
     };
 
     initNotifications();
-
-    let appStateListener;
 
     CapApp.addListener("appStateChange", ({ isActive }) => {
       console.log("App Active:", isActive);
@@ -262,7 +267,130 @@ function App() {
       appStateListener?.remove();
     };
   }, []);
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
 
+    let registrationListener;
+    let registrationErrorListener;
+    let notificationClickListener;
+    let receivedListener;
+
+    const setupPushNotifications = async () => {
+      try {
+        let permission = await PushNotifications.checkPermissions();
+
+        if (permission.receive !== "granted") {
+          permission = await PushNotifications.requestPermissions();
+        }
+
+        if (permission.receive !== "granted") {
+          console.log("Push notification permission denied");
+          return;
+        }
+
+        registrationListener = await PushNotifications.addListener(
+          "registration",
+          async (token) => {
+            const currentUser = auth.currentUser;
+            if (!currentUser || !token?.value) return;
+
+            try {
+              await setDoc(
+                doc(db, "deviceTokens", currentUser.uid),
+                {
+                  uid: currentUser.uid,
+                  token: token.value,
+                  platform: Capacitor.getPlatform(),
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true },
+              );
+            } catch (error) {
+              console.error("Failed to save device token:", error);
+            }
+          },
+        );
+
+        registrationErrorListener = await PushNotifications.addListener(
+          "registrationError",
+          (error) => {
+            console.error("Push registration error:", error);
+          },
+        );
+
+        receivedListener = await PushNotifications.addListener(
+          "pushNotificationReceived",
+          async (notification) => {
+            const data = notification?.data || {};
+            const chatId = data.chatId;
+            if (!chatId) return;
+
+            const senderName =
+              notification.title ||
+              (await resolveChatSenderName(data.senderId, "New message"));
+            const text = previewChatBody({
+              text: notification.body || data.body,
+            });
+
+            window.dispatchEvent(
+              new CustomEvent("kridana-incoming-chat", {
+                detail: {
+                  chatId,
+                  senderName,
+                  text,
+                  senderId: data.senderId,
+                  type: data.type || "individual",
+                },
+              }),
+            );
+
+            if (!isAppForeground()) return;
+            await showChatMessageNotification({
+              chatId,
+              senderName,
+              body: text,
+              extra: { senderId: data.senderId, type: data.type },
+            });
+          },
+        );
+
+        notificationClickListener = await PushNotifications.addListener(
+          "pushNotificationActionPerformed",
+          (event) => {
+            const data = event.notification?.data || {};
+            const type = String(data.type || "");
+            if (type === "walking" || type === "walking_reminder") {
+              window.location.href = "/Fitness/fitnessdashboard";
+              return;
+            }
+            if (type === "friendRequest") {
+              window.location.href = "/ChatBox";
+              return;
+            }
+            const chatId = data.chatId;
+            if (chatId) {
+              window.location.href = `/chat/${encodeURIComponent(chatId)}`;
+              return;
+            }
+            window.location.href = "/ChatBox";
+          },
+        );
+
+        await PushNotifications.register();
+      } catch (error) {
+        console.error("FCM setup error:", error);
+      }
+    };
+
+    setupPushNotifications();
+
+    return () => {
+      registrationListener?.remove();
+      registrationErrorListener?.remove();
+      notificationClickListener?.remove();
+      receivedListener?.remove();
+    };
+  }, []);
   return (
     <AuthProvider>
       <SelectedStudentProvider>
@@ -274,7 +402,7 @@ function App() {
     text-black
     min-h-screen
     overflow-x-hidden
-    touch-pan-y
+    touch-pan-x touch-pan-y
     md:pb-0
   "
               style={{
@@ -573,6 +701,11 @@ function App() {
                     path="/book-demo/:instituteId"
                     element={<AvailableDemoClasses />}
                   />
+                  <Route
+                    path="/Fitness/fitnessdashboard"
+                    element={<FitnessDashboard />}
+                  />
+                  <Route path="/Fitness/ActiveWalk" element={<ActiveWalk />} />
                 </Routes>
               </main>
             </div>

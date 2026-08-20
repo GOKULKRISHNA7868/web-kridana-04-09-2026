@@ -4,10 +4,13 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { User } from "lucide-react";
-import { ChevronDown } from "lucide-react";
-
-import { ArrowLeft } from "lucide-react";
+import {
+  User,
+  ChevronDown,
+  ArrowLeft,
+  Loader2,
+  CheckCircle2,
+} from "lucide-react";
 export default function TrainerSignup() {
   const navigate = useNavigate();
   const categories = [
@@ -459,7 +462,33 @@ export default function TrainerSignup() {
       return "";
     }
   };
+  // Remove selected profile image
+  const removeProfileImage = () => {
+    if (profilePreview) {
+      URL.revokeObjectURL(profilePreview);
+    }
 
+    setProfileFile(null);
+    setProfilePreview(null);
+
+    if (profileInputRef.current) {
+      profileInputRef.current.value = "";
+    }
+  };
+
+  // Remove one certificate
+  const removeCertificate = (index) => {
+    setCertifications((prev) => prev.filter((_, i) => i !== index));
+
+    setErrors((prev) => ({
+      ...prev,
+      certifications: "",
+    }));
+
+    if (certificateInputRef.current) {
+      certificateInputRef.current.value = "";
+    }
+  };
   const handleCertificateUpload = (e) => {
     const newFiles = Array.from(e.target.files);
 
@@ -467,18 +496,22 @@ export default function TrainerSignup() {
       const combined = [...prev, ...newFiles];
 
       if (combined.length > 3) {
-        setErrors((prev) => ({
-          ...prev,
+        setErrors((prevErr) => ({
+          ...prevErr,
           certifications: "Maximum 3 certifications allowed",
         }));
         return prev;
-        return prev;
       }
+
+      setErrors((prevErr) => ({
+        ...prevErr,
+        certifications: "",
+      }));
 
       return combined;
     });
 
-    e.target.value = null; // allow re-select same file
+    e.target.value = "";
   };
 
   const validateStep = () => {
@@ -684,576 +717,677 @@ export default function TrainerSignup() {
   }, []);
 
   return (
-    <div className="min-h-screen flex justify-center bg-white py-4 sm:py-6 md:py-10 overflow-x-hidden">
-      <div className="w-full max-w-6xl mx-auto px-3 sm:px-6 md:px-8 lg:px-12 rounded-md mt-2 sm:mt-4 mb-6 sm:mb-10 overflow-hidden">
-        {/* HEADER */}
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[#FF6A00] font-semibold mb-4 sm:mb-6 text-sm sm:text-base"
-        >
-          <ArrowLeft size={18} />
-          Back
-        </button>
+    <>
+      {loading && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/35 backdrop-blur-sm px-6">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-7 flex flex-col items-center animate-[fadeIn_.25s_ease]">
+            {/* Animated Circle */}
+            <div className="relative">
+              <div className="w-20 h-20 rounded-full border-4 border-orange-100"></div>
 
-        {/* HEADER SECTION */}
-        <div className="flex flex-col md:flex-row items-center justify-between mb-6 sm:mb-10 gap-4 sm:gap-6">
-          {/* LEFT : Upload Profile */}
-          <div className="flex flex-col items-center mt-2 sm:mt-6">
-            <div
-              onClick={() => profileInputRef.current.click()}
-              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-orange-200 flex items-center justify-center cursor-pointer overflow-hidden flex-shrink-0"
-            >
-              {profilePreview ? (
-                <img
-                  src={profilePreview}
-                  alt="profile"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <User className="w-8 h-8 sm:w-10 sm:h-10 text-orange-600" />
-              )}
+              <Loader2
+                size={42}
+                className="absolute inset-0 m-auto animate-spin text-orange-500"
+              />
             </div>
 
-            <span className="text-xs sm:text-sm text-orange-500 font-medium mt-2 text-center">
-              Upload Profile
-            </span>
-
-            <input
-              type="file"
-              ref={profileInputRef}
-              className="hidden"
-              onChange={handleProfileUpload}
-            />
-
-            {errors.profileImage && (
-              <p className="text-red-500 text-xs mt-2 text-center break-words max-w-[200px]">
-                {errors.profileImage}
-              </p>
-            )}
-          </div>
-
-          {/* CENTER */}
-          <div className="flex-1 flex flex-col items-center w-full">
-            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-500 text-center break-words px-2">
-              Trainer’s Registration
+            <h2 className="mt-6 text-xl font-bold text-gray-800">
+              Creating Trainer Account
             </h2>
 
-            <p className="text-sm sm:text-md text-center mt-4 sm:mt-6">
-              Step {step} to 2
+            <p className="text-sm text-gray-500 text-center mt-2 leading-6">
+              Please wait while we securely create your account and upload your
+              documents.
             </p>
 
-            {/* PROGRESS BARS */}
-            <div className="flex gap-2 sm:gap-4 mt-4 w-full max-w-[580px] px-2 sm:px-0">
-              {[1, 2].map((s) => (
-                <div
-                  key={s}
-                  className={`h-2 sm:h-3 flex-1 rounded-full ${
-                    step >= s ? "bg-orange-500" : "bg-gray-300"
-                  }`}
-                />
-              ))}
+            {/* Progress */}
+            <div className="mt-6 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div className="h-full bg-orange-500 rounded-full animate-pulse w-3/4"></div>
             </div>
-          </div>
 
-          {/* RIGHT SPACER */}
-          <div className="hidden md:block w-24" />
+            <div className="flex items-center gap-2 mt-5 text-green-600 text-sm font-medium">
+              <CheckCircle2 size={18} />
+              Secure Registration
+            </div>
+
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              This usually takes 5–15 seconds.
+              <br />
+              Please don't close this page.
+            </p>
+          </div>
         </div>
+      )}
 
-        {/* STEP 1 */}
-        {step === 1 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-2">
-            {[
-              ["First Name*", "firstName"],
-              ["Last Name*", "lastName"],
-            ].map(([label, name]) => (
-              <div key={name} className="flex flex-col gap-2 mb-1">
-                <label className="text-sm font-semibold break-words">
-                  {label}
-                </label>
-
-                <input
-                  name={name}
-                  value={formData[name]}
-                  onChange={handleChange}
-                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                    errors[name] ? "border-red-500" : ""
-                  }`}
-                />
-
-                {errors[name] && (
-                  <p className="text-red-500 text-xs mt-1 break-words">
-                    {errors[name]}
-                  </p>
-                )}
-              </div>
-            ))}
-
-            {/* ORGANIZATION */}
-            <div className="md:col-span-2 flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Add Association / Organization Name*
-              </label>
-
-              <input
-                name="organization"
-                value={formData.organization}
-                onChange={handleChange}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                  errors.organization ? "border-red-500" : ""
-                }`}
-              />
-
-              {errors.organization && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.organization}
-                </p>
-              )}
-            </div>
-
-            {[
-              ["Designation*", "designation"],
-              ["Date Of Birth*", "dob", "date"],
-            ].map(([label, name, type = "text"]) => (
-              <div key={name} className="flex flex-col">
-                <label className="text-sm font-semibold mb-2 break-words">
-                  {label}
-                </label>
-
-                <input
-                  type={type}
-                  name={name}
-                  value={formData[name]}
-                  onChange={handleChange}
-                  max={
-                    name === "dob"
-                      ? new Date().toISOString().split("T")[0]
-                      : undefined
-                  }
-                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                    errors[name] ? "border-red-500" : ""
-                  }`}
-                />
-
-                {errors[name] && (
-                  <p className="text-red-500 text-xs mt-1 break-words">
-                    {errors[name]}
-                  </p>
-                )}
-              </div>
-            ))}
-
-            {/* CATEGORY */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Select Category*
-              </label>
-
-              <div ref={categoryRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowCategory(!showCategory)}
-                  className={`${inputClass} w-full flex justify-between items-center gap-2 overflow-hidden text-sm sm:text-base`}
-                >
-                  <span className="truncate text-left flex-1">
-                    {formData.category || "Select Category"}
-                  </span>
-
-                  <ChevronDown
-                    size={18}
-                    className={`flex-shrink-0 transition-transform ${
-                      showCategory ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-
-                {showCategory && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-md max-h-48 overflow-y-auto">
-                    {categories.map((cat) => (
-                      <div
-                        key={cat}
-                        onClick={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            category: cat,
-                            subCategory: "",
-                          }));
-
-                          setAvailableSubCategories(subCategoryMap[cat] || []);
-
-                          setShowCategory(false);
-                        }}
-                        className="px-4 py-2 hover:bg-blue-100 cursor-pointer text-sm break-words"
-                      >
-                        {cat}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {errors.category && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.category}
-                </p>
-              )}
-            </div>
-
-            {/* SUB CATEGORY */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Select Sub – Category*
-              </label>
-
-              <div ref={subCategoryRef} className="relative">
-                <button
-                  type="button"
-                  disabled={!formData.category}
-                  onClick={() => setShowSubCategory(!showSubCategory)}
-                  className={`${inputClass} w-full flex justify-between items-center gap-2 overflow-hidden text-sm sm:text-base ${
-                    !formData.category ? "opacity-50 cursor-not-allowed" : ""
-                  }`}
-                >
-                  <span className="truncate text-left flex-1">
-                    {formData.subCategory ||
-                      (formData.category
-                        ? "Select Sub Category"
-                        : "Select Category First")}
-                  </span>
-
-                  <ChevronDown
-                    size={18}
-                    className={`flex-shrink-0 transition-transform ${
-                      showSubCategory ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-
-                {showSubCategory && formData.category && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-md max-h-48 overflow-y-auto">
-                    {availableSubCategories.map((sub) => (
-                      <div
-                        key={sub}
-                        onClick={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            subCategory: sub,
-                          }));
-
-                          setShowSubCategory(false);
-                        }}
-                        className="px-4 py-2 hover:bg-blue-100 cursor-pointer text-sm break-words"
-                      >
-                        {sub}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {errors.subCategory && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.subCategory}
-                </p>
-              )}
-            </div>
-
-            {/* EXPERIENCE */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Experience*
-              </label>
-
-              <input
-                name="experience"
-                value={formData.experience}
-                onChange={handleChange}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                  errors.experience ? "border-red-500" : ""
-                }`}
-              />
-
-              {errors.experience && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.experience}
-                </p>
-              )}
-            </div>
-
-            {/* CERTIFICATIONS */}
-            <div className="flex flex-col relative">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Upload Certification* / License Number
-              </label>
-
-              <input
-                readOnly
-                value={
-                  certifications.length
-                    ? `${certifications.length} file(s) selected`
-                    : ""
-                }
-                placeholder="Upload certification or licence images"
-                className={`${inputClass} w-full min-w-0 pr-12 truncate text-xs sm:text-sm`}
-              />
-
-              <button
-                type="button"
-                onClick={() => certificateInputRef.current.click()}
-                className="absolute right-3 top-[38px] sm:top-[36px]"
-              >
-                <img
-                  src="/upload.png"
-                  alt="upload"
-                  className="w-5 h-5 sm:w-6 sm:h-6 cursor-pointer"
-                />
-              </button>
-
-              <input
-                type="file"
-                ref={certificateInputRef}
-                multiple
-                accept="image/*"
-                className="hidden"
-                onChange={handleCertificateUpload}
-              />
-
-              <p className="text-xs text-gray-500 mt-1 break-words">
-                Upload certification or licence images (1–3 only)
-              </p>
-
-              {errors.certifications && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.certifications}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 2 */}
-        {step === 2 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-6 sm:mt-8">
-            {/* PHONE */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Add Phone Number*
-              </label>
-
-              <input
-                name="phoneNumber"
-                value={formData.phoneNumber}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                onChange={handleChange}
-                maxLength={10}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                  errors.phoneNumber ? "border-red-500" : ""
-                }`}
-              />
-
-              {errors.phoneNumber && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.phoneNumber}
-                </p>
-              )}
-            </div>
-
-            {/* CITY */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                City*
-              </label>
-
-              <input
-                name="city"
-                value={formData.city}
-                onChange={handleChange}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                  errors.city ? "border-red-500" : ""
-                }`}
-              />
-
-              {errors.city && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.city}
-                </p>
-              )}
-            </div>
-
-            {/* STATE */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                State*
-              </label>
-
-              <input
-                name="state"
-                value={formData.state}
-                onChange={handleChange}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                  errors.state ? "border-red-500" : ""
-                }`}
-              />
-
-              {errors.state && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.state}
-                </p>
-              )}
-            </div>
-
-            {/* EMAIL */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Add E – Mail Id*
-              </label>
-
-              <input
-                type="email"
-                name="email"
-                onChange={handleChange}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
-              />
-
-              {errors.email && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.email}
-                </p>
-              )}
-            </div>
-
-            {/* PASSWORD */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Create Password*
-              </label>
-
-              <input
-                type="password"
-                name="password"
-                onChange={handleChange}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
-              />
-
-              {errors.password && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.password}
-                </p>
-              )}
-            </div>
-
-            {/* CONFIRM PASSWORD */}
-            <div className="flex flex-col">
-              <label className="text-sm font-semibold mb-2 break-words">
-                Re – Enter Password*
-              </label>
-
-              <input
-                type="password"
-                name="confirmPassword"
-                onChange={handleChange}
-                className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
-              />
-
-              {errors.confirmPassword && (
-                <p className="text-red-500 text-xs mt-1 break-words">
-                  {errors.confirmPassword}
-                </p>
-              )}
-            </div>
-
-            {/* LOGIN */}
-            <div className="col-span-1 md:col-span-2 text-sm mt-2 break-words">
-              Already Have an Account ?{" "}
-              <span
-                className="text-orange-500 cursor-pointer font-medium"
-                onClick={() => navigate("/login")}
-              >
-                Login
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div className="h-14 sm:h-24"></div>
-
-        {/* AGREEMENT */}
-        <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-700 mt-4 leading-relaxed">
-          <input
-            type="checkbox"
-            checked={agreed}
-            onChange={(e) => setAgreed(e.target.checked)}
-            className="mt-1 flex-shrink-0"
-          />
-
-          <p className="break-words">
-            I agree to the{" "}
-            <span
-              onClick={() => navigate("/terms")}
-              className="text-blue-600 underline cursor-pointer"
-            >
-              Terms & Conditions
-            </span>
-            ,{" "}
-            <span
-              onClick={() => navigate("/privacy")}
-              className="text-blue-600 underline cursor-pointer"
-            >
-              Privacy Policy
-            </span>
-            ,{" "}
-            <span
-              onClick={() => navigate("/paymentpolicy")}
-              className="text-blue-600 underline cursor-pointer"
-            >
-              Payment & Merchant Policy
-            </span>
-            .
-          </p>
-        </div>
-
-        {/* SUBMIT ERROR */}
-        {errors.submit && (
-          <p className="text-red-500 text-sm text-right mb-3 mt-3 break-words">
-            {errors.submit}
-          </p>
-        )}
-
-        {/* BUTTONS */}
-        <div className="flex flex-wrap justify-end gap-3 sm:gap-6 mt-6">
+      <div className="min-h-screen flex justify-center bg-white py-4 sm:py-6 md:py-10 overflow-x-hidden">
+        <div className="w-full max-w-6xl mx-auto px-3 sm:px-6 md:px-8 lg:px-12 rounded-md mt-2 sm:mt-4 mb-6 sm:mb-10 overflow-hidden">
+          {/* HEADER */}
           <button
-            onClick={handleBack}
-            className="text-orange-500 font-medium text-sm sm:text-base whitespace-nowrap"
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-[#FF6A00] font-semibold mb-4 sm:mb-6 text-sm sm:text-base"
           >
+            <ArrowLeft size={18} />
             Back
           </button>
 
-          {step < 2 && (
-            <button
-              onClick={handleNext}
-              className="bg-orange-500 text-white px-6 sm:px-8 py-2 rounded-md font-semibold text-sm sm:text-base whitespace-nowrap"
-            >
-              Next
-            </button>
+          {/* HEADER SECTION */}
+          <div className="flex flex-col md:flex-row items-center justify-between mb-6 sm:mb-10 gap-4 sm:gap-6">
+            {/* LEFT : Upload Profile */}
+            <div className="flex flex-col items-center mt-2 sm:mt-6">
+              <div className="flex flex-col items-center mt-2 sm:mt-6">
+                <div className="relative">
+                  <div
+                    onClick={() => profileInputRef.current.click()}
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-orange-200 flex items-center justify-center cursor-pointer overflow-hidden"
+                  >
+                    {profilePreview ? (
+                      <img
+                        src={profilePreview}
+                        alt="profile"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-8 h-8 sm:w-10 sm:h-10 text-orange-600" />
+                    )}
+                  </div>
+
+                  {profilePreview && (
+                    <button
+                      type="button"
+                      onClick={removeProfileImage}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <span className="text-xs sm:text-sm text-orange-500 font-medium mt-2">
+                  Upload Profile
+                </span>
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={profileInputRef}
+                  className="hidden"
+                  onChange={handleProfileUpload}
+                />
+
+                {errors.profileImage && (
+                  <p className="text-red-500 text-xs mt-2">
+                    {errors.profileImage}
+                  </p>
+                )}
+              </div>
+
+              <input
+                type="file"
+                ref={profileInputRef}
+                className="hidden"
+                onChange={handleProfileUpload}
+              />
+
+              {errors.profileImage && (
+                <p className="text-red-500 text-xs mt-2 text-center break-words max-w-[200px]">
+                  {errors.profileImage}
+                </p>
+              )}
+            </div>
+
+            {/* CENTER */}
+            <div className="flex-1 flex flex-col items-center w-full">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-500 text-center break-words px-2">
+                Trainer’s Registration
+              </h2>
+
+              <p className="text-sm sm:text-md text-center mt-4 sm:mt-6">
+                Step {step} to 2
+              </p>
+
+              {/* PROGRESS BARS */}
+              <div className="flex gap-2 sm:gap-4 mt-4 w-full max-w-[580px] px-2 sm:px-0">
+                {[1, 2].map((s) => (
+                  <div
+                    key={s}
+                    className={`h-2 sm:h-3 flex-1 rounded-full ${
+                      step >= s ? "bg-orange-500" : "bg-gray-300"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* RIGHT SPACER */}
+            <div className="hidden md:block w-24" />
+          </div>
+
+          {/* STEP 1 */}
+          {step === 1 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-2">
+              {[
+                ["First Name*", "firstName"],
+                ["Last Name*", "lastName"],
+              ].map(([label, name]) => (
+                <div key={name} className="flex flex-col gap-2 mb-1">
+                  <label className="text-sm font-semibold break-words">
+                    {label}
+                  </label>
+
+                  <input
+                    name={name}
+                    value={formData[name]}
+                    onChange={handleChange}
+                    className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
+                      errors[name] ? "border-red-500" : ""
+                    }`}
+                  />
+
+                  {errors[name] && (
+                    <p className="text-red-500 text-xs mt-1 break-words">
+                      {errors[name]}
+                    </p>
+                  )}
+                </div>
+              ))}
+
+              {/* ORGANIZATION */}
+              <div className="md:col-span-2 flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Add Association / Organization Name*
+                </label>
+
+                <input
+                  name="organization"
+                  value={formData.organization}
+                  onChange={handleChange}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
+                    errors.organization ? "border-red-500" : ""
+                  }`}
+                />
+
+                {errors.organization && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.organization}
+                  </p>
+                )}
+              </div>
+
+              {[
+                ["Designation*", "designation"],
+                ["Date Of Birth*", "dob", "date"],
+              ].map(([label, name, type = "text"]) => (
+                <div key={name} className="flex flex-col">
+                  <label className="text-sm font-semibold mb-2 break-words">
+                    {label}
+                  </label>
+
+                  <input
+                    type={type}
+                    name={name}
+                    value={formData[name]}
+                    onChange={handleChange}
+                    max={
+                      name === "dob"
+                        ? new Date().toISOString().split("T")[0]
+                        : undefined
+                    }
+                    className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
+                      errors[name] ? "border-red-500" : ""
+                    }`}
+                  />
+
+                  {errors[name] && (
+                    <p className="text-red-500 text-xs mt-1 break-words">
+                      {errors[name]}
+                    </p>
+                  )}
+                </div>
+              ))}
+
+              {/* CATEGORY */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Select Category*
+                </label>
+
+                <div ref={categoryRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategory(!showCategory)}
+                    className={`${inputClass} w-full flex justify-between items-center gap-2 overflow-hidden text-sm sm:text-base`}
+                  >
+                    <span className="truncate text-left flex-1">
+                      {formData.category || "Select Category"}
+                    </span>
+
+                    <ChevronDown
+                      size={18}
+                      className={`flex-shrink-0 transition-transform ${
+                        showCategory ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {showCategory && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-md max-h-48 overflow-y-auto">
+                      {categories.map((cat) => (
+                        <div
+                          key={cat}
+                          onClick={() => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              category: cat,
+                              subCategory: "",
+                            }));
+
+                            setAvailableSubCategories(
+                              subCategoryMap[cat] || [],
+                            );
+
+                            setShowCategory(false);
+                          }}
+                          className="px-4 py-2 hover:bg-blue-100 cursor-pointer text-sm break-words"
+                        >
+                          {cat}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {errors.category && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.category}
+                  </p>
+                )}
+              </div>
+
+              {/* SUB CATEGORY */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Select Sub – Category*
+                </label>
+
+                <div ref={subCategoryRef} className="relative">
+                  <button
+                    type="button"
+                    disabled={!formData.category}
+                    onClick={() => setShowSubCategory(!showSubCategory)}
+                    className={`${inputClass} w-full flex justify-between items-center gap-2 overflow-hidden text-sm sm:text-base ${
+                      !formData.category ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
+                  >
+                    <span className="truncate text-left flex-1">
+                      {formData.subCategory ||
+                        (formData.category
+                          ? "Select Sub Category"
+                          : "Select Category First")}
+                    </span>
+
+                    <ChevronDown
+                      size={18}
+                      className={`flex-shrink-0 transition-transform ${
+                        showSubCategory ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {showSubCategory && formData.category && (
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-md max-h-48 overflow-y-auto">
+                      {availableSubCategories.map((sub) => (
+                        <div
+                          key={sub}
+                          onClick={() => {
+                            setFormData((prev) => ({
+                              ...prev,
+                              subCategory: sub,
+                            }));
+
+                            setShowSubCategory(false);
+                          }}
+                          className="px-4 py-2 hover:bg-blue-100 cursor-pointer text-sm break-words"
+                        >
+                          {sub}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {errors.subCategory && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.subCategory}
+                  </p>
+                )}
+              </div>
+
+              {/* EXPERIENCE */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Experience*
+                </label>
+
+                <input
+                  name="experience"
+                  value={formData.experience}
+                  onChange={handleChange}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
+                    errors.experience ? "border-red-500" : ""
+                  }`}
+                />
+
+                {errors.experience && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.experience}
+                  </p>
+                )}
+              </div>
+
+              {/* CERTIFICATIONS */}
+              <div className="flex flex-col relative">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Upload Certification* / License Number
+                </label>
+
+                <input
+                  readOnly
+                  value={
+                    certifications.length
+                      ? `${certifications.length} file(s) selected`
+                      : ""
+                  }
+                  placeholder="Upload certification or licence images"
+                  className={`${inputClass} w-full min-w-0 pr-12 truncate text-xs sm:text-sm`}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => certificateInputRef.current.click()}
+                  className="absolute right-3 top-[38px] sm:top-[36px]"
+                >
+                  <img
+                    src="/upload.png"
+                    alt="upload"
+                    className="w-5 h-5 sm:w-6 sm:h-6 cursor-pointer"
+                  />
+                </button>
+
+                <input
+                  type="file"
+                  ref={certificateInputRef}
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleCertificateUpload}
+                />
+
+                <p className="text-xs text-gray-500 mt-1 break-words">
+                  Upload certification or licence images (1–3 only)
+                </p>
+                {certifications.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3 mt-3">
+                    {certifications.map((file, index) => (
+                      <div key={index} className="relative">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt=""
+                          className="w-full h-24 object-cover rounded-lg border"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => removeCertificate(index)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {errors.certifications && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.certifications}
+                  </p>
+                )}
+              </div>
+            </div>
           )}
 
+          {/* STEP 2 */}
           {step === 2 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-6 sm:mt-8">
+              {/* PHONE */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Add Phone Number*
+                </label>
+
+                <input
+                  name="phoneNumber"
+                  value={formData.phoneNumber}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  onChange={handleChange}
+                  maxLength={10}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
+                    errors.phoneNumber ? "border-red-500" : ""
+                  }`}
+                />
+
+                {errors.phoneNumber && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.phoneNumber}
+                  </p>
+                )}
+              </div>
+
+              {/* CITY */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  City*
+                </label>
+
+                <input
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
+                    errors.city ? "border-red-500" : ""
+                  }`}
+                />
+
+                {errors.city && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.city}
+                  </p>
+                )}
+              </div>
+
+              {/* STATE */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  State*
+                </label>
+
+                <input
+                  name="state"
+                  value={formData.state}
+                  onChange={handleChange}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
+                    errors.state ? "border-red-500" : ""
+                  }`}
+                />
+
+                {errors.state && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.state}
+                  </p>
+                )}
+              </div>
+
+              {/* EMAIL */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Add E – Mail Id*
+                </label>
+
+                <input
+                  type="email"
+                  name="email"
+                  onChange={handleChange}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
+                />
+
+                {errors.email && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.email}
+                  </p>
+                )}
+              </div>
+
+              {/* PASSWORD */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Create Password*
+                </label>
+
+                <input
+                  type="password"
+                  name="password"
+                  onChange={handleChange}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
+                />
+
+                {errors.password && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.password}
+                  </p>
+                )}
+              </div>
+
+              {/* CONFIRM PASSWORD */}
+              <div className="flex flex-col">
+                <label className="text-sm font-semibold mb-2 break-words">
+                  Re – Enter Password*
+                </label>
+
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  onChange={handleChange}
+                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
+                />
+
+                {errors.confirmPassword && (
+                  <p className="text-red-500 text-xs mt-1 break-words">
+                    {errors.confirmPassword}
+                  </p>
+                )}
+              </div>
+
+              {/* LOGIN */}
+              <div className="col-span-1 md:col-span-2 text-sm mt-2 break-words">
+                Already Have an Account ?{" "}
+                <span
+                  className="text-orange-500 cursor-pointer font-medium"
+                  onClick={() => navigate("/login")}
+                >
+                  Login
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="h-14 sm:h-24"></div>
+
+          {/* AGREEMENT */}
+          <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-700 mt-4 leading-relaxed">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-1 flex-shrink-0"
+            />
+
+            <p className="break-words">
+              I agree to the{" "}
+              <span
+                onClick={() => navigate("/terms")}
+                className="text-blue-600 underline cursor-pointer"
+              >
+                Terms & Conditions
+              </span>
+              ,{" "}
+              <span
+                onClick={() => navigate("/privacy")}
+                className="text-blue-600 underline cursor-pointer"
+              >
+                Privacy Policy
+              </span>
+              ,{" "}
+              <span
+                onClick={() => navigate("/paymentpolicy")}
+                className="text-blue-600 underline cursor-pointer"
+              >
+                Payment & Merchant Policy
+              </span>
+              .
+            </p>
+          </div>
+
+          {/* SUBMIT ERROR */}
+          {errors.submit && (
+            <p className="text-red-500 text-sm text-right mb-3 mt-3 break-words">
+              {errors.submit}
+            </p>
+          )}
+
+          {/* BUTTONS */}
+          <div className="flex flex-wrap justify-end gap-3 sm:gap-6 mt-6">
             <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!agreed || loading}
-              className={`bg-orange-500 text-white px-6 sm:px-8 py-2 rounded-md font-semibold text-sm sm:text-base whitespace-nowrap
+              onClick={handleBack}
+              className="text-orange-500 font-medium text-sm sm:text-base whitespace-nowrap"
+            >
+              Back
+            </button>
+
+            {step < 2 && (
+              <button
+                onClick={handleNext}
+                className="bg-orange-500 text-white px-6 sm:px-8 py-2 rounded-md font-semibold text-sm sm:text-base whitespace-nowrap"
+              >
+                Next
+              </button>
+            )}
+
+            {step === 2 && (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!agreed || loading}
+                className={`bg-orange-500 text-white px-6 sm:px-8 py-2 rounded-md font-semibold text-sm sm:text-base whitespace-nowrap
               ${
                 loading
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:bg-orange-600"
               }`}
-            >
-              {loading ? "Saving..." : "Save"}
-            </button>
-          )}
+              >
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 size={18} className="animate-spin" />
+                    Creating...
+                  </div>
+                ) : (
+                  "Create Account"
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

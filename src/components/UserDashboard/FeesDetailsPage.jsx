@@ -290,108 +290,188 @@ const PaymentOverview = () => {
   ];
 
   return (
-    <div className="bg-white flex flex-col h-full max-h-full overflow-hidden px-3 sm:px-5 md:px-8 py-4 md:py-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 mb-6">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">
-          Payment Overview
-        </h1>
+    <div className="min-h-screen bg-[#F7F7F7] flex flex-col">
+      {/* HEADER */}
+
+      <div className="z-30 bg-white px-4 py- border-b">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center"
+            >
+              ←
+            </button>
+
+            <h1 className="text-lg font-semibold text-gray-800">
+              Fees Details
+            </h1>
+          </div>
+
+          <button className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center">
+            <svg
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M4 5h10l-4 5v4l-2 1V10L4 5z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-1 mb-6">
-        <select
-          value={selectedCategory}
-          onChange={(e) => {
-            setSelectedCategory(e.target.value);
-            setSelectedSubCategory("");
-          }}
-          className="border px-3 py-2 rounded"
-        >
-          <option value="">All Categories</option>
-          {categories.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
+      <div className="px-4 py-4">
+        {/* FILTERS */}
 
-        <select
-          value={selectedSubCategory}
-          onChange={(e) => setSelectedSubCategory(e.target.value)}
-          className="border px-3 py-2 rounded"
-        >
-          <option value="">All SubCategories</option>
-          {subCategories.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-      </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {/* Cards Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-8 h-full min-h-0 overflow-hidden">
-          <div className="bg-white border border-orange-400 rounded-lg w-full flex flex-col h-full min-h-0 overflow-hidden">
-            {/* Top Section */}
-            <div className="p-2 border-b border-orange-300">
-              <div className="flex justify-between items-start">
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          <select
+            value={selectedCategory}
+            onChange={(e) => {
+              setSelectedCategory(e.target.value);
+              setSelectedSubCategory("");
+            }}
+            className="bg-white border border-gray-200 rounded-xl px-3 h-11 text-sm shadow-sm outline-none"
+          >
+            <option value="">All Categories</option>
+
+            {categories.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+
+          <select
+            value={selectedSubCategory}
+            onChange={(e) => setSelectedSubCategory(e.target.value)}
+            className="bg-white border border-gray-200 rounded-xl px-3 h-11 text-sm shadow-sm outline-none"
+          >
+            <option value="">All SubCategories</option>
+
+            {subCategories.map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* CUSTOMER CARD */}
+
+        <div className="rounded-3xl overflow-hidden shadow-md bg-gradient-to-br from-[#FF8A26] via-[#FF6A00] to-[#F4511E] text-white">
+          <div className="p-5">
+            <div className="flex justify-between items-start">
+              <div className="flex gap-3">
+                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center font-bold text-xl">
+                  {student.firstName?.charAt(0)}
+                </div>
+
                 <div>
-                  <h3 className="font-semibold">
-                    Customer 01 : {student.firstName} {student.lastName}
-                  </h3>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-[12px] opacity-90">Customer 01</p>
+
+                  <h2 className="font-semibold text-[17px]">
+                    {student.firstName} {student.lastName}
+                  </h2>
+
+                  <p className="text-xs mt-1 leading-5 text-white/90">
                     {(student.sports || []).map((sport, i) => (
                       <span key={i}>
-                        {sport.category} - {sport.subCategory}
-                        {i !== student.sports.length - 1 && ", "}
+                        {sport.category} • {sport.subCategory}
+                        {i !== student.sports.length - 1 && (
+                          <>
+                            <br />
+                          </>
+                        )}
                       </span>
                     ))}
                   </p>
                 </div>
-                <div className="w-4 h-4 bg-gray-300 rounded-full"></div>
               </div>
 
-              <div className="mt-2">
-                <p className="text-sm text-gray-600">Due Amount</p>
-                <p className="text-red-500 font-semibold text-lg">
-                  ₹{monthlyFee}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  To be paid :Every Month {student.monthlyDate}th
+              <button className="text-2xl leading-none">⋮</button>
+            </div>
+
+            <div className="mt-6 flex justify-between items-end">
+              <div>
+                <p className="text-xs opacity-90">Due Amount</p>
+
+                <h1 className="text-4xl font-bold mt-1">₹{monthlyFee}</h1>
+              </div>
+
+              <div className="text-right">
+                <p className="text-xs opacity-80">To be paid :</p>
+
+                <p className="text-sm font-medium mt-1">
+                  Every Month {student.monthlyDate}th
                 </p>
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Payment History */}
-            {/* Payment History */}
+        {/* Reminder */}
+
+        <div className="mt-4 bg-[#FFF2E8] rounded-xl px-4 py-3 flex justify-between items-center border border-orange-200">
+          <div className="w-7 h-7 rounded-full bg-[#FF6A00] text-white flex items-center justify-center text-xs font-semibold">
+            {pendingMonths}
+          </div>
+        </div>
+
+        {/* PAYMENT HISTORY */}
+
+        <div className="mt-5 space-y-4 overflow-y-auto pb-24">
+          {/* Payment History */}
+          {/* Payment History */}
+
+          <p className="text-[11px] text-red-400 mb-3">
+            ↓ Scroll to view previous and Pending Months: {pendingMonths}
+          </p>
+
+          {generatedMonths.length === 0 && (
+            <p className="text-xs text-gray-400">No payments found</p>
+          )}
+
+          {sortedMonths.map((item, index) => (
             <div
-              className="
-    flex-1 min-h-0 overflow-y-auto
-    p-5 border-b border-orange-300
-    scrollbar-thin scrollbar-thumb-orange-400
-    relative
-  "
+              key={index}
+              className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
             >
-              <p className="text-[11px] text-red-400 mb-3">
-                ↓ Scroll to view previous and Pending Months: {pendingMonths}
-              </p>
+              {/* Month Header */}
 
-              {generatedMonths.length === 0 && (
-                <p className="text-xs text-gray-400">No payments found</p>
-              )}
+              <div className="px-5 py-4 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-800 text-lg">
+                  {item.month} {item.year}
+                </h3>
 
-              {sortedMonths.map((item, index) => (
-                <div
-                  key={index}
-                  className="flex flex-col sm:flex-row justify-between text-sm mb-3 gap-2"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {item.month} {item.year}
-                    </p>
-                    <p className="text-gray-500 text-xs">
-                      Due Date: {item.month} {student.monthlyDate}
-                    </p>
-                  </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Due Date : {item.month} {student.monthlyDate}
+                </p>
+              </div>
 
-                  {(() => {
-                    const records = student.sports.map((sport) => {
+              {(() => {
+                const records = student.sports.map((sport) => {
+                  const record = feeHistory.find(
+                    (f) =>
+                      f.month === item.key &&
+                      f.category === sport.category &&
+                      f.subCategory === sport.subCategory,
+                  );
+
+                  return {
+                    category: sport.category,
+                    subCategory: sport.subCategory,
+                    amount: Number(sport.fee || 0),
+                    paidAmount: record?.paidAmount || 0,
+                    paid: record && Number(record.paidAmount) > 0,
+                    paymentDate:
+                      record?.paymentDate ||
+                      record?.paidAt ||
+                      record?.createdAt ||
+                      null,
+                  };
+                });
+
+                const handlePayNow = () => {
+                  const unpaidRecords = student.sports
+                    .map((sport) => {
                       const record = feeHistory.find(
                         (f) =>
                           f.month === item.key &&
@@ -399,190 +479,203 @@ const PaymentOverview = () => {
                           f.subCategory === sport.subCategory,
                       );
 
+                      if (record && Number(record.paidAmount) > 0) return null;
+
                       return {
                         category: sport.category,
                         subCategory: sport.subCategory,
-                        amount: Number(sport.fee || 0), // ✅ attach fee HERE
-                        paidAmount: record?.paidAmount || 0,
-                        paid: record && Number(record.paidAmount) > 0,
-                        paymentDate:
-                          record?.paymentDate ||
-                          record?.paidAt ||
-                          record?.createdAt ||
-                          null,
+                        amount: Number(sport.fee || 0),
                       };
-                    });
+                    })
+                    .filter(Boolean);
 
-                    const hasPending = records.some(
-                      (r) => !r.paid || r.paidAmount === 0,
-                    );
+                  const totalAmount = unpaidRecords.reduce(
+                    (sum, r) => sum + r.amount,
+                    0,
+                  );
 
-                    // 🔥 PAY NOW HANDLER
-                    const handlePayNow = () => {
-                      const unpaidRecords = student.sports
-                        .map((sport) => {
-                          const record = feeHistory.find(
-                            (f) =>
-                              f.month === item.key &&
-                              f.category === sport.category &&
-                              f.subCategory === sport.subCategory,
-                          );
+                  navigate("/PaymentSelection", {
+                    state: {
+                      paymentType: "multiple",
+                      studentId: activeStudentId,
+                      studentName: `${student.firstName} ${student.lastName}`,
+                      month: item.key,
+                      items: unpaidRecords,
+                      totalAmount,
+                      student,
+                    },
+                  });
+                };
 
-                          if (record && Number(record.paidAmount) > 0)
-                            return null;
-
-                          return {
-                            category: sport.category,
-                            subCategory: sport.subCategory,
-                            amount: Number(sport.fee || 0),
-                          };
-                        })
-                        .filter(Boolean);
-
-                      const totalAmount = unpaidRecords.reduce(
-                        (sum, r) => sum + r.amount,
-                        0,
-                      );
-
-                      navigate("/PaymentSelection", {
-                        state: {
-                          paymentType: "multiple",
-
-                          studentId: activeStudentId,
-
-                          studentName: `${student.firstName} ${student.lastName}`,
-
-                          month: item.key,
-
-                          items: unpaidRecords,
-
-                          totalAmount,
-
-                          student,
-                        },
-                      });
-                    };
-
-                    return (
-                      <div className="text-left sm:text-right">
-                        {records.map((r, i) => {
-                          const handleSinglePayment = () => {
-                            navigate("/PaymentSelection", {
-                              state: {
-                                paymentType: "single",
-
-                                studentId: activeStudentId,
-
-                                studentName: `${student.firstName} ${student.lastName}`,
-
-                                month: item.key,
-
-                                items: [
-                                  {
-                                    category: r.category,
-                                    subCategory: r.subCategory,
-                                    amount: r.amount,
-                                  },
-                                ],
-
-                                totalAmount: r.amount,
-
-                                student,
+                return (
+                  <>
+                    {records.map((r, i) => {
+                      const handleSinglePayment = () => {
+                        navigate("/PaymentSelection", {
+                          state: {
+                            paymentType: "single",
+                            studentId: activeStudentId,
+                            studentName: `${student.firstName} ${student.lastName}`,
+                            month: item.key,
+                            items: [
+                              {
+                                category: r.category,
+                                subCategory: r.subCategory,
+                                amount: r.amount,
                               },
-                            });
-                          };
+                            ],
+                            totalAmount: r.amount,
+                            student,
+                          },
+                        });
+                      };
 
-                          return (
-                            <div key={i} className="mb-3 border-b pb-2">
-                              <p className="text-xs font-medium">
-                                {r.category} - {r.subCategory}
-                              </p>
-                              {r.paid ? (
-                                <p className="text-green-600 text-xs">
-                                  Paid ₹{r.paidAmount}
-                                  {r.paymentDate && (
-                                    <span className="text-gray-500 ml-2">
-                                      (
-                                      {r.paymentDate
-                                        .toDate()
-                                        .toLocaleDateString("en-IN")}
-                                      )
+                      const iconColor = r.subCategory
+                        .toLowerCase()
+                        .includes("karate")
+                        ? "bg-black"
+                        : r.subCategory.toLowerCase().includes("swimming")
+                        ? "bg-sky-400"
+                        : r.subCategory.toLowerCase().includes("tennis")
+                        ? "bg-lime-500"
+                        : "bg-orange-500";
+
+                      return (
+                        <div
+                          key={i}
+                          className="px-5 py-4 border-b last:border-b-0 border-gray-100"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex gap-3">
+                              <div
+                                className={`w-11 h-11 rounded-full ${iconColor} flex items-center justify-center text-white text-xs font-bold`}
+                              >
+                                {r.subCategory.charAt(0)}
+                              </div>
+
+                              <div>
+                                <h4 className="font-medium text-gray-800">
+                                  {r.category} - {r.subCategory}
+                                </h4>
+
+                                {r.paid ? (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-green-600 text-sm font-medium">
+                                      Paid ₹{r.paidAmount}
                                     </span>
-                                  )}
-                                </p>
-                              ) : (
-                                <>
-                                  <p className="text-red-600 text-xs mb-1">
-                                    Unpaid ₹{r.amount}
-                                  </p>
 
-                                  <button
-                                    onClick={handleSinglePayment}
-                                    className="bg-blue-600 text-white px-3 py-1 rounded text-xs w-full sm:w-auto hover:bg-blue-700"
-                                  >
-                                    Pay Now
-                                  </button>
-                                </>
+                                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-[10px]">
+                                      ✓
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-red-500 text-sm font-medium">
+                                    Unpaid ₹{r.amount}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              {r.paymentDate && r.paid && (
+                                <p className="text-xs text-gray-400 mb-2">
+                                  {r.paymentDate
+                                    .toDate()
+                                    .toLocaleDateString("en-IN")}
+                                </p>
+                              )}
+
+                              {!r.paid && (
+                                <button
+                                  onClick={handleSinglePayment}
+                                  className="bg-[#2F80ED] hover:bg-blue-700 text-white text-xs font-medium rounded-lg px-4 py-2 transition"
+                                >
+                                  Pay Now
+                                </button>
                               )}
                             </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </div>
-              ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {records.some((r) => !r.paid) && (
+                      <div className="px-5 py-4 bg-gray-50 flex justify-end"></div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          ))}
+        </div>
+
+        {/* Bottom Summary */}
+        {/* Bottom Summary */}
+
+        <div className="mt-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-10">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <span className="text-gray-500 text-sm font-medium">
+              Total Fees
+            </span>
+
+            <span className="text-lg font-bold text-gray-800">
+              ₹{expectedTotalFee}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <span className="text-gray-500 text-sm font-medium">Fees Paid</span>
+
+            <span className="text-lg font-bold text-green-600">
+              ₹{totalPaid}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between px-5 py-4">
+            <span className="text-gray-500 text-sm font-medium">
+              Pending Fees
+            </span>
+
+            <span className="text-lg font-bold text-red-500">
+              ₹{pendingFee}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 🔴 Reminder Popup */}
+      {showReminder && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+          <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-2xl shadow-xl px-5 py-4 flex items-center gap-4">
+            <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center text-xl">
+              🔔
             </div>
 
-            {/* Bottom Summary */}
-            <div className="p-5 text-sm font-medium">
-              <div className="flex justify-between mb-2">
-                <p>Total Fees</p>
-                <p>₹{expectedTotalFee}</p>
-              </div>
+            <div>
+              <p className="font-semibold">Payment Reminder</p>
 
-              <div className="flex justify-between mb-2">
-                <p>Fees Paid</p>
-                <p className="text-green-600">₹{totalPaid}</p>
-              </div>
-
-              <div className="flex justify-between">
-                <p>Pending Fees</p>
-                <p className="text-red-600">₹{pendingFee}</p>
-              </div>
+              <p className="text-sm opacity-90">
+                Fee is due on {student.monthlyDate}th
+              </p>
             </div>
           </div>
         </div>
+      )}
+      {processing && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[999] flex items-center justify-center">
+          <div className="bg-white rounded-3xl shadow-2xl px-8 py-8 flex flex-col items-center">
+            <div className="w-14 h-14 rounded-full border-[5px] border-orange-500 border-t-transparent animate-spin"></div>
 
-        {/* 🔴 Reminder Popup */}
-        {showReminder && (
-          <div className="fixed top-5 right-5 z-50 animate-bounce">
-            <div className="bg-red-600 text-white px-6 py-4 rounded-lg shadow-lg">
-              <p className="font-semibold">Payment Reminder 🔔</p>
-              <p className="text-sm mt-1">
-                Your fee is due on {student.monthlyDate}
-              </p>
-            </div>
+            <h2 className="mt-6 text-lg font-semibold text-gray-800">
+              Processing Payment
+            </h2>
+
+            <p className="text-gray-500 text-sm mt-2 text-center">
+              Please wait while we connect securely with Razorpay.
+            </p>
           </div>
-        )}
-        {processing && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-white px-6 py-5 rounded-xl shadow-lg flex flex-col items-center gap-3">
-              {/* Spinner */}
-              <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-
-              {/* Text */}
-              <p className="text-sm font-semibold text-gray-700">
-                Processing Payment...
-              </p>
-
-              <p className="text-xs text-gray-400">
-                Please don’t close this page
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

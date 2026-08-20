@@ -1,332 +1,175 @@
-import React, { useState } from "react";
-import { auth, db } from "../firebase";
-import {
-  doc,
-  getDoc,
-  setDoc,
-  Timestamp,
-  serverTimestamp,
-} from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
-import { useEffect } from "react";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
-export default function Plans() {
-  const navigate = useNavigate();
-  const [billing, setBilling] = useState("monthly");
-  const [role, setRole] = useState(null);
-  const [loadingPlan, setLoadingPlan] = useState(null);
+import React, { useState, useEffect } from "react";
+import { Rocket, CheckCircle, Play } from "lucide-react";
+
+export default function LaunchPage() {
+  const [launching, setLaunching] = useState(false);
+  const [count, setCount] = useState(10);
+  const [launched, setLaunched] = useState(false);
+
+  const PLAYSTORE_LINK =
+    "https://play.google.com/store/apps/details?id=com.yourapp";
 
   useEffect(() => {
-    const fetchRole = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
+    let timer;
 
-      const trainerSnap = await getDoc(doc(db, "trainers", user.uid));
-      const instituteSnap = await getDoc(doc(db, "institutes", user.uid));
-
-      if (trainerSnap.exists()) setRole("trainer");
-      else if (instituteSnap.exists()) setRole("institute");
-    };
-
-    fetchRole();
-  }, []);
-
-  useEffect(() => {
-    const authInstance = getAuth();
-
-    const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
-      if (!user) return;
-
-      try {
-        const trainerSnap = await getDoc(doc(db, "trainers", user.uid));
-        const instituteSnap = await getDoc(doc(db, "institutes", user.uid));
-
-        if (trainerSnap.exists()) setRole("trainer");
-        else if (instituteSnap.exists()) setRole("institute");
-      } catch (err) {
-        console.error("Error fetching role:", err);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
-  const loadRazorpay = () => {
-    return new Promise((resolve) => {
-      if (window.Razorpay) {
-        resolve(true);
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-
-      document.body.appendChild(script);
-    });
-  };
-  const startPaidSubscription = async (planType, amount) => {
-    const user = auth.currentUser;
-    if (!user) {
-      alert("Please login first");
-      return;
+    if (launching && count > 0) {
+      timer = setTimeout(() => {
+        setCount((prev) => prev - 1);
+      }, 1000);
     }
 
-    try {
-      setLoadingPlan(planType);
+    if (launching && count === 0) {
+      setTimeout(() => {
+        setLaunched(true);
+      }, 1000);
 
-      // ✅ LOAD RAZORPAY SDK FIRST
-      const loaded = await loadRazorpay();
-
-      if (!loaded) {
-        alert("Razorpay SDK failed to load");
-        setLoadingPlan(null);
-        return;
-      }
-
-      // ✅ CREATE ORDER
-      const res = await fetch(
-        "https://kridana-razorpay-backend.onrender.com/create-order",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: Number(amount) * 100,
-          }),
-        },
-      );
-
-      const order = await res.json();
-
-      console.log("ORDER:", order);
-
-      // ❌ Safety check
-      if (!order.id) {
-        alert("Order creation failed");
-        setLoadingPlan(null);
-        return;
-      }
-
-      // ✅ RAZORPAY OPTIONS
-      const options = {
-        key: "rzp_live_SUjQtjkrUIwaHm", // (use test key for dev)
-        amount: order.amount,
-        currency: "INR",
-        name: "Kridana",
-        description: `${planType} Subscription`,
-        order_id: order.id,
-
-        handler: async function (response) {
-          try {
-            const verifyRes = await fetch(
-              "https://kridana-razorpay-backend.onrender.com/verify-payment",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(response),
-              },
-            );
-
-            const verifyData = await verifyRes.json();
-
-            if (verifyData.success) {
-              // ✅ REMOVE firestore saving here
-              // ✅ REMOVE alert
-              // ✅ ONLY NAVIGATE
-
-              navigate("/payment-success", {
-                state: {
-                  paymentId: response.razorpay_payment_id,
-                  orderId: response.razorpay_order_id,
-                  signature: response.razorpay_signature,
-                  amount,
-                  planType,
-                },
-              });
-            } else {
-              alert("❌ Payment verification failed");
-            }
-          } catch (err) {
-            console.error(err);
-            alert("Verification error");
-          } finally {
-            setLoadingPlan(null);
-          }
-        },
-
-        prefill: {
-          email: user.email,
-        },
-
-        theme: {
-          color: "#84cc16",
-        },
-      };
-
-      // ✅ OPEN CHECKOUT
-      const rzp = new window.Razorpay(options);
-
-      rzp.open();
-
-      rzp.on("payment.failed", function (response) {
-        console.log("❌ FAILED:", response.error);
-        alert(response.error.description || "Payment Failed");
-        setLoadingPlan(null);
-      });
-    } catch (err) {
-      console.error(err);
-      alert("Payment failed");
-      setLoadingPlan(null);
+      setTimeout(() => {
+        window.location.href = PLAYSTORE_LINK;
+      }, 3500);
     }
+
+    return () => clearTimeout(timer);
+  }, [launching, count]);
+
+  const handleLaunch = () => {
+    setLaunching(true);
   };
+
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center py-16">
-      <h1 className="text-3xl font-bold mb-2">Get Started</h1>
-      <p className="text-gray-500 mb-6">
-        Start for free, pick a plan later. Ready to be part of the future
-      </p>
-
-      <p className="text-lg font-semibold text-lime-500">
-        Limited Offer (First 1000 Businesses Only)
-      </p>
-
-      {/* Toggle */}
-      <div className="flex border rounded-full mb-10 overflow-hidden">
-        <button
-          onClick={() => setBilling("monthly")}
-          className={`px-6 py-2 ${
-            billing === "monthly" ? "bg-orange-500 text-black" : "bg-white"
-          }`}
-        >
-          Monthly Plan
-        </button>
-        <button
-          onClick={() => setBilling("annual")}
-          className={`px-6 py-2 ${
-            billing === "annual" ? "bg-orange-500 text-black" : "bg-white"
-          }`}
-        >
-          Annual Plan
-        </button>
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-indigo-900 via-purple-900 to-black flex items-center justify-center p-5">
+      {/* Animated Background */}
+      <div className="absolute inset-0 overflow-hidden">
+        {[...Array(30)].map((_, i) => (
+          <span
+            key={i}
+            className="absolute bg-white/20 rounded-full animate-pulse"
+            style={{
+              width: `${Math.random() * 8 + 3}px`,
+              height: `${Math.random() * 8 + 3}px`,
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              animationDuration: `${Math.random() * 4 + 2}s`,
+            }}
+          />
+        ))}
       </div>
 
-      {/* Cards */}
-      <div className="flex justify-center w-full px-6">
-        {/* FREE */}
+      {/* Card */}
+      <div className="relative z-10 max-w-2xl w-full bg-white/10 backdrop-blur-xl rounded-3xl border border-white/20 shadow-2xl p-8 md:p-12 text-center">
+        {!launching && !launched && (
+          <>
+            <div className="mx-auto mb-8 h-28 w-28 rounded-full bg-gradient-to-r from-pink-500 to-orange-500 flex items-center justify-center shadow-2xl">
+              <Rocket size={60} className="text-white" />
+            </div>
 
-        {/* TRAINER */}
-        {role === "trainer" && (
-          <div className="bg-gray-900 text-white rounded-xl p-8 relative flex flex-col justify-between">
-            <span className="absolute top-3 right-3 bg-lime-400 text-black text-xs px-2 py-1 rounded">
-              50% OFF
-            </span>
+            <h1 className="text-5xl font-extrabold text-white mb-4">
+              Product Launch
+            </h1>
 
-            <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-              <span className="text-white">
-                ₹ {billing === "monthly" ? "199 / Month" : "2,388 / Year"}
-              </span>
-
-              <span className="line-through text-gray-400 text-sm">
-                ₹ {billing === "monthly" ? "499/ Month" : "5,988 / Year"}
-              </span>
-            </h2>
-            <p className="text-lime-400 font-semibold mb-4">Trainer’s Plan</p>
-
-            <ul className="space-y-2 text-sm">
-              <li>✔ 24×7 Advertising</li>
-              <li>✔ Fee Collection & Alerts</li>
-              <li>✔ Customer Attendance Tracking</li>
-              <li>✔ Performance Tracking</li>
-              <li>✔ Revenue Tracking</li>
-            </ul>
+            <p className="text-gray-300 text-lg mb-10 leading-relaxed">
+              Your amazing product is ready to go live.
+              <br />
+              Click the button below to begin the official launch.
+            </p>
 
             <button
-              onClick={() =>
-                navigate("/PaymentMethodPage", {
-                  state: {
-                    planType: "TRAINER",
-                    amount: billing === "monthly" ? "199.00" : "2388.00",
-                    billing,
-                  },
-                })
-              }
-              disabled={loadingPlan === "TRAINER"}
-              className={`mt-6 w-full py-2 rounded font-semibold flex items-center justify-center gap-2 ${
-                loadingPlan === "TRAINER"
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-lime-400 text-black"
-              }`}
+              onClick={handleLaunch}
+              className="group bg-gradient-to-r from-pink-500 to-orange-500 hover:scale-105 duration-300 text-white px-10 py-5 rounded-full text-xl font-bold shadow-2xl flex items-center gap-3 mx-auto"
             >
-              {loadingPlan === "TRAINER" ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                  Processing...
-                </>
-              ) : (
-                "Subscribe"
-              )}
+              <Rocket className="group-hover:-rotate-12 transition" />
+              Launch Product
             </button>
-          </div>
+          </>
         )}
 
-        {/* INSTITUTE */}
-        {role === "institute" && (
-          <div className="bg-gray-900 text-white rounded-xl p-8 relative flex flex-col justify-between">
-            <span className="absolute top-3 right-3 bg-lime-400 text-black text-xs px-2 py-1 rounded">
-              50% OFF
-            </span>
+        {launching && !launched && (
+          <>
+            <div className="mb-8 animate-bounce">
+              <Rocket size={90} className="mx-auto text-orange-400" />
+            </div>
 
-            <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
-              <span className="text-white">
-                ₹ {billing === "monthly" ? "499" : "5,994 / Year"}
-              </span>
-
-              <span className="line-through text-gray-400 text-sm">
-                ₹ {billing === "monthly" ? "999/-" : "11,988 / Year"}
-              </span>
+            <h2 className="text-4xl font-bold text-white mb-3">
+              Launch Sequence
             </h2>
-            <p className="text-lime-400 font-semibold mb-4">Institutes Plan</p>
 
-            <ul className="space-y-2 text-sm">
-              <li>✔ 24×7 Advertising (Enhanced)</li>
-              <li>✔ Fee Collection & Alerts</li>
-              <li>✔ Customer Attendance Tracking</li>
-              <li>✔ Performance Tracking (Advanced)</li>
-              <li>✔ Revenue Tracking (Advanced)</li>
-              <li>✔ Salary Management</li>
-              <li>✔ Staff Attendance</li>
-              <li>✔ Bookings</li>
-            </ul>
+            <p className="text-gray-300 mb-10">Preparing systems...</p>
 
-            <button
-              onClick={() =>
-                navigate("/PaymentMethodPage", {
-                  state: {
-                    planType: "INSTITUTE",
-                    amount: billing === "monthly" ? "499.00" : "5988.00",
-                    billing,
-                  },
-                })
-              }
-              disabled={loadingPlan === "INSTITUTE"}
-              className={`mt-6 w-full py-2 rounded font-semibold flex items-center justify-center gap-2 ${
-                loadingPlan === "INSTITUTE"
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-lime-400 text-black"
-              }`}
-            >
-              {loadingPlan === "INSTITUTE" ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                  Processing...
-                </>
-              ) : (
-                "Subscribe"
-              )}
-            </button>
-          </div>
+            <div className="mx-auto h-48 w-48 rounded-full border-[10px] border-white/20 border-t-orange-500 flex items-center justify-center animate-spin">
+              <div className="h-40 w-40 rounded-full bg-white/10 flex items-center justify-center animate-none">
+                <span className="text-7xl font-black text-white">{count}</span>
+              </div>
+            </div>
+
+            <div className="mt-10 w-full bg-white/10 rounded-full h-3 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-pink-500 to-orange-500 transition-all duration-1000"
+                style={{
+                  width: `${((10 - count) / 10) * 100}%`,
+                }}
+              ></div>
+            </div>
+          </>
+        )}
+
+        {launched && (
+          <>
+            {/* Confetti */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {[...Array(80)].map((_, i) => (
+                <span
+                  key={i}
+                  className="absolute rounded-full animate-ping"
+                  style={{
+                    width: "8px",
+                    height: "8px",
+                    background: [
+                      "#ff4d4d",
+                      "#00e676",
+                      "#ffd600",
+                      "#00b0ff",
+                      "#ff00ff",
+                    ][i % 5],
+                    left: `${Math.random() * 100}%`,
+                    top: `${Math.random() * 100}%`,
+                    animationDuration: `${Math.random() * 2 + 1}s`,
+                  }}
+                />
+              ))}
+            </div>
+
+            <CheckCircle
+              size={120}
+              className="mx-auto text-green-400 animate-bounce"
+            />
+
+            <h2 className="text-5xl font-extrabold text-white mt-6">
+              Product Launched!
+            </h2>
+
+            <p className="text-xl text-green-300 mt-5">
+              🎉 Product Launched Successfully 🎉
+            </p>
+
+            <p className="text-gray-300 mt-5">
+              Redirecting to Google Play Store...
+            </p>
+
+            <div className="mt-10">
+              <button
+                onClick={() => (window.location.href = PLAYSTORE_LINK)}
+                className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-full font-bold text-lg flex items-center gap-3 mx-auto"
+              >
+                <Play />
+                Open Play Store
+              </button>
+            </div>
+          </>
         )}
       </div>
+
+      {/* Floating Glow */}
+      <div className="absolute -top-32 -left-32 h-72 w-72 bg-pink-500 blur-[150px] opacity-40 rounded-full"></div>
+      <div className="absolute -bottom-32 -right-32 h-72 w-72 bg-blue-500 blur-[150px] opacity-40 rounded-full"></div>
     </div>
   );
 }

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
 import { useAuth } from "../../../../context/AuthContext";
+import { Image as ImageIcon } from "lucide-react";
+import StepHeader from "../StepHeader";
 
 const MediaGallery = ({ setStep }) => {
   const { user } = useAuth();
@@ -73,7 +75,10 @@ const MediaGallery = ({ setStep }) => {
   /* ================= LOAD DATA ================= */
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.uid) return;
+      if (!user?.uid) {
+        setLoading(false);
+        return;
+      }
 
       try {
         const docRef = doc(db, "institutes", user.uid); // 🔥 dynamic institute
@@ -202,109 +207,111 @@ const MediaGallery = ({ setStep }) => {
     });
   };
 
+  const removeImage = (name, index) => {
+    setFormData((prev) => ({
+      ...prev,
+      [name]: prev[name].filter((_, i) => i !== index),
+    }));
+  };
+
   if (loading) {
-    return <p className="text-gray-500 p-6">Loading...</p>;
+    return <p className="text-gray-500 py-8 text-center">Loading...</p>;
   }
 
-  /* ================= UI (UNCHANGED) ================= */
   return (
-    <div className="w-full">
-      <div className="w-full max-w-4xl bg-white rounded-lg shadow-md p-6 sm:p-8">
-        {/* BACK */}
-        <div
-          onClick={() => setStep(5)}
-          className="flex items-center gap-2 text-orange-500 font-medium mb-4 cursor-pointer hover:text-orange-600 transition"
-        >
-          ← Back
+    <div className="w-full pb-6">
+      <StepHeader
+        title="Photos & Videos"
+        onBack={() => setStep?.(0)}
+        onSave={handleSave}
+        saving={saving || uploading}
+      />
+
+      <div className="flex flex-col items-center mb-5">
+        <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+          <ImageIcon size={28} />
         </div>
+        <p className="text-sm font-semibold text-gray-900 mt-3">Photos & Videos</p>
+        <p className="text-xs text-gray-500 mt-0.5 text-center">
+          Upload training photos, facilities and reels.
+        </p>
+      </div>
 
-        <div className="border-b border-gray-300 mb-6"></div>
-
-        <h2 className="text-orange-500 font-semibold text-lg sm:text-xl mb-6">
-          Media & Gallery
-        </h2>
-
-        {/* SINGLE COLUMN LAYOUT */}
-        <div className="grid grid-cols-1 gap-6">
-          {[
-            { label: "Training Images", name: "trainingImages" },
-            { label: "Facility Images", name: "facilityImages" },
-            { label: "Equipment Images", name: "equipmentImages" },
-            { label: "Uniform Images", name: "uniformImages" },
-          ].map((field) => (
-            <div key={field.name} className="flex flex-col">
-              <label className="text-sm font-medium mb-2">{field.label}</label>
-              {uploadMsg[field.name] && (
-                <p className="text-green-600 text-sm mt-1">
-                  {uploadMsg[field.name]}
-                </p>
-              )}
-
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  name={field.name}
-                  accept="image/*"
-                  multiple
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-
-                <div className="border border-gray-300 rounded-md px-3 py-2 flex justify-between items-center hover:border-orange-500 transition">
-                  <span className="text-gray-500">
-                    {formData[field.name]?.length > 0
-                      ? `${formData[field.name].length} image(s) uploaded`
-                      : "Upload Images"}
-                  </span>
-                  <img src="/upload.png" alt="upload" className="w-5 h-5" />
+      <div className="space-y-5">
+        {[
+          { label: "Training Images", name: "trainingImages" },
+          { label: "Training Images", name: "trainingImages" },
+          { label: "Facility Images", name: "facilityImages" },
+          { label: "Equipment Images", name: "equipmentImages" },
+          { label: "Uniform Images", name: "uniformImages" },
+        ].map((field) => (
+          <div key={field.name}>
+            <label className="text-sm font-medium mb-2 block">{field.label}</label>
+            {uploadMsg[field.name] && (
+              <p className="text-green-600 text-sm mb-1">{uploadMsg[field.name]}</p>
+            )}
+            <div className="flex flex-wrap gap-2 mb-2">
+              {formData[field.name]?.map((img, index) => (
+                <div key={`${img}-${index}`} className="relative">
+                  <img
+                    src={img}
+                    alt=""
+                    className="w-16 h-16 rounded-lg object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(field.name, index)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs"
+                  >
+                    ×
+                  </button>
                 </div>
-              </label>
+              ))}
             </div>
-          ))}
-        </div>
-        {/* ================= REELS UPLOAD UI ================= */}
-        <div className="flex flex-col mt-6">
-          <label className="text-sm font-medium mb-2">
-            Upload Reels (Videos)
-          </label>
+            <label className="cursor-pointer block">
+              <input
+                type="file"
+                name={field.name}
+                accept="image/*"
+                multiple
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <div className="min-h-[48px] border border-dashed border-gray-300 rounded-xl px-4 py-3 flex justify-between items-center">
+                <span className="text-gray-500 text-sm">
+                  {formData[field.name]?.length > 0
+                    ? `${formData[field.name].length} image(s) uploaded`
+                    : "Upload Images"}
+                </span>
+                <img src="/upload.png" alt="upload" className="w-5 h-5" />
+              </div>
+            </label>
+          </div>
+        ))}
+      </div>
 
-          <label className="cursor-pointer">
-            <input
-              type="file"
-              accept="video/*"
-              multiple
-              onChange={handleReelsUpload}
-              className="hidden"
-            />
-
-            <div className="border border-gray-300 rounded-md px-3 py-2 flex justify-between items-center hover:border-orange-500 transition">
-              <span className="text-gray-500">Upload Reels</span>
-              <img src="/upload.png" alt="upload" className="w-5 h-5" />
-            </div>
-          </label>
-
-          {uploadMsg.reels && (
-            <p className="text-green-600 text-sm mt-1">{uploadMsg.reels}</p>
-          )}
-        </div>
-        {/* BUTTONS */}
-        <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="text-orange-500 font-medium hover:text-orange-600 transition"
-          >
-            Cancel
-          </button>
-
-          <button
-            onClick={handleSave}
-            disabled={saving || uploading}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-md transition shadow-sm"
-          >
-            {saving ? "Saving..." : uploading ? "Uploading..." : "Save Changes"}
-          </button>
-        </div>
+      <div className="mt-5">
+        <label className="text-sm font-medium mb-2 block">
+          Upload Reels (Videos)
+        </label>
+        <label className="cursor-pointer block">
+          <input
+            type="file"
+            accept="video/*"
+            multiple
+            onChange={handleReelsUpload}
+            className="hidden"
+          />
+          <div className="min-h-[48px] border border-dashed border-gray-300 rounded-xl px-4 py-3 flex justify-between items-center">
+            <span className="text-gray-500 text-sm">
+              {reelsUploading ? "Uploading reels..." : "Upload Reels"}
+            </span>
+            <img src="/upload.png" alt="upload" className="w-5 h-5" />
+          </div>
+        </label>
+        {reelsUploadMsg && (
+          <p className="text-green-600 text-sm mt-1">{reelsUploadMsg}</p>
+        )}
       </div>
     </div>
   );

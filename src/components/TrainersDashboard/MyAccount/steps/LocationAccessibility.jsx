@@ -5,6 +5,8 @@ import { useAuth } from "../../../../context/AuthContext";
 
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
+import { MapPin } from "lucide-react";
+import StepHeader from "../StepHeader";
 
 const LocationAccessibility = ({ setStep }) => {
   const { user } = useAuth();
@@ -206,109 +208,102 @@ const LocationAccessibility = ({ setStep }) => {
     }
   };
 
-  if (loading) return <p>Loading...</p>;
+  if (loading) return <p className="text-gray-500 py-8 text-center">Loading...</p>;
 
-  const inputClass = (field) =>
-    `border ${
-      errors[field] ? "border-red-500" : "border-gray-300"
-    } rounded-md px-3 py-2`;
+  const fieldClass = (field) =>
+    `w-full min-h-[48px] text-base rounded-xl border ${
+      errors[field] ? "border-red-500" : "border-gray-200"
+    } bg-white px-4 py-3 text-gray-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`;
 
   return (
-    <div className="w-full">
-      <div
-        onClick={() => setStep(1)}
-        className="cursor-pointer text-orange-600 mb-4"
-      >
-        ← Back
+    <div className="w-full pb-6">
+      <StepHeader
+        title="Location & Accessibility"
+        onBack={() => setStep?.(0)}
+        onSave={handleSave}
+        saving={saving}
+      />
+
+      <div className="flex flex-col items-center mb-5">
+        <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+          <MapPin size={28} />
+        </div>
+        <p className="text-sm font-semibold text-gray-900 mt-3">
+          Location & Accessibility
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 text-center">
+          Help students find you easily.
+        </p>
       </div>
 
-      <h2 className="text-orange-500 font-semibold text-xl mb-6">
-        Location & Accessibility
-      </h2>
-
       <button
+        type="button"
         onClick={fetchCurrentLocation}
-        className="mb-5 text-orange-600 font-medium"
+        disabled={geoLoading}
+        className="mb-5 w-full min-h-[48px] text-sm bg-orange-50 text-orange-600 font-semibold rounded-xl"
       >
         {geoLoading ? "Fetching location..." : "Use Current Location"}
       </button>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <textarea
-          rows={4}
-          name="fullAddress"
-          value={formData.fullAddress}
-          onChange={handleChange}
-          className={`${inputClass("fullAddress")} sm:col-span-2`}
-        />
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
+            Full Address <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            rows={4}
+            name="fullAddress"
+            value={formData.fullAddress}
+            onChange={handleChange}
+            className={`${fieldClass("fullAddress")} min-h-[96px] resize-none`}
+          />
+          {errors.fullAddress && (
+            <span className="text-red-500 text-xs mt-1">{errors.fullAddress}</span>
+          )}
+        </div>
 
-        <input
-          name="landmark"
-          value={formData.landmark}
-          onChange={handleChange}
-          placeholder="Landmark"
-          className={inputClass("landmark")}
-        />
+        {[
+          { label: "Landmark", name: "landmark" },
+          { label: "Distance From User", name: "distance" },
+          { label: "Phone Number", name: "phoneNumber" },
+          { label: "Email", name: "email", type: "email" },
+          { label: "Latitude", name: "latitude" },
+          { label: "Longitude", name: "longitude" },
+        ].map((field) => (
+          <div key={field.name}>
+            <label className="text-sm font-medium mb-1.5 block">
+              {field.label}
+              {["landmark", "distance", "phoneNumber", "email"].includes(
+                field.name,
+              ) ? (
+                <span className="text-red-500"> *</span>
+              ) : null}
+            </label>
+            <input
+              name={field.name}
+              type={field.type || "text"}
+              value={formData[field.name]}
+              onChange={handleChange}
+              className={fieldClass(field.name)}
+            />
+            {errors[field.name] && (
+              <span className="text-red-500 text-xs mt-1">
+                {errors[field.name]}
+              </span>
+            )}
+          </div>
+        ))}
 
-        <input
-          name="distance"
-          value={formData.distance}
-          onChange={handleChange}
-          placeholder="Distance"
-          className={inputClass("distance")}
-        />
-
-        <input
-          name="phoneNumber"
-          value={formData.phoneNumber}
-          onChange={handleChange}
-          placeholder="Phone Number"
-          className={inputClass("phoneNumber")}
-        />
-
-        <input
-          name="email"
-          value={formData.email}
-          onChange={handleChange}
-          placeholder="Email"
-          className={inputClass("email")}
-        />
-
-        <input
-          name="latitude"
-          value={formData.latitude}
-          onChange={handleChange}
-          placeholder="Latitude"
-          className={inputClass("latitude")}
-        />
-
-        <input
-          name="longitude"
-          value={formData.longitude}
-          onChange={handleChange}
-          placeholder="Longitude"
-          className={inputClass("longitude")}
-        />
-
-        <input
-          name="website"
-          value={formData.website}
-          onChange={handleChange}
-          placeholder="Website"
-          className={`${inputClass("website")} sm:col-span-2`}
-        />
-      </div>
-
-      <div className="flex gap-4 mt-8 justify-end">
-        <button className="text-orange-600">Cancel</button>
-
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-orange-500 text-white px-6 py-2 rounded-md"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">Website</label>
+          <input
+            name="website"
+            value={formData.website}
+            onChange={handleChange}
+            className={fieldClass("website")}
+            placeholder="https://"
+          />
+        </div>
       </div>
     </div>
   );

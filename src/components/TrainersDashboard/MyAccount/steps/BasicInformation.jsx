@@ -2,309 +2,82 @@ import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
 import { useAuth } from "../../../../context/AuthContext";
+import { User, Camera } from "lucide-react";
+import StepHeader from "../StepHeader";
+import {
+  CATEGORIES,
+  SUB_CATEGORY_MAP,
+} from "../../../InstituteDashboard/MyAccount/sportCategories";
 
-const BasicInformation = () => {
+const TRAINER_TYPES = [
+  "Independent Trainer",
+  "Institution",
+  "Sports Academy",
+  "Fitness Center",
+  "Dance Academy",
+  "Wellness Center",
+  "Martial Arts Academy",
+];
+
+const currentYear = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: 80 }, (_, i) => String(currentYear - i));
+
+const fieldClass = (hasError) =>
+  `w-full min-h-[48px] text-base rounded-xl border ${
+    hasError ? "border-red-500" : "border-gray-200"
+  } bg-white px-4 py-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`;
+
+const SHORT_MAX = 200;
+const SPORT_DESC_MAX = 120;
+
+const emptyCategoryBlock = () => ({
+  category: "",
+  sports: [],
+});
+
+const normalizeCategoryBlocks = (categories = {}, sportDetails = {}) => {
+  const entries = Object.entries(categories || {});
+  if (!entries.length) return [emptyCategoryBlock()];
+
+  return entries.map(([cat, subs]) => {
+    const names = Array.isArray(subs)
+      ? subs
+      : subs && typeof subs === "object"
+        ? Object.keys(subs)
+        : [];
+
+    return {
+      category: cat,
+      sports: names.map((name) => ({
+        name,
+        shortDescription: String(
+          sportDetails?.[cat]?.[name]?.shortDescription || "",
+        ).slice(0, SPORT_DESC_MAX),
+      })),
+    };
+  });
+};
+
+const BasicInformation = ({ setStep }) => {
   const { user } = useAuth();
-
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
+    trainerName: "",
     institutionName: "",
     establishedYear: "",
     type: "",
     logo: "",
-
     headCoach: "",
     tagline: "",
     about: "",
   });
 
   const [errors, setErrors] = useState({});
-  const [categoryData, setCategoryData] = useState([
-    { category: "", subCategories: [], confirmed: false },
-  ]);
-  const categories = [
-    "Martial Arts",
-    "Team Ball Sports",
-    "Racket Sports",
-    "Fitness",
-    "Target & Precision Sports",
-    "Equestrian Sports",
-    "Adventure & Outdoor Sports",
-    "Ice Sports",
-    "Aquatic Sports",
-    "Wellness",
-    "Dance",
-  ];
+  const [categoryData, setCategoryData] = useState([emptyCategoryBlock()]);
 
-  const subCategoryMap = {
-    "Martial Arts": [
-      "Karate",
-      "Kung Fu",
-      "Krav Maga",
-      "Muay Thai",
-      "Taekwondo",
-      "Judo",
-      "Brazilian Jiu-Jitsu",
-      "Aikido",
-      "Jeet Kune Do",
-      "Capoeira",
-      "Sambo",
-      "Silat",
-      "Kalaripayattu",
-      "Hapkido",
-      "Wing Chun",
-      "Shaolin",
-      "Ninjutsu",
-      "Kickboxing",
-      "Boxing",
-      "Wrestling",
-      "Shorinji Kempo",
-      "Kyokushin",
-      "Goju-ryu",
-      "Shotokan",
-      "Wushu",
-      "Savate",
-      "Lethwei",
-      "Bajiquan",
-      "Hung Gar",
-      "Praying Mantis Kung Fu",
-    ],
-    "Team Ball Sports": [
-      "Football / Soccer",
-      "Basketball",
-      "Handball",
-      "Rugby",
-      "Futsal",
-      "Field Hockey",
-      "Lacrosse",
-      "Gaelic Football",
-      "Volleyball",
-      "Beach Volleyball",
-      "Sepak Takraw",
-      "Roundnet (Spikeball)",
-      "Netball",
-      "Cricket",
-      "Baseball",
-      "Softball",
-      "Wheelchair Rugby",
-      "Dodgeball",
-      "Korfball",
-    ],
-    "Racket Sports": [
-      "Tennis",
-      "Table Tennis",
-      "Badminton",
-      "Squash",
-      "Racquetball",
-      "Padel",
-      "Pickleball",
-      "Platform Tennis",
-      "Real Tennis",
-      "Soft Tennis",
-      "Frontenis",
-      "Speedminton (Crossminton)",
-      "Paddle Tennis (POP Tennis)",
-      "Speed-ball",
-      "Chaza",
-      "Totem Tennis (Swingball)",
-      "Matkot",
-      "Jombola",
-    ],
-    Fitness: [
-      "Gym Workout",
-      "Weight Training",
-      "Bodybuilding",
-      "Powerlifting",
-      "CrossFit",
-      "Calisthenics",
-      "Circuit Training",
-      "HIIT",
-      "Functional Training",
-      "Core Training",
-      "Mobility Training",
-      "Stretching",
-      "Resistance Band Training",
-      "Kettlebell Training",
-      "Boot Camp Training",
-      "Spinning",
-      "Step Fitness",
-      "Pilates",
-      "Yoga",
-    ],
-    "Target & Precision Sports": [
-      "Archery",
-      "Golf",
-      "Bowling",
-      "Darts",
-      "Snooker",
-      "Pool",
-      "Billiards",
-      "Target Shooting",
-      "Clay Pigeon Shooting",
-      "Air Rifle Shooting",
-      "Air Pistol Shooting",
-      "Croquet",
-      "Petanque",
-      "Bocce",
-      "Lawn Bowls",
-      "Carom Billiards",
-      "Nine-Pin Bowling",
-      "Disc Golf",
-      "Kubb",
-      "Pitch and Putt",
-      "Shove Ha’penny",
-      "Toad in the Hole",
-      "Bat and Trap",
-      "Boccia",
-      "Gateball",
-    ],
-    "Equestrian Sports": [
-      "Horse Racing",
-      "Barrel Racing",
-      "Rodeo",
-      "Mounted Archery",
-      "Tent Pegging",
-    ],
-    "Adventure & Outdoor Sports": [
-      "Rock Climbing",
-      "Mountaineering",
-      "Trekking",
-      "Hiking",
-      "Mountain Biking",
-      "Sandboarding",
-      "Orienteering",
-      "Obstacle Course Racing",
-      "Skydiving",
-      "Paragliding",
-      "Hang Gliding",
-      "Parachuting",
-      "Hot-air Ballooning",
-      "Skiing",
-      "Snowboarding",
-      "Ice Climbing",
-      "Heli-skiing",
-      "Bungee Jumping",
-      "BASE Jumping",
-      "Canyoning",
-      "Kite Buggy",
-      "Zorbing",
-      "Zip Lining",
-    ],
-    "Aquatic Sports": [
-      "Swimming",
-      "Water Polo",
-      "Surfing",
-      "Scuba Diving",
-      "Snorkeling",
-      "Freediving",
-      "Kayaking",
-      "Canoeing",
-      "Rowing",
-      "Sailing",
-      "Windsurfing",
-      "Kite Surfing",
-      "Jet Skiing",
-      "Wakeboarding",
-      "Water Skiing",
-      "Stand-up Paddleboarding",
-      "Whitewater Rafting",
-      "Dragon Boat Racing",
-      "Artistic Swimming",
-      "Open Water Swimming",
-    ],
-    "Ice Sports": [
-      "Ice Skating",
-      "Figure Skating",
-      "Ice Hockey",
-      "Speed Skating",
-      "Ice Dance",
-      "Synchronized Skating",
-      "Curling",
-      "Broomball",
-      "Bobsleigh",
-      "Skiboarding",
-      "Ice Dragon Boat Racing",
-      "Ice Cross Downhill",
-    ],
-    Wellness: [
-      "Yoga & Meditation",
-      "Spa & Relaxation",
-      "Mental Wellness",
-      "Fitness",
-      "Nutrition",
-      "Traditional & Alternative Therapies",
-      "Rehabilitation",
-      "Lifestyle Coaching",
-    ],
-    Dance: [
-      "Bharatanatyam",
-      "Kathak",
-      "Kathakali",
-      "Kuchipudi",
-      "Odissi",
-      "Mohiniyattam",
-      "Manipuri",
-      "Sattriya",
-      "Chhau",
-      "Yakshagana",
-      "Lavani",
-      "Ghoomar",
-      "Kalbelia",
-      "Garba",
-      "Dandiya Raas",
-      "Bhangra",
-      "Bihu",
-      "Dollu Kunitha",
-      "Theyyam",
-      "Ballet",
-      "Contemporary",
-      "Hip Hop",
-      "Breakdance",
-      "Jazz Dance",
-      "Tap Dance",
-      "Modern Dance",
-      "Street Dance",
-      "House Dance",
-      "Locking",
-      "Popping",
-      "Krumping",
-      "Waacking",
-      "Voguing",
-      "Salsa",
-      "Bachata",
-      "Merengue",
-      "Cha-Cha",
-      "Rumba",
-      "Samba",
-      "Paso Doble",
-      "Jive",
-      "Tango",
-      "Waltz",
-      "Foxtrot",
-      "Quickstep",
-      "Flamenco",
-      "Irish Stepdance",
-      "Scottish Highland Dance",
-      "Morris Dance",
-      "Hula",
-      "Maori Haka",
-      "African Tribal Dance",
-      "Zumba",
-      "K-Pop Dance",
-      "Shuffle Dance",
-      "Electro Dance",
-      "Pole Dance",
-      "Ballroom Dance",
-      "Line Dance",
-      "Square Dance",
-      "Folk Dance",
-      "Contra Dance",
-    ],
-  };
-  // ✅ LOAD EXISTING DATA
-  // ✅ LOAD EXISTING DATA
   useEffect(() => {
     const fetchData = async () => {
       if (!user?.uid) {
@@ -317,69 +90,43 @@ const BasicInformation = () => {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          const data = docSnap.data(); // ✅ scoped correctly
+          const data = docSnap.data();
 
           setFormData({
-            // ✅ Trainer Name
             trainerName:
               data.trainerName && data.trainerName.trim() !== ""
                 ? data.trainerName
                 : data.firstName || "",
-
-            // ✅ Institution Name
             institutionName:
               data.institutionName && data.institutionName.trim() !== ""
                 ? data.institutionName
-                : data.organization || "",
-
-            // ✅ Year
+                : data.instituteName || data.organization || "",
             establishedYear: data.yearFounded
               ? String(data.yearFounded)
               : data.establishedYear
                 ? String(data.establishedYear)
                 : "",
-
-            // ✅ Type
             type:
               data.type && data.type.trim() !== ""
                 ? data.type
                 : data.organizationType || "",
-
-            // ✅ Logo
             logo:
               data.logo && data.logo.trim() !== ""
                 ? data.logo
                 : data.profileImageUrl || "",
-
-            // ✅ Head Coach
             headCoach:
               data.headCoach && data.headCoach.trim() !== ""
                 ? data.headCoach
                 : data.founderName || "",
-
-            // Normal fields
             tagline: data.tagline || data.designation || "",
             about: data.about || data.description || "",
           });
 
-          // ✅ LOAD CATEGORIES SAFELY
-          if (data.categories && typeof data.categories === "object") {
-            const loaded = Object.entries(data.categories).map(
-              ([cat, subs]) => ({
-                category: cat,
-                subCategories: Array.isArray(subs) ? subs : [],
-              }),
-            );
-
-            setCategoryData(
-              loaded.length ? loaded : [{ category: "", subCategories: [] }],
-            );
-          } else {
-            setCategoryData([{ category: "", subCategories: [] }]);
-          }
+          setCategoryData(
+            normalizeCategoryBlocks(data.categories, data.sportDetails),
+          );
         } else {
-          // No document
-          setCategoryData([{ category: "", subCategories: [] }]);
+          setCategoryData([emptyCategoryBlock()]);
         }
       } catch (error) {
         console.error("Error loading data:", error);
@@ -391,36 +138,29 @@ const BasicInformation = () => {
     fetchData();
   }, [user]);
 
-  // ✅ HANDLE CHANGE
   const handleChange = (e) => {
     const { name, value } = e.target;
-
     let newValue = value;
-    // ✅ Only numbers + max 4 digits (like 2030)
+
     if (name === "establishedYear") {
       newValue = newValue.replace(/[^0-9]/g, "").slice(0, 4);
     }
 
-    // ✅ Fields to capitalize
+    if (name === "tagline") {
+      newValue = newValue.slice(0, SHORT_MAX);
+    }
+
     const capitalizeFields = [
       "trainerName",
-      "institutionName", // ✅ ADD THIS
+      "institutionName",
       "headCoach",
       "type",
-      "tagline",
     ];
 
     if (capitalizeFields.includes(name)) {
-      newValue = value;
-
-      // ✅ Restrict alphabets for name fields only
-      if (
-        ["trainerName", "institutionName", "headCoach", "type"].includes(name)
-      ) {
+      if (["trainerName", "institutionName", "headCoach", "type"].includes(name)) {
         newValue = newValue.replace(/[^A-Za-z ]/g, "");
       }
-
-      // ✅ Capitalize each word
       newValue = newValue.replace(/\b[a-z]/g, (char) => char.toUpperCase());
     }
 
@@ -435,14 +175,10 @@ const BasicInformation = () => {
     }));
   };
 
-  // ✅ VALIDATION
   const validate = () => {
     let newErrors = {};
-
-    // Required fields list
     const requiredFields = [
       "trainerName",
-
       "type",
       "logo",
       "headCoach",
@@ -452,25 +188,20 @@ const BasicInformation = () => {
 
     requiredFields.forEach((field) => {
       const value = formData[field];
-
       if (!value || String(value).trim() === "") {
         newErrors[field] = "This field is required";
       }
     });
 
-    // 🔥 Validate categories instead of sports
     const hasValidCategory = categoryData.some(
-      (block) => block.category && block.subCategories.length > 0,
+      (block) => block.category && (block.sports || []).length > 0,
     );
 
     if (!hasValidCategory) {
       newErrors.sports = "Select at least one category and one subcategory";
     }
 
-    // Year validation
     const year = String(formData.establishedYear || "").trim();
-    const currentYear = new Date().getFullYear();
-
     if (year) {
       if (!/^\d{4}$/.test(year)) {
         newErrors.establishedYear = "Enter valid 4 digit year";
@@ -482,49 +213,52 @@ const BasicInformation = () => {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
   const handleCategoryChange = (index, value) => {
     const updated = [...categoryData];
-    updated[index] = { category: value, subCategories: [], confirmed: false };
+    updated[index] = { category: value, sports: [] };
     setCategoryData(updated);
   };
 
   const handleSubCategoryToggle = (index, sub) => {
     const updated = [...categoryData];
-    const list = updated[index].subCategories;
+    const sports = updated[index].sports || [];
+    const exists = sports.some((item) => item.name === sub);
 
-    if (list.includes(sub)) {
-      updated[index].subCategories = list.filter((s) => s !== sub);
-    } else {
-      updated[index].subCategories = [...list, sub];
-    }
+    updated[index].sports = exists
+      ? sports.filter((item) => item.name !== sub)
+      : [...sports, { name: sub, shortDescription: "" }];
 
+    setCategoryData(updated);
+    setErrors((prev) => ({ ...prev, sports: "" }));
+  };
+
+  const handleSportDescription = (index, sportName, value) => {
+    const updated = [...categoryData];
+    updated[index].sports = (updated[index].sports || []).map((item) =>
+      item.name === sportName
+        ? { ...item, shortDescription: value.slice(0, SPORT_DESC_MAX) }
+        : item,
+    );
     setCategoryData(updated);
   };
 
   const addCategoryBlock = () => {
-    setCategoryData((prev) => [
-      ...prev,
-      { category: "", subCategories: [], confirmed: false },
-    ]);
+    setCategoryData((prev) => [...prev, emptyCategoryBlock()]);
   };
 
   const removeCategoryBlock = (index) => {
     const updated = categoryData.filter((_, i) => i !== index);
-    setCategoryData(
-      updated.length ? updated : [{ category: "", subCategories: [] }],
-    );
+    setCategoryData(updated.length ? updated : [emptyCategoryBlock()]);
   };
 
-  // ✅ SAVE
   const handleSave = async () => {
     if (!user?.uid) {
       alert("User not logged in");
       return;
     }
 
-    const isValid = validate();
-
-    if (!isValid) {
+    if (!validate()) {
       alert("Please fill all required details correctly.");
       return;
     }
@@ -532,35 +266,38 @@ const BasicInformation = () => {
     try {
       setSaving(true);
 
-      // 🔥 Dynamic instituteId
-      const instituteId = user.uid;
-      const docRef = doc(db, "trainers", instituteId);
+      const formattedCategories = {};
+      const sportDetails = {};
 
-      // 🔥 Format categories for Firebase
-      const formattedCategories = categoryData.reduce((acc, block) => {
-        if (block.category && block.subCategories.length > 0) {
-          acc[block.category] = block.subCategories;
-        }
-        return acc;
-      }, {});
+      categoryData.forEach((block) => {
+        if (!block.category || !(block.sports || []).length) return;
+        formattedCategories[block.category] = block.sports.map((item) => item.name);
+        sportDetails[block.category] = {};
+        block.sports.forEach((item) => {
+          sportDetails[block.category][item.name] = {
+            shortDescription: String(item.shortDescription || "")
+              .trim()
+              .slice(0, SPORT_DESC_MAX),
+          };
+        });
+      });
 
       await setDoc(
-        docRef,
+        doc(db, "trainers", user.uid),
         {
+          trainerName: formData.trainerName,
           instituteName: formData.institutionName,
           yearFounded: formData.establishedYear,
           organizationType: formData.type,
           profileImageUrl: formData.logo,
-
-          // ✅ NEW MULTI CATEGORY FORMAT
           categories: formattedCategories,
-
+          sportDetails,
           founderName: formData.headCoach,
           designation: formData.tagline,
           description: formData.about,
           updatedAt: serverTimestamp(),
         },
-        { merge: true }, // ✅ keeps existing fields safe
+        { merge: true },
       );
 
       alert("Saved Successfully!");
@@ -572,151 +309,344 @@ const BasicInformation = () => {
     }
   };
 
-  if (loading) {
-    return <p className="text-gray-500">Loading...</p>;
-  }
-
   const handleCancel = () => {
     setFormData({
+      trainerName: "",
       institutionName: "",
       establishedYear: "",
       type: "",
       logo: "",
-      sports: "",
       headCoach: "",
       tagline: "",
       about: "",
     });
-
     setErrors({});
+    setCategoryData([emptyCategoryBlock()]);
   };
 
-  const inputClass = (field) =>
-    `border ${
-      errors[field] ? "border-red-500" : "border-gray-300"
-    } rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500`;
+  const uploadLogo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingLogo(true);
+    const data = new FormData();
+    data.append("file", file);
+    data.append("upload_preset", "kirdana");
+
+    try {
+      const res = await fetch(
+        "https://api.cloudinary.com/v1_1/dr0svrhu1/image/upload",
+        { method: "POST", body: data },
+      );
+      const result = await res.json();
+      if (!result.secure_url) {
+        throw new Error(result.error?.message || "Upload failed");
+      }
+      setFormData((prev) => ({ ...prev, logo: result.secure_url }));
+      setErrors((prev) => ({ ...prev, logo: "" }));
+    } catch (err) {
+      alert("Logo upload failed: " + err.message);
+    } finally {
+      setUploadingLogo(false);
+      e.target.value = "";
+    }
+  };
+
+  if (loading) {
+    return <p className="text-gray-500 py-8 text-center">Loading...</p>;
+  }
+
+  const typeOptions = TRAINER_TYPES.includes(formData.type)
+    ? TRAINER_TYPES
+    : formData.type
+      ? [formData.type, ...TRAINER_TYPES]
+      : TRAINER_TYPES;
 
   return (
-    <div className="w-full">
-      <h2 className="text-orange-500 font-semibold text-lg sm:text-xl mb-6">
-        Basic Information
-      </h2>
+    <div className="w-full pb-6">
+      <StepHeader
+        title="Basic Information"
+        onBack={() => setStep?.(0)}
+        onSave={handleSave}
+        saving={saving}
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {[
-          { label: "Trainer Name", name: "trainerName" },
-
-          { label: "Type (Institution / Independent Trainer)", name: "type" },
-          { label: "Logo / Cover / Banner Images", name: "logo" },
-
-          { label: "Head Coach Name", name: "headCoach" },
-          { label: "Institution / Academy Name", name: "institutionName" },
-          { label: "Established Year", name: "establishedYear" }, // ✅ ADD THIS
-          // 🔥 ADD THIS HERE
-          { label: "Short Tag Line (1 line preferred)", name: "tagline" },
-        ].map((field) => (
-          <div className="flex flex-col" key={field.name}>
-            <label className="text-sm font-medium mb-2">
-              {field.label} <span className="text-red-500">*</span>
-            </label>
-            <input
-              name={field.name}
-              value={formData[field.name]}
-              onChange={handleChange}
-              className={inputClass(field.name)}
+      <div className="flex flex-col items-center mb-5">
+        <label className="relative cursor-pointer">
+          {formData.logo ? (
+            <img
+              src={formData.logo}
+              alt="Logo"
+              className="w-20 h-20 rounded-full object-cover border-2 border-orange-200"
             />
-            {errors[field.name] && (
-              <span className="text-red-500 text-sm mt-1">
-                {errors[field.name]}
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+              <User size={32} />
+            </div>
+          )}
+          <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center border-2 border-white">
+            <Camera size={13} />
+          </span>
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={uploadLogo}
+          />
+        </label>
+        <p className="text-sm font-semibold text-gray-900 mt-3">
+          Basic Information
+        </p>
+        <p className="text-xs text-gray-500 mt-0.5 text-center">
+          Add accurate details about your training profile.
+        </p>
+        {uploadingLogo && (
+          <p className="text-xs text-orange-500 mt-1">Uploading logo...</p>
+        )}
+        {errors.logo && (
+          <span className="text-red-500 text-xs mt-1">{errors.logo}</span>
+        )}
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+            Trainer Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            name="trainerName"
+            value={formData.trainerName}
+            onChange={handleChange}
+            className={fieldClass(errors.trainerName)}
+            placeholder="Enter your name"
+          />
+          {errors.trainerName && (
+            <span className="text-red-500 text-xs mt-1">{errors.trainerName}</span>
+          )}
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+            Type <span className="text-red-500">*</span>
+          </label>
+          <select
+            name="type"
+            value={formData.type}
+            onChange={handleChange}
+            className={fieldClass(errors.type)}
+          >
+            <option value="">Select type</option>
+            {typeOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          {errors.type && (
+            <span className="text-red-500 text-xs mt-1">{errors.type}</span>
+          )}
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+            Institution / Academy Name
+          </label>
+          <input
+            name="institutionName"
+            value={formData.institutionName}
+            onChange={handleChange}
+            className={fieldClass(false)}
+            placeholder="Optional"
+          />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+            Established Year
+          </label>
+          <select
+            name="establishedYear"
+            value={formData.establishedYear}
+            onChange={handleChange}
+            className={fieldClass(errors.establishedYear)}
+          >
+            <option value="">Select year</option>
+            {YEAR_OPTIONS.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+          {errors.establishedYear && (
+            <span className="text-red-500 text-xs mt-1">
+              {errors.establishedYear}
+            </span>
+          )}
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+            Head Coach Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            name="headCoach"
+            value={formData.headCoach}
+            onChange={handleChange}
+            className={fieldClass(errors.headCoach)}
+            placeholder="Enter name"
+          />
+          {errors.headCoach && (
+            <span className="text-red-500 text-xs mt-1">{errors.headCoach}</span>
+          )}
+        </div>
+
+        <section className="bg-white rounded-2xl border border-gray-100 p-4">
+          <p className="font-semibold text-gray-900">About you</p>
+          <p className="text-xs text-gray-500 mt-1 mb-4">
+            Students see this on your public profile.
+          </p>
+
+          <div className="mb-4">
+            <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+              Short description <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              name="tagline"
+              value={formData.tagline}
+              onChange={handleChange}
+              rows={3}
+              maxLength={SHORT_MAX}
+              className={`${fieldClass(errors.tagline)} min-h-[88px] resize-none`}
+              placeholder="One or two lines about your training"
+            />
+            <div className="flex justify-between mt-1">
+              {errors.tagline ? (
+                <span className="text-red-500 text-xs">{errors.tagline}</span>
+              ) : (
+                <span className="text-[11px] text-gray-400">
+                  Shown on trainer cards
+                </span>
+              )}
+              <span className="text-xs text-gray-400">
+                {formData.tagline.length}/{SHORT_MAX}
               </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+              About the trainer <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              name="about"
+              value={formData.about}
+              onChange={handleChange}
+              rows={5}
+              className={`${fieldClass(errors.about)} min-h-[120px] resize-none`}
+              placeholder="Tell students about your experience and coaching style"
+            />
+            {errors.about && (
+              <span className="text-red-500 text-xs mt-1">{errors.about}</span>
             )}
           </div>
-        ))}
-        {/* 🔥 Sports (offered) - Multi Category + Subcategory */}
-        <div className="flex flex-col sm:col-span-2">
-          <label className="text-sm font-medium mb-2">
-            Sports (offered) <span className="text-red-500">*</span>
-          </label>
+        </section>
+
+        <section>
+          <p className="font-semibold text-gray-900">Sports you offer</p>
+          <p className="text-xs text-gray-500 mt-1 mb-3">
+            Choose a category, tap sports, then add a short line for each sport.
+          </p>
 
           {categoryData.map((block, index) => (
             <div
               key={index}
-              className="border border-gray-300 rounded-md p-3 mb-3"
+              className="border border-gray-100 rounded-2xl p-3.5 mb-3 bg-white"
             >
-              {/* Category Select */}
-              <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center gap-2 mb-3">
                 <select
                   value={block.category}
                   onChange={(e) => handleCategoryChange(index, e.target.value)}
-                  className="border border-gray-300 rounded-md px-3 py-2 w-full focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                  className={fieldClass(false)}
                 >
-                  <option value="">Select Category</option>
-                  {categories.map((cat) => (
+                  <option value="">Select category</option>
+                  {CATEGORIES.map((cat) => (
                     <option key={cat} value={cat}>
                       {cat}
                     </option>
                   ))}
                 </select>
-
-                {index > 0 && (
+                {categoryData.length > 1 && (
                   <button
                     type="button"
                     onClick={() => removeCategoryBlock(index)}
-                    className="text-red-500 font-bold"
+                    className="w-11 h-11 shrink-0 text-red-500 font-bold"
+                    aria-label="Remove category"
                   >
                     ✕
                   </button>
                 )}
               </div>
 
-              {/* Sub Categories */}
-              {block.category && !block.confirmed && (
+              {block.category && (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                    {subCategoryMap[block.category]?.map((sub) => (
-                      <label
-                        key={sub}
-                        className="flex items-center gap-2 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={block.subCategories.includes(sub)}
-                          onChange={() => handleSubCategoryToggle(index, sub)}
-                        />
-                        {sub}
-                      </label>
-                    ))}
-                  </div>
-
-                  <div className="flex justify-end mt-3">
-                    <button
-                      type="button"
-                      disabled={block.subCategories.length === 0}
-                      onClick={() => {
-                        const updated = [...categoryData];
-                        updated[index].confirmed = true;
-                        setCategoryData(updated);
-                      }}
-                      className={`px-4 py-1 rounded text-white text-sm ${
-                        block.subCategories.length === 0
-                          ? "bg-gray-400 cursor-not-allowed"
-                          : "bg-orange-500 hover:bg-orange-600"
-                      }`}
-                    >
-                      OK
-                    </button>
+                  <p className="text-xs font-medium text-gray-600 mb-2">
+                    Select sports
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {SUB_CATEGORY_MAP[block.category]?.map((sub) => {
+                      const selected = (block.sports || []).some(
+                        (item) => item.name === sub,
+                      );
+                      return (
+                        <button
+                          type="button"
+                          key={sub}
+                          onClick={() => handleSubCategoryToggle(index, sub)}
+                          className={`min-h-[36px] px-3 rounded-full text-sm border ${
+                            selected
+                              ? "bg-orange-500 text-white border-orange-500"
+                              : "bg-white text-gray-700 border-gray-200"
+                          }`}
+                        >
+                          {sub}
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}
-              {block.confirmed && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {block.subCategories.map((sub) => (
-                    <span
-                      key={sub}
-                      className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-sm"
+
+              {(block.sports || []).length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-gray-600">
+                    Short description for each sport
+                  </p>
+                  {block.sports.map((sport) => (
+                    <div
+                      key={sport.name}
+                      className="rounded-xl bg-gray-50 border border-gray-100 p-3"
                     >
-                      {sub}
-                    </span>
+                      <p className="text-sm font-semibold text-gray-900 mb-1.5">
+                        {sport.name}
+                      </p>
+                      <textarea
+                        rows={2}
+                        maxLength={SPORT_DESC_MAX}
+                        value={sport.shortDescription || ""}
+                        onChange={(e) =>
+                          handleSportDescription(
+                            index,
+                            sport.name,
+                            e.target.value,
+                          )
+                        }
+                        placeholder={`What students learn in ${sport.name}`}
+                        className={`${fieldClass(false)} min-h-[72px] resize-none bg-white`}
+                      />
+                      <p className="text-[11px] text-gray-400 text-right mt-1">
+                        {(sport.shortDescription || "").length}/{SPORT_DESC_MAX}
+                      </p>
+                    </div>
                   ))}
                 </div>
               )}
@@ -726,56 +656,25 @@ const BasicInformation = () => {
           <button
             type="button"
             onClick={addCategoryBlock}
-            className="text-orange-500 text-sm font-medium hover:underline w-fit"
+            className="w-full min-h-[44px] rounded-xl border-2 border-dashed border-orange-300 text-orange-500 text-sm font-semibold"
           >
             + Add another category
           </button>
-
           {errors.sports && (
-            <span className="text-red-500 text-sm mt-1">{errors.sports}</span>
+            <span className="text-red-500 text-xs mt-2 block">
+              {errors.sports}
+            </span>
           )}
-        </div>
-
-        {/* Tagline */}
-
-        {/* About */}
-        <div className="flex flex-col sm:col-span-2">
-          <label className="text-sm font-medium mb-2">
-            About Us (Detailed Description)
-            <span className="text-red-500">*</span>
-          </label>
-          <textarea
-            name="about"
-            value={formData.about}
-            onChange={handleChange}
-            rows={5}
-            className={inputClass("about")}
-          />
-          {errors.about && (
-            <span className="text-red-500 text-sm mt-1">{errors.about}</span>
-          )}
-        </div>
+        </section>
       </div>
 
-      {/* Buttons */}
-      <div className="flex flex-col sm:flex-row justify-end gap-4 mt-8">
-        <button
-          type="button"
-          onClick={handleCancel}
-          className="text-gray-600 hover:text-black transition"
-        >
-          Cancel
-        </button>
-
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-md transition disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Changes"}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={handleCancel}
+        className="mt-5 w-full min-h-[44px] text-gray-500 text-sm"
+      >
+        Clear form
+      </button>
     </div>
   );
 };

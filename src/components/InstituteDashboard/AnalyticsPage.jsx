@@ -175,15 +175,18 @@ const AnalyticsPage = () => {
   const totalRevenue = graphData.reduce((sum, item) => sum + item.revenue, 0);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto dash-page-in">
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 relative">
-        <h1 className="text-3xl font-bold">Trainer Performance Overview</h1>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 relative rounded-2xl bg-gradient-to-br from-[#FF6A00] via-[#FF7A1A] to-[#FF9A4A] p-4 sm:p-5 shadow-[0_8px_24px_rgba(255,106,0,0.2)] overflow-hidden">
+        <div className="absolute -right-8 -top-8 w-28 h-28 rounded-full bg-white/15 pointer-events-none" />
+        <h1 className="relative text-2xl sm:text-3xl font-bold text-white">
+          Performance Overview
+        </h1>
 
-        <div className="relative inline-block">
+        <div className="relative inline-block z-10">
           <button
             onClick={() => setShowDropdown(!showDropdown)}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-xl font-semibold shadow-md flex items-center justify-center gap-2"
+            className="bg-white/95 hover:bg-white text-[#FF6A00] px-5 py-2 rounded-xl font-semibold shadow-md flex items-center justify-center gap-2 dash-press"
           >
             <span>Select Month</span>
             <span>▼</span>
@@ -226,36 +229,36 @@ const AnalyticsPage = () => {
       </div>
 
       {/* SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="border p-4 rounded-lg bg-orange-50">
-          <p>Profile Views</p>
-          <p className="text-xl font-bold text-orange-600">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
+        <div className="dash-card p-4 bg-orange-50/80">
+          <p className="text-sm text-gray-600">Profile Views</p>
+          <p className="text-xl font-bold text-orange-600 mt-1">
             {topReels.reduce((s, r) => s + r.views, 0)}
           </p>
         </div>
-        <div className="border p-4 rounded-lg bg-orange-50">
-          <p>Video Views</p>
-          <p className="text-xl font-bold text-orange-600">
+        <div className="dash-card p-4 bg-orange-50/80">
+          <p className="text-sm text-gray-600">Video Views</p>
+          <p className="text-xl font-bold text-orange-600 mt-1">
             {topReels.reduce((s, r) => s + r.likes, 0)}
           </p>
         </div>
-        <div className="border p-4 rounded-lg bg-orange-50">
-          <p>likes</p>
-          <p className="text-xl font-bold text-red-500">
+        <div className="dash-card p-4 bg-orange-50/80">
+          <p className="text-sm text-gray-600">likes</p>
+          <p className="text-xl font-bold text-red-500 mt-1">
             {topReels.reduce((s, r) => s + r.dislikes, 0)}
           </p>
         </div>
-        <div className="border p-4 rounded-lg bg-orange-50">
-          <p>Dislikes</p>
-          <p className="text-xl font-bold text-orange-600">
+        <div className="dash-card p-4 bg-orange-50/80">
+          <p className="text-sm text-gray-600">Dislikes</p>
+          <p className="text-xl font-bold text-orange-600 mt-1">
             {topReels.reduce((s, r) => s + r.comments, 0)}
           </p>
         </div>
       </div>
 
       {/* TOP CONTENT INSIGHTS */}
-      <div className="bg-gray-50 border rounded-xl p-6 shadow-sm">
-        <h2 className="text-2xl font-bold mb-6">Top Content Insights</h2>
+      <div className="dash-card p-5 sm:p-6">
+        <h2 className="text-xl sm:text-2xl font-bold mb-5">Top Content Insights</h2>
 
         {/* TABS */}
         <div className="flex gap-6 border-b mb-6 overflow-x-auto whitespace-nowrap">

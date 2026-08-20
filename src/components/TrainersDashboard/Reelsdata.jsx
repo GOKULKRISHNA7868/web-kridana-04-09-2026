@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { db, auth } from "../../firebase";
 import {
   collection,
   getDocs,
   query,
   where,
-  Timestamp,
   getDoc,
   doc,
 } from "firebase/firestore";
@@ -20,21 +19,78 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { ChevronDown } from "lucide-react";
+import {
+  Eye,
+  Heart,
+  MessageCircle,
+  Play,
+  ThumbsDown,
+  Image as ImageIcon,
+  X,
+} from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+
+const getMediaUrl = (item) => {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  return item.url || item.videoUrl || item.src || "";
+};
+
+const getMediaCaption = (item, fallback) => {
+  if (item && typeof item === "object") {
+    return (
+      item.about ||
+      item.caption ||
+      item.title ||
+      item.description ||
+      fallback ||
+      ""
+    );
+  }
+  return fallback || "";
+};
+
+const getMediaDate = (item) => {
+  if (!item || typeof item !== "object") return null;
+  const value = item.createdAt || item.date || item.uploadedAt || item.createdOn;
+  if (!value) return null;
+  try {
+    if (value?.toDate) return value.toDate();
+    if (value?.seconds) return new Date(value.seconds * 1000);
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
+};
+
+const isVideoUrl = (url) => {
+  const value = String(url || "").toLowerCase();
+  return (
+    value.includes("/video") ||
+    value.includes(".mp4") ||
+    value.includes(".webm") ||
+    value.includes(".mov") ||
+    value.includes("video/upload")
+  );
+};
+
 const AnalyticsPage = () => {
   const user = auth.currentUser;
   const [expenses, setExpenses] = useState([]);
   const [totalExpenses, setTotalExpenses] = useState(0);
-  const [reels, setReels] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [graphData, setGraphData] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [topReels, setTopReels] = useState([]);
+  const [topPosts, setTopPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("views");
+  const [contentFilter, setContentFilter] = useState("all");
+  const [contentSearch, setContentSearch] = useState("");
+  const [loadingContent, setLoadingContent] = useState(false);
   const [showVideoPopup, setShowVideoPopup] = useState(false);
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
+  const [commentDrawer, setCommentDrawer] = useState(null);
   const currentYear = new Date().getFullYear();
 
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -49,6 +105,36 @@ const AnalyticsPage = () => {
     joined: 0,
     left: 0,
   });
+
+  const getMonthRange = () => {
+    let start = startMonth === "" ? 0 : Number(startMonth);
+    let end = endMonth === "" ? 11 : Number(endMonth);
+    if (Number.isNaN(start)) start = 0;
+    if (Number.isNaN(end)) end = 11;
+    if (start > end) {
+      const swapped = start;
+      start = end;
+      end = swapped;
+    }
+    return { start, end };
+  };
+
+  const matchesDateFilter = (date) => {
+    if (!date || Number.isNaN(date.getTime())) return true;
+    if (Number(date.getFullYear()) !== Number(selectedYear)) return false;
+    const month = date.getMonth();
+    const { start, end } = getMonthRange();
+    return month >= start && month <= end;
+  };
+
+  const resetFilters = () => {
+    setSelectedYear(new Date().getFullYear());
+    setStartMonth("");
+    setEndMonth("");
+    setContentFilter("all");
+    setActiveTab("views");
+    setContentSearch("");
+  };
   const downloadPDFReport = async () => {
     const container = document.createElement("div");
 
@@ -66,11 +152,11 @@ Trainer Revenue Report
 
   <p>
   Year: ${selectedYear} <br/>
- Months: ${new Date(0, startMonth).toLocaleString("default", {
+ Months: ${new Date(0, getMonthRange().start).toLocaleString("default", {
    month: "short",
  })}
 -
-${new Date(0, endMonth).toLocaleString("default", { month: "short" })}
+${new Date(0, getMonthRange().end).toLocaleString("default", { month: "short" })}
   </p>
 
 <h3 style="text-align:center;margin-bottom:25px">
@@ -122,7 +208,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
     document.body.removeChild(container);
   };
   useEffect(() => {
-    if (!user || startMonth === "" || endMonth === "") return;
+    if (!user) return;
 
     const fetchExpenses = async () => {
       try {
@@ -130,6 +216,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           collection(db, "trainers", user.uid, "expenses"),
         );
 
+        const { start, end } = getMonthRange();
         const expenseData = [];
         let expenseTotal = 0;
 
@@ -147,8 +234,8 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
           if (
             year === selectedYear &&
-            monthIndex >= Number(startMonth) &&
-            monthIndex <= Number(endMonth)
+            monthIndex >= start &&
+            monthIndex <= end
           ) {
             const amount = Number(data.amount || 0);
 
@@ -161,8 +248,6 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           }
         });
 
-        console.log("Expense Total =>", expenseTotal);
-
         setExpenses(expenseData);
         setTotalExpenses(expenseTotal);
       } catch (error) {
@@ -172,151 +257,336 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
     fetchExpenses();
   }, [user, selectedYear, startMonth, endMonth]);
-  /* ================= FETCH TOP REELS (DYNAMIC LOGIN BASED) ================= */
+
+  /* ================= FETCH TOP REELS & POSTS ================= */
   useEffect(() => {
     if (!user) return;
 
+    const fetchReelStats = async (reelId) => {
+      const [viewsSnap, likesSnap, dislikeSnap, commentsSnap, reelDoc] =
+        await Promise.all([
+          getDocs(
+            query(collection(db, "reelViews"), where("reelId", "==", reelId)),
+          ),
+          getDocs(
+            query(collection(db, "reelLikes"), where("reelId", "==", reelId)),
+          ),
+          getDocs(
+            query(
+              collection(db, "reelDislikes"),
+              where("reelId", "==", reelId),
+            ),
+          ),
+          getDocs(collection(db, "reelComments", reelId, "comments")),
+          getDoc(doc(db, "reels", reelId)),
+        ]);
+
+      const stored = reelDoc.exists() ? reelDoc.data() : {};
+
+      return {
+        views: viewsSnap.size || stored.views || 0,
+        likes: likesSnap.size || stored.likes || 0,
+        dislikes: dislikeSnap.size || stored.dislikes || 0,
+        comments: commentsSnap.size || 0,
+      };
+    };
+
+    const fetchPostStats = async (postId) => {
+      const [viewsSnap, likesSnap, commentsSnap] = await Promise.all([
+        getDocs(
+          query(collection(db, "postviews"), where("postId", "==", postId)),
+        ),
+        getDocs(
+          query(collection(db, "postlikes"), where("postId", "==", postId)),
+        ),
+        getDocs(
+          query(
+            collection(db, "postcomments"),
+            where("postId", "==", postId),
+          ),
+        ),
+      ]);
+
+      return {
+        views: viewsSnap.size || 0,
+        likes: likesSnap.size || 0,
+        dislikes: 0,
+        comments: commentsSnap.size || 0,
+      };
+    };
+
     const fetchTopReels = async () => {
+      setLoadingContent(true);
+
       try {
         let ownerType = null;
         let ownerDoc = null;
 
-        // Detect institute login
-        const instituteDoc = await getDoc(doc(db, "institutes", user.uid));
-        if (instituteDoc.exists()) {
-          ownerType = "institute";
-          ownerDoc = instituteDoc;
+        const trainerDoc = await getDoc(doc(db, "trainers", user.uid));
+        if (trainerDoc.exists()) {
+          ownerType = "trainer";
+          ownerDoc = trainerDoc;
         }
 
-        // Detect trainer login
         if (!ownerType) {
-          const trainerDoc = await getDoc(doc(db, "trainers", user.uid));
-          if (trainerDoc.exists()) {
+          const trainerLoginSnap = await getDocs(
+            query(
+              collection(db, "InstituteTrainers"),
+              where("trainerUid", "==", user.uid),
+            ),
+          );
+
+          if (!trainerLoginSnap.empty) {
             ownerType = "trainer";
-            ownerDoc = trainerDoc;
+            const trainerProfile = await getDoc(doc(db, "trainers", user.uid));
+            ownerDoc = trainerProfile.exists()
+              ? trainerProfile
+              : trainerLoginSnap.docs[0];
+          }
+        }
+
+        if (!ownerType) {
+          const instituteDoc = await getDoc(doc(db, "institutes", user.uid));
+          if (instituteDoc.exists()) {
+            ownerType = "institute";
+            ownerDoc = instituteDoc;
           }
         }
 
         if (!ownerType || !ownerDoc) {
-          // fallback static
+          setTopReels([]);
+          setTopPosts([]);
           return;
         }
 
-        const tasks = [];
-        const data = ownerDoc.data();
-        const ownerId = ownerDoc.id;
+        const data = ownerDoc.data() || {};
+        const ownerId = ownerType === "institute" ? ownerDoc.id : user.uid;
+        const ownerName =
+          data.trainerName ||
+          data.instituteName ||
+          `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
+          "Content";
 
-        console.log("🔥 REELS ARRAY:", data.reels); // DEBUG
+        const reelItems = Array.isArray(data.reels) ? data.reels : [];
+        const imageItems = [
+          ...(Array.isArray(data.trainingImages) ? data.trainingImages : []),
+          ...(Array.isArray(data.mediaGallery?.trainingImages)
+            ? data.mediaGallery.trainingImages
+            : []),
+        ];
 
-        if (Array.isArray(data.reels)) {
-          for (let idx = 0; idx < data.reels.length; idx++) {
-            const reelId = `${ownerType}_${ownerId}_${idx}`;
-            const videoUrl = data.reels[idx]; // ✅ THIS IS CLOUDINARY URL
+        const reelTasks = reelItems.map(async (item, idx) => {
+          const videoUrl = getMediaUrl(item);
+          if (!videoUrl) return null;
+          const reelId = `${ownerType}_${ownerId}_${idx}`;
+          const stats = await fetchReelStats(reelId);
+          return {
+            id: reelId,
+            reelId,
+            mediaType: "reel",
+            title: getMediaCaption(item, `${ownerName} reel`),
+            caption: getMediaCaption(item, ""),
+            videoUrl,
+            thumbnail: videoUrl,
+            createdAt: getMediaDate(item),
+            ...stats,
+          };
+        });
 
-            console.log("🎯 MAPPING:", reelId, videoUrl); // DEBUG
+        const seenUrls = new Set();
+        const postTasks = imageItems.map(async (item, idx) => {
+          const imageUrl = getMediaUrl(item);
+          if (!imageUrl || isVideoUrl(imageUrl)) return null;
+          const urlKey = String(imageUrl).split("?")[0];
+          if (seenUrls.has(urlKey)) return null;
+          seenUrls.add(urlKey);
+          const postId = `post_${ownerId}_img_${idx}`;
+          const stats = await fetchPostStats(postId);
+          return {
+            id: postId,
+            reelId: postId,
+            mediaType: "post",
+            title: getMediaCaption(item, `${ownerName} post`),
+            caption: getMediaCaption(item, ""),
+            videoUrl: imageUrl,
+            thumbnail: imageUrl,
+            ownerName,
+            createdAt: getMediaDate(item),
+            ...stats,
+          };
+        });
 
-            tasks.push(
-              Promise.all([
-                getDocs(
-                  query(
-                    collection(db, "reelViews"),
-                    where("reelId", "==", reelId),
-                  ),
-                ),
-                getDocs(
-                  query(
-                    collection(db, "reelLikes"),
-                    where("reelId", "==", reelId),
-                  ),
-                ),
-                getDocs(
-                  query(
-                    collection(db, "reelDislikes"),
-                    where("reelId", "==", reelId),
-                  ),
-                ),
-                getDocs(collection(db, "reelComments", reelId, "comments")),
-                getDocs(
-                  query(
-                    collection(db, "profileViews"),
-                    where("ownerId", "==", ownerId),
-                  ),
-                ), // ✅ REAL PROFILE VIEWS
-              ]).then(
-                ([
-                  viewsSnap,
-                  likesSnap,
-                  dislikeSnap,
-                  commentsSnap,
-                  profileSnap,
-                ]) => ({
-                  reelId,
-                  title: data.instituteName || data.trainerName || "Reel",
-                  videoUrl,
-                  views: viewsSnap.size || 0,
-                  likes: likesSnap.size || 0,
-                  dislikes: dislikeSnap.size || 0,
-                  comments: commentsSnap.size || 0,
-                  profileViews: profileSnap.size || 0, // ✅ REAL DATA
-                }),
-              ),
-            );
-          }
-        }
+        const [reelStats, postStats] = await Promise.all([
+          Promise.all(reelTasks),
+          Promise.all(postTasks),
+        ]);
 
-        const reelStats = await Promise.all(tasks);
-        setTopReels(reelStats);
-
-        /* ================= VIDEO API ================= */
-
-        if (reelStats.length === 0) return; // fallback to static UI
-
-        if (activeTab === "views") reelStats.sort((a, b) => b.views - a.views);
-        if (activeTab === "likes") reelStats.sort((a, b) => b.likes - a.likes);
-        if (activeTab === "comments")
-          reelStats.sort((a, b) => b.comments - a.comments);
-        if (activeTab === "dislikes")
-          reelStats.sort((a, b) => b.dislikes - a.dislikes);
-
-        setTopReels(reelStats);
+        setTopReels(reelStats.filter(Boolean));
+        setTopPosts(postStats.filter(Boolean));
       } catch (err) {
         console.error("Dynamic reel analytics error:", err);
+      } finally {
+        setLoadingContent(false);
       }
     };
 
     fetchTopReels();
-  }, [user, activeTab]);
-  const handlePlayReel = (videoUrl) => {
-    setActiveVideoUrl(videoUrl);
+  }, [user]);
+
+  const handlePlayReel = (item) => {
+    if (!item?.videoUrl) return;
+    if (item.mediaType === "post") {
+      setPreviewImage(item.videoUrl);
+      setActiveVideoUrl(null);
+      setShowVideoPopup(true);
+      return;
+    }
+
+    setPreviewImage(null);
+    setActiveVideoUrl(item.videoUrl);
     setShowVideoPopup(true);
   };
-  /* ================= WORKFORCE (STATIC SAFE) ================= */
-  /* ================= WORKFORCE (STATIC SAFE) ================= */
+
+  const openComments = async (item) => {
+    try {
+      let comments = [];
+      if (item.mediaType === "post") {
+        const snap = await getDocs(
+          query(
+            collection(db, "postcomments"),
+            where("postId", "==", item.id),
+          ),
+        );
+        comments = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+      } else {
+        const snap = await getDocs(
+          collection(db, "reelComments", item.id, "comments"),
+        );
+        comments = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+      }
+      setCommentDrawer({
+        title: item.title,
+        comments,
+      });
+    } catch (error) {
+      console.error(error);
+      setCommentDrawer({ title: item.title, comments: [] });
+    }
+  };
+
+  const displayedContent = useMemo(() => {
+    const keyword = contentSearch.trim().toLowerCase();
+    let items = [];
+    if (contentFilter !== "posts") items = [...items, ...topReels];
+    if (contentFilter !== "reels") items = [...items, ...topPosts];
+
+    return items
+      .filter((item) => matchesDateFilter(item.createdAt))
+      .filter((item) => {
+        if (!keyword) return true;
+        return `${item.title || ""} ${item.caption || ""}`
+          .toLowerCase()
+          .includes(keyword);
+      })
+      .sort((a, b) => Number(b[activeTab] || 0) - Number(a[activeTab] || 0));
+  }, [
+    topReels,
+    topPosts,
+    contentFilter,
+    activeTab,
+    contentSearch,
+    selectedYear,
+    startMonth,
+    endMonth,
+  ]);
+
+  const filteredReels = useMemo(
+    () => topReels.filter((item) => matchesDateFilter(item.createdAt)),
+    [topReels, selectedYear, startMonth, endMonth],
+  );
+
+  const filteredPosts = useMemo(
+    () => topPosts.filter((item) => matchesDateFilter(item.createdAt)),
+    [topPosts, selectedYear, startMonth, endMonth],
+  );
+
+  const contentTotals = useMemo(() => {
+    const all = [...filteredReels, ...filteredPosts];
+    return {
+      items: all.length,
+      views: all.reduce((sum, item) => sum + Number(item.views || 0), 0),
+      likes: all.reduce((sum, item) => sum + Number(item.likes || 0), 0),
+      comments: all.reduce((sum, item) => sum + Number(item.comments || 0), 0),
+      dislikes: all.reduce(
+        (sum, item) => sum + Number(item.dislikes || 0),
+        0,
+      ),
+    };
+  }, [filteredReels, filteredPosts]);
+
+  /* ================= WORKFORCE ================= */
   useEffect(() => {
     if (!user) return;
 
     const fetchWorkforce = async () => {
-      const studentsSnap = await getDocs(
-        query(
-          collection(db, "trainerstudents"),
-          where("trainerId", "==", user.uid),
-        ),
-      );
+      try {
+        const studentsSnap = await getDocs(
+          query(
+            collection(db, "trainerstudents"),
+            where("trainerId", "==", user.uid),
+          ),
+        );
 
-      setCustomerStats({
-        joined: studentsSnap.size || 0,
-        left: 0,
-      });
+        const { start, end } = getMonthRange();
+        let joinedCustomers = 0;
+
+        studentsSnap.forEach((docSnap) => {
+          const d = docSnap.data();
+          let joinDate = null;
+
+          if (d.joiningDate) {
+            joinDate = new Date(d.joiningDate);
+          } else if (d.createdAt?.toDate) {
+            joinDate = d.createdAt.toDate();
+          } else if (d.createdAt?.seconds) {
+            joinDate = new Date(d.createdAt.seconds * 1000);
+          }
+
+          if (!joinDate || Number.isNaN(joinDate.getTime())) return;
+
+          const year = joinDate.getFullYear();
+          const month = joinDate.getMonth();
+          const validYear = Number(year) === Number(selectedYear);
+          const validMonth = month >= start && month <= end;
+
+          if (validYear && validMonth) {
+            joinedCustomers++;
+          }
+        });
+
+        setCustomerStats({
+          joined: joinedCustomers,
+          left: 0,
+        });
+      } catch (err) {
+        console.error("Workforce filter error:", err);
+      }
     };
 
     fetchWorkforce();
-  }, [user]);
+  }, [user, selectedYear, startMonth, endMonth]);
   /* ================= GRAPH REVENUE FROM FIRESTORE ================= */
   /* ================= GRAPH REVENUE FROM FIRESTORE ================= */
   const [loadingRevenue, setLoadingRevenue] = useState(false);
 
   useEffect(() => {
-    if (!user || startMonth === "" || endMonth === "") return;
+    if (!user) return;
 
     const fetchGraphData = async () => {
       try {
@@ -337,6 +607,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           "Dec",
         ];
 
+        const { start, end } = getMonthRange();
         const revenueMap = {};
 
         for (let i = 0; i < 12; i++) {
@@ -350,8 +621,6 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           ),
         );
 
-        let revenueTotal = 0;
-
         feesSnap.forEach((docSnap) => {
           const data = docSnap.data();
 
@@ -364,34 +633,20 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           const year = Number(yearStr);
           const monthIndex = Number(monthStr) - 1;
 
-          if (
-            year === selectedYear &&
-            monthIndex >= Number(startMonth) &&
-            monthIndex <= Number(endMonth)
-          ) {
+          if (year === selectedYear && monthIndex >= start && monthIndex <= end) {
             const amount = Number(data.paidAmount || 0);
-
             revenueMap[monthIndex] += amount;
-
-            revenueTotal += amount;
           }
         });
 
         const graph = [];
 
-        for (
-          let month = Number(startMonth);
-          month <= Number(endMonth);
-          month++
-        ) {
+        for (let month = start; month <= end; month++) {
           graph.push({
             month: months[month],
             revenue: revenueMap[month] || 0,
           });
         }
-
-        console.log("Revenue Graph =>", graph);
-        console.log("Revenue Total =>", revenueTotal);
 
         setGraphData(graph);
       } catch (error) {
@@ -478,85 +733,115 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
     >
       {/* HEADER */}
       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold leading-tight">
-          Growth & Performance Overview
-        </h1>
+        <div>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold leading-tight">
+            Growth & Performance Overview
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Track revenue, expenses, content and students
+          </p>
+        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full xl:w-auto">
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="border px-3 py-2 rounded-lg text-sm w-full bg-white"
-          >
-            {[2026, 2025, 2024, 2023].map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full xl:w-auto">
+          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase">
+              Year
+            </span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
+            >
+              {[2023, 2024, 2025, 2026, new Date().getFullYear()]
+                .filter((year, index, list) => list.indexOf(year) === index)
+                .sort((a, b) => b - a)
+                .map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+            </select>
+          </label>
 
-          <select
-            value={startMonth}
-            onChange={(e) => setStartMonth(e.target.value)}
-            className="border px-3 py-2 rounded-lg text-sm w-full bg-white"
-          >
-            <option value="">From</option>
-            {[...Array(12)].map((_, i) => (
-              <option key={i} value={i}>
-                {new Date(0, i).toLocaleString("default", {
-                  month: "short",
-                })}
-              </option>
-            ))}
-          </select>
+          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase">
+              From
+            </span>
+            <select
+              value={startMonth}
+              onChange={(e) => {
+                const value = e.target.value;
+                setStartMonth(value);
+                if (value && endMonth && Number(value) > Number(endMonth)) {
+                  setEndMonth(value);
+                }
+              }}
+              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
+            >
+              <option value="">Jan</option>
+              {[...Array(12)].map((_, i) => (
+                <option key={i} value={i}>
+                  {new Date(0, i).toLocaleString("default", {
+                    month: "short",
+                  })}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <select
-            value={endMonth}
-            onChange={(e) => setEndMonth(e.target.value)}
-            className="border px-3 py-2 rounded-lg text-sm w-full bg-white"
-          >
-            <option value="">To</option>
-            {[...Array(12)].map((_, i) => (
-              <option key={i} value={i}>
-                {new Date(0, i).toLocaleString("default", {
-                  month: "short",
-                })}
-              </option>
-            ))}
-          </select>
+          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase">
+              To
+            </span>
+            <select
+              value={endMonth}
+              onChange={(e) => {
+                const value = e.target.value;
+                setEndMonth(value);
+                if (value && startMonth && Number(value) < Number(startMonth)) {
+                  setStartMonth(value);
+                }
+              }}
+              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
+            >
+              <option value="">Dec</option>
+              {[...Array(12)].map((_, i) => (
+                <option key={i} value={i}>
+                  {new Date(0, i).toLocaleString("default", {
+                    month: "short",
+                  })}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <button
-            onClick={downloadPDFReport}
-            className="bg-orange-500 text-white rounded-lg px-4 py-2 text-sm font-medium"
-          >
-            Download Report
-          </button>
+          <div className="flex gap-2 items-end w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="flex-1 sm:flex-none border border-gray-200 bg-white px-5 py-3 rounded-xl font-semibold text-sm text-gray-700"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={downloadPDFReport}
+              className="flex-1 sm:flex-none bg-orange-500 hover:bg-orange-600 transition text-white px-5 py-3 rounded-xl font-semibold shadow-sm"
+            >
+              Download Report
+            </button>
+          </div>
         </div>
       </div>
 
       {/* KPI CARDS */}
       <div className="grid grid-cols-2 xl:grid-cols-7 gap-3 mb-6">
-        <Card
-          title="Profile Views"
-          value={topReels.reduce((s, r) => s + Number(r.profileViews || 0), 0)}
-        />
-
-        <Card
-          title="Video Views"
-          value={topReels.reduce((s, r) => s + r.views, 0)}
-        />
-
-        <Card title="Likes" value={topReels.reduce((s, r) => s + r.likes, 0)} />
-
-        <Card
-          title="Dislikes"
-          value={topReels.reduce((s, r) => s + r.dislikes, 0)}
-        />
-
+        <Card title="Video Views" value={contentTotals.views} />
+        <Card title="Likes" value={contentTotals.likes} />
+        <Card title="Dislikes" value={contentTotals.dislikes} />
+        <Card title="Comments" value={contentTotals.comments} />
         <Card title="Revenue" value={`₹${totalRevenue.toLocaleString()}`} />
-
         <Card title="Expenses" value={`₹${totalExpenses.toLocaleString()}`} />
-
         <Card
           title={netProfit >= 0 ? "Profit" : "Loss"}
           value={`₹${Math.abs(netProfit).toLocaleString()}`}
@@ -611,18 +896,74 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
       </div>
 
       {/* TOP CONTENT */}
-      <div className="bg-white rounded-2xl shadow border p-4 sm:p-5">
-        <h2 className="text-xl font-bold mb-4">Top Content Insights</h2>
+      <div className="bg-white border border-orange-100 rounded-3xl p-3 sm:p-6 shadow-sm overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+              Content insights
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Reels, posts, likes, comments and views for this login
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs bg-orange-50 text-orange-700 px-3 py-1.5 rounded-full font-semibold">
+              {filteredReels.length} reels
+            </span>
+            <span className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-semibold">
+              {filteredPosts.length} posts
+            </span>
+            <span className="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full font-semibold">
+              {contentTotals.likes} likes
+            </span>
+            <span className="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full font-semibold">
+              {contentTotals.views} views
+            </span>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-6 border-b pb-3 mb-4">
+        <input
+          value={contentSearch}
+          onChange={(event) => setContentSearch(event.target.value)}
+          placeholder="Search reels and posts"
+          className="w-full mb-4 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none"
+        />
+
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4">
+          {[
+            {
+              id: "all",
+              label: "All",
+              count: filteredReels.length + filteredPosts.length,
+            },
+            { id: "reels", label: "Reels", count: filteredReels.length },
+            { id: "posts", label: "Posts", count: filteredPosts.length },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setContentFilter(tab.id)}
+              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
+                contentFilter === tab.id
+                  ? "bg-[#FF6B00] text-white"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-5">
           {["views", "likes", "dislikes", "comments"].map((tab) => (
             <button
               key={tab}
+              type="button"
               onClick={() => setActiveTab(tab)}
-              className={`pb-2 capitalize ${
+              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap capitalize transition ${
                 activeTab === tab
-                  ? "border-b-2 border-orange-500 text-orange-600 font-semibold"
-                  : "text-gray-500"
+                  ? "bg-black text-orange-400 font-semibold"
+                  : "bg-white border border-gray-200 text-gray-600"
               }`}
             >
               Most {tab}
@@ -630,58 +971,218 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           ))}
         </div>
 
-        <div className="overflow-x-auto">
-          {topReels.slice(0, 5).map((reel, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between gap-4 border-b py-4"
-            >
-              <button
-                onClick={() => handlePlayReel(reel.videoUrl)}
-                className="w-20 h-12 rounded-lg bg-gray-200 text-xs font-semibold"
+        {loadingContent ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {[1, 2, 3].map((item) => (
+              <div
+                key={item}
+                className="rounded-2xl border border-gray-100 p-4 animate-pulse"
               >
-                ▶ Play
+                <div className="h-36 bg-gray-100 rounded-xl mb-3" />
+                <div className="h-3 w-2/3 bg-gray-100 rounded-full mb-2" />
+                <div className="h-3 w-1/2 bg-gray-50 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : displayedContent.length === 0 ? (
+          <div className="text-center py-12 px-4">
+            <p className="font-semibold text-gray-700">
+              {topReels.length + topPosts.length === 0
+                ? "No content yet"
+                : "No results for these filters"}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              {topReels.length + topPosts.length === 0
+                ? "Upload reels or posts to see views, likes and comments here."
+                : "Try another year, month range, type or search."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {displayedContent.map((item, index) => (
+              <div
+                key={item.id}
+                className="group rounded-2xl border border-gray-100 overflow-hidden bg-[#F8F8F8] hover:shadow-md transition-all duration-200"
+                style={{
+                  animation: `moreFadeUp 0.28s ease-out ${index * 40}ms both`,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handlePlayReel(item)}
+                  className="relative w-full h-40 bg-black overflow-hidden"
+                >
+                  {item.mediaType === "post" ? (
+                    <img
+                      src={item.thumbnail}
+                      alt=""
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                  ) : (
+                    <video
+                      src={item.videoUrl}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                  <span className="absolute top-3 left-3 text-[10px] font-bold uppercase bg-white/90 px-2 py-1 rounded-full">
+                    {item.mediaType === "post" ? "Post" : "Reel"}
+                  </span>
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition">
+                    {item.mediaType === "post" ? (
+                      <ImageIcon className="text-white" size={28} />
+                    ) : (
+                      <Play className="text-white" size={28} fill="white" />
+                    )}
+                  </span>
+                </button>
+
+                <div className="p-4">
+                  <p className="font-semibold text-gray-800 line-clamp-2 min-h-[40px]">
+                    {item.title || "Untitled"}
+                  </p>
+                  <div className="grid grid-cols-4 gap-2 mt-3 text-center">
+                    <div>
+                      <Eye size={14} className="mx-auto text-gray-400" />
+                      <p className="text-xs font-semibold mt-1">{item.views}</p>
+                    </div>
+                    <div>
+                      <Heart size={14} className="mx-auto text-rose-400" />
+                      <p className="text-xs font-semibold mt-1">{item.likes}</p>
+                    </div>
+                    <div>
+                      <ThumbsDown size={14} className="mx-auto text-gray-400" />
+                      <p className="text-xs font-semibold mt-1">
+                        {item.dislikes}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openComments(item)}
+                      className="active:scale-95"
+                    >
+                      <MessageCircle
+                        size={14}
+                        className="mx-auto text-orange-400"
+                      />
+                      <p className="text-xs font-semibold mt-1">
+                        {item.comments}
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showVideoPopup && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-black rounded-3xl p-2 sm:p-3 w-full max-w-2xl relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVideoPopup(false);
+                  setActiveVideoUrl(null);
+                  setPreviewImage(null);
+                }}
+                className="absolute top-2 right-3 text-white text-xl z-10"
+              >
+                ✕
               </button>
-
-              <div className="flex-1">
-                <p className="font-medium">{reel.title}</p>
-
-                <p className="text-xs text-gray-500">
-                  💬 {reel.comments} Comments
-                </p>
-              </div>
-
-              <div className="text-center">
-                <p className="font-semibold">{reel.views}</p>
-                <p className="text-xs">Views</p>
-              </div>
-
-              <div className="text-center">
-                <p className="font-semibold text-green-600">{reel.likes}</p>
-                <p className="text-xs">Likes</p>
-              </div>
-
-              <div className="text-center">
-                <p className="font-semibold text-red-500">{reel.dislikes}</p>
-                <p className="text-xs">Dislikes</p>
-              </div>
+              {previewImage ? (
+                <img
+                  src={previewImage}
+                  alt=""
+                  className="w-full max-h-[80vh] object-contain rounded-xl"
+                />
+              ) : (
+                <video
+                  src={activeVideoUrl}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full rounded-xl"
+                />
+              )}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+
+        {commentDrawer && (
+          <div
+            className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setCommentDrawer(null)}
+          >
+            <div
+              className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 max-h-[80vh] overflow-y-auto"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-bold text-gray-900">Comments</h3>
+                  <p className="text-xs text-gray-500 line-clamp-1">
+                    {commentDrawer.title}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCommentDrawer(null)}
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              {commentDrawer.comments.length === 0 ? (
+                <p className="text-sm text-gray-400 py-8 text-center">
+                  No comments yet
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {commentDrawer.comments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="rounded-2xl bg-gray-50 px-4 py-3"
+                    >
+                      <p className="text-sm font-semibold text-gray-800">
+                        {comment.userName ||
+                          comment.name ||
+                          comment.senderName ||
+                          "User"}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {comment.text || comment.comment || ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* REVENUE CHART */}
       <h2 className="text-xl font-bold mt-8 mb-3">Revenue Report</h2>
 
       <div className="bg-white rounded-2xl shadow p-4">
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={graphData}>
-            <XAxis dataKey="month" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="revenue" fill="#f97316" radius={[6, 6, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        {loadingRevenue ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500" />
+            <p className="mt-3 text-gray-500">Loading analytics...</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={graphData}>
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="revenue" fill="#f97316" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* REVENUE VS EXPENSE */}

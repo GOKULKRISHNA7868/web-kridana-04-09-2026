@@ -12,8 +12,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
-
+      // Logout / signed-out: clear instantly without a loading white flash
       if (!firebaseUser) {
         setUser(null);
         setInstitute(null);
@@ -21,6 +20,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      setLoading(true);
       setUser(firebaseUser);
 
       try {

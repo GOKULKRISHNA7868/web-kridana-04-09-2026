@@ -10,7 +10,22 @@
 
 import React, { useEffect, useState } from "react";
 import { PieChart, Pie, Cell } from "recharts";
-import { CalendarDays, Activity, Clock } from "lucide-react";
+import {
+  CalendarDays,
+  Activity,
+  Clock,
+  Star,
+  Award,
+  Dumbbell,
+  Shield,
+  Users,
+  Flame,
+  Zap,
+  HeartPulse,
+  PersonStanding,
+  MessageSquareQuote,
+  Accessibility,
+} from "lucide-react";
 import {
   collection,
   query,
@@ -22,7 +37,58 @@ import {
 import { db, auth } from "../../firebase";
 import { useSelectedStudent } from "../../context/SelectedStudentContext";
 /* ---------------- Donut Component ---------------- */
+const ProgressRow = ({ icon, label, value, color = "text-orange-500" }) => {
+  const percent = Math.min(Number(value || 0), 100);
 
+  return (
+    <div className="py-4 border-b border-gray-100 last:border-b-0">
+      {/* Mobile */}
+      <div className="sm:hidden">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div className={`${color}`}>{icon}</div>
+
+            <span className="text-[15px] font-medium text-gray-700">
+              {label}
+            </span>
+          </div>
+
+          <span className="text-sm font-semibold text-gray-800">
+            {percent}%
+          </span>
+        </div>
+
+        <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full bg-orange-500 transition-all duration-700"
+            style={{
+              width: `${percent}%`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Tablet/Desktop */}
+
+      <div className="hidden sm:flex items-center gap-4">
+        <div className={`w-10 flex justify-center ${color}`}>{icon}</div>
+
+        <div className="w-40 font-medium text-gray-700">{label}</div>
+
+        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full bg-orange-500 transition-all duration-700"
+            style={{
+              width: `${percent}%`,
+            }}
+          />
+        </div>
+
+        <div className="w-12 text-right font-semibold">{percent}%</div>
+      </div>
+    </div>
+  );
+};
 const Donut = ({ data }) => {
   return (
     <PieChart width={180} height={180} className="sm:w-[220px] sm:h-[220px]">
@@ -209,22 +275,22 @@ const Dashboard = () => {
   /* ---------------- UI ---------------- */
 
   return (
-    <div className="bg-white min-h-screen p-4 sm:p-6 lg:p-8">
-      {/* Top Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-        <div className="bg-white border border-orange-400 rounded-lg p-3 sm:p-5 flex items-center gap-4">
-          <div className="bg-orange-100 p-3 rounded-md">
-            <CalendarDays className="text-orange-500" />
+    <div className="min-h-screen bg-[#F6F7FB] px-4 py-4 pb-24">
+      {/* Upcoming Events */}
+      <div className="mb-5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
+            <CalendarDays size={17} className="text-orange-500" />
           </div>
-          <div>
-            <h3 className="font-semibold text-lg">Upcoming Events</h3>
-            <p className="text-gray-500 text-sm">{events.length} Events</p>
-          </div>
+
+          <h2 className="font-semibold text-[16px] text-gray-800">
+            Upcoming Events
+          </h2>
         </div>
       </div>
 
       {/* Middle Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch mb-10 px-2 sm:px-0">
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-3 lg:gap-6 mb-8">
         {/* Upcoming Events */}
         <div className="col-span-1 lg:h-full">
           <h2 className="text-base sm:text-lg md:text-xl font-semibold mb-2 px-2 sm:px-0">
@@ -259,181 +325,228 @@ const Dashboard = () => {
         </div>
 
         {/* Training Progress */}
-        <div className="col-span-1 md:col-span-2 lg:h-full">
-          <h2 className="text-base sm:text-lg md:text-xl font-semibold mt-4 lg:mt-0 mb-2 px-2 sm:px-0">
-            Training Progress
-          </h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+          {/* Header */}
 
-          <div className="bg-white border border-orange-400 rounded-lg p-4 h-full flex flex-col justify-between w-full">
-            <div className="flex flex-col lg:flex-row justify-evenly items-center gap-4 sm:gap-6">
-              {/* Left Donut */}
-              <div className="flex flex-col items-center">
-                <Donut
-                  data={[
-                    {
-                      value: parseScore(trainingMetrics?.coach),
-                      color: "#f97316",
-                    },
-                    {
-                      value: parseScore(trainingMetrics?.skill),
-                      color: "#eab308",
-                    },
-                    {
-                      value: parseScore(trainingMetrics?.fitness),
-                      color: "#22c55e",
-                    },
-                    {
-                      value: parseScore(trainingMetrics?.discipline),
-                      color: "#6b7280",
-                    },
-                    {
-                      value: parseScore(trainingMetrics?.team),
-                      color: "#3b82f6",
-                    },
-                    {
-                      value: parseScore(trainingMetrics?.focus),
-                      color: "#ef4444",
-                    },
-                  ]}
-                />
+          <div className="flex items-center justify-between p-4 border-b">
+            <div className="flex items-center gap-2">
+              <Activity size={20} className="text-orange-500" />
 
-                <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
-                  <p>
-                    <span className="w-3 h-3 bg-orange-500 inline-block mr-2 rounded-full"></span>
-                    Coach Rating
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-yellow-400 inline-block mr-2 rounded-full"></span>
-                    Skill Progress
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-green-500 inline-block mr-2 rounded-full"></span>
-                    Fitness
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-gray-500 inline-block mr-2 rounded-full"></span>
-                    Discipline
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-blue-500 inline-block mr-2 rounded-full"></span>
-                    Team Work
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-red-500 inline-block mr-2 rounded-full"></span>
-                    Effort
-                  </p>
-                </div>
-              </div>
-
-              {/* Right Donut */}
-              <div className="flex flex-col items-center">
-                <Donut
-                  data={[
-                    {
-                      value: parseScore(physicalMetrics?.speed?.value),
-                      color: "#f97316",
-                    },
-                    {
-                      value: parseScore(physicalMetrics?.agility?.value),
-                      color: "#eab308",
-                    },
-                    {
-                      value: parseScore(physicalMetrics?.stamina?.value),
-                      color: "#22c55e",
-                    },
-                    {
-                      value: parseScore(physicalMetrics?.flexibility?.value),
-                      color: "#3b82f6",
-                    },
-                    {
-                      value: parseScore(physicalMetrics?.strength?.value),
-                      color: "#10b981",
-                    },
-                  ]}
-                />
-
-                <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
-                  <p>
-                    <span className="w-3 h-3 bg-orange-500 inline-block mr-2 rounded-full"></span>
-                    Speed
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-yellow-400 inline-block mr-2 rounded-full"></span>
-                    Agility
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-green-500 inline-block mr-2 rounded-full"></span>
-                    Stamina
-                  </p>
-                  <p>
-                    <span className="w-3 h-3 bg-blue-500 inline-block mr-2 rounded-full"></span>
-                    Flexibility
-                  </p>
-                </div>
-              </div>
+              <h2 className="font-semibold text-lg">Training Progress</h2>
             </div>
 
-            <p className="text-sm text-gray-600 mt-6">
-              <strong>Trainer Observation :</strong> Demonstrates consistent
-              dedication, strong discipline, and steady improvement across all
-              training sessions.
-            </p>
+            <select className="w-full sm:w-auto rounded-xl border border-gray-200 px-4 py-2 text-sm outline-none">
+              <option>This Month</option>
+            </select>
+          </div>
+
+          {/* Coach Evaluation */}
+
+          <div className="px-6 pb-3">
+            <h3 className="font-bold text-xl mb-2">Coach Evaluation</h3>
+
+            <ProgressRow
+              icon={<Star size={22} />}
+              label="Coach Rating"
+              value={parseScore(trainingMetrics?.coach)}
+              color="text-orange-500"
+            />
+
+            <ProgressRow
+              icon={<Award size={22} />}
+              label="Skill Progress"
+              value={parseScore(trainingMetrics?.skill)}
+              color="text-yellow-500"
+            />
+
+            <ProgressRow
+              icon={<Dumbbell size={22} />}
+              label="Fitness"
+              value={parseScore(trainingMetrics?.fitness)}
+              color="text-green-500"
+            />
+
+            <ProgressRow
+              icon={<Shield size={22} />}
+              label="Discipline"
+              value={parseScore(trainingMetrics?.discipline)}
+              color="text-purple-500"
+            />
+
+            <ProgressRow
+              icon={<Users size={22} />}
+              label="Team Work"
+              value={parseScore(trainingMetrics?.team)}
+              color="text-blue-500"
+            />
+
+            <ProgressRow
+              icon={<Flame size={22} />}
+              label="Effort"
+              value={parseScore(trainingMetrics?.focus)}
+              color="text-red-500"
+            />
+          </div>
+
+          {/* Physical */}
+
+          <div className="border-t px-6 py-5">
+            <h3 className="font-bold text-xl mb-2">Physical Attributes</h3>
+
+            <ProgressRow
+              icon={<Activity size={22} />}
+              label="Speed"
+              value={parseScore(physicalMetrics?.speed?.value)}
+              color="text-orange-500"
+            />
+
+            <ProgressRow
+              icon={<Zap size={22} />}
+              label="Agility"
+              value={parseScore(physicalMetrics?.agility?.value)}
+              color="text-yellow-500"
+            />
+
+            <ProgressRow
+              icon={<HeartPulse size={22} />}
+              label="Stamina"
+              value={parseScore(physicalMetrics?.stamina?.value)}
+              color="text-green-500"
+            />
+
+            <ProgressRow
+              icon={<Accessibility size={22} />}
+              label="Flexibility"
+              value={parseScore(physicalMetrics?.flexibility?.value)}
+              color="text-blue-500"
+            />
+          </div>
+
+          {/* Observation */}
+
+          <div className="p-6">
+            <div className="bg-orange-50 rounded-2xl p-5">
+              <div className="font-bold mb-2">Trainer Observation</div>
+
+              <p className="text-gray-600 leading-7">
+                Demonstrates consistent dedication, strong discipline, and
+                steady improvement across all training sessions.
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Attendance Summary */}
-      <div className="mt-14">
-        <h2 className="text-lg font-semibold mb-6">Attendance Summary</h2>
+      {/* Attendance Summary */}
+      <div className="mt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+            <Clock size={17} className="text-gray-700" />
+          </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {loading ? (
-            <div className="col-span-3 text-center text-gray-500">
-              Loading attendance...
+          <h2 className="font-semibold text-[16px] text-gray-800">
+            Attendance Summary
+          </h2>
+        </div>
+
+        {loading ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+            <div className="animate-pulse">
+              <div className="w-16 h-16 rounded-full bg-gray-200 mx-auto mb-5"></div>
+
+              <div className="h-4 bg-gray-200 rounded w-40 mx-auto"></div>
             </div>
-          ) : attendanceData.length === 0 ? (
-            <div className="col-span-3 text-center text-gray-500">
-              No attendance data available
+          </div>
+        ) : attendanceData.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-10">
+            <div className="flex flex-col items-center">
+              <img
+                src="https://cdn-icons-png.flaticon.com/512/3652/3652191.png"
+                alt=""
+                className="w-24 opacity-20 mb-5"
+              />
+
+              <p className="text-gray-400 text-sm">
+                No attendance data available
+              </p>
             </div>
-          ) : (
-            attendanceData.map((item, index) => (
-              <div
-                key={index}
-                className="bg-white border border-orange-400 rounded-lg p-3 sm:p-5"
-              >
-                <h3 className="font-semibold text-lg mb-4">{item.title}</h3>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {attendanceData.map((item, index) => {
+              const percentage = item.total
+                ? ((item.present / item.total) * 100).toFixed(0)
+                : 0;
 
-                <p className="mb-2">
-                  Total Session{" "}
-                  <span className="float-right">{item.total}</span>
-                </p>
-                <p className="mb-2">
-                  Present <span className="float-right">{item.present}</span>
-                </p>
-                <p className="mb-2">
-                  Absent{" "}
-                  <span className="float-right">
-                    {item.absent.toString().padStart(2, "0")}
-                  </span>
-                </p>
+              return (
+                <div
+                  key={index}
+                  className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"
+                >
+                  {/* Header */}
 
-                <div className="border-t mt-4 pt-3">
-                  <p className="text-sm mb-2">
-                    Attendance Rate : {item.present}/{item.total}
-                  </p>
-                  <div className="w-full bg-gray-200 h-2 rounded-full">
-                    <div
-                      className="bg-orange-500 h-2 rounded-full"
-                      style={{
-                        width: `${item.total ? (item.present / item.total) * 100 : 0}%`,
-                      }}
-                    ></div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-gray-800">
+                      {item.title}
+                    </h3>
+
+                    <span className="text-orange-500 font-bold text-lg">
+                      {percentage}%
+                    </span>
+                  </div>
+
+                  {/* Stats */}
+
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Total Sessions</span>
+
+                      <span className="font-semibold">{item.total}</span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-green-600">Present</span>
+
+                      <span className="font-semibold text-green-600">
+                        {item.present}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span className="text-red-500">Absent</span>
+
+                      <span className="font-semibold text-red-500">
+                        {item.absent}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress */}
+
+                  <div className="mt-5">
+                    <div className="flex justify-between text-xs text-gray-500 mb-2">
+                      <span>Attendance</span>
+
+                      <span>
+                        {item.present}/{item.total}
+                      </span>
+                    </div>
+
+                    <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-orange-500 rounded-full transition-all duration-700"
+                        style={{
+                          width: `${percentage}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

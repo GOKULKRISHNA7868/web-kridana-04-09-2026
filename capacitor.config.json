@@ -1,7 +1,14 @@
 {
-  "appId": "com.kridana.app",
+  "appId": "kridana.net",
   "appName": "kridana",
   "webDir": "dist",
+
+  "server": {
+    "allowNavigation": [
+      "checkout.razorpay.com",
+      "kridana-razorpay-backend.onrender.com"
+    ]
+  },
 
   "plugins": {
     "SplashScreen": {

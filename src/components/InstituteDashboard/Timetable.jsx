@@ -18,6 +18,7 @@ import {
 import { auth, db } from "../../firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { getDoc } from "firebase/firestore";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 export default function ClassTime() {
   const [instituteId, setInstituteId] = useState("");
   const [trainers, setTrainers] = useState([]);
@@ -30,6 +31,9 @@ export default function ClassTime() {
   const [is24Hour, setIs24Hour] = useState(false);
   const [branches, setBranches] = useState([]);
   const [search, setSearch] = useState("");
+  const [calendarView, setCalendarView] = useState("timeGridDay");
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [calendarTitle, setCalendarTitle] = useState("");
   const categories = [
     "Martial Arts",
     "Team Ball Sports",
@@ -525,6 +529,118 @@ export default function ClassTime() {
   const filteredEvents = events.filter((e) =>
     e.title?.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const toJsDate = (value) => {
+    if (!value) return null;
+    if (value?.toDate) return value.toDate();
+    if (value instanceof Date) return value;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const isSameDay = (a, b) =>
+    a &&
+    b &&
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const padTime = (n) => String(n).padStart(2, "0");
+
+  const localDateParts = (value) => {
+    const d = toJsDate(value);
+    if (!d) return { date: "", time: "" };
+    return {
+      date: `${d.getFullYear()}-${padTime(d.getMonth() + 1)}-${padTime(d.getDate())}`,
+      time: `${padTime(d.getHours())}:${padTime(d.getMinutes())}`,
+    };
+  };
+
+  const formatClock = (value) => {
+    const d = toJsDate(value);
+    if (!d) return "";
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: !is24Hour,
+    });
+  };
+
+  const classAccent = (category, cancelled) => {
+    if (cancelled) {
+      return { bar: "bg-red-500", tag: "bg-red-50 text-red-700" };
+    }
+    const map = {
+      "Martial Arts": { bar: "bg-sky-500", tag: "bg-sky-50 text-sky-700" },
+      Fitness: { bar: "bg-violet-500", tag: "bg-violet-50 text-violet-700" },
+      "Racket Sports": { bar: "bg-emerald-500", tag: "bg-emerald-50 text-emerald-700" },
+      Dance: { bar: "bg-pink-500", tag: "bg-pink-50 text-pink-700" },
+      Wellness: { bar: "bg-teal-500", tag: "bg-teal-50 text-teal-700" },
+      "Team Ball Sports": { bar: "bg-indigo-500", tag: "bg-indigo-50 text-indigo-700" },
+      "Aquatic Sports": { bar: "bg-cyan-500", tag: "bg-cyan-50 text-cyan-700" },
+    };
+    return map[category] || { bar: "bg-[#ff6a00]", tag: "bg-orange-50 text-[#ff6a00]" };
+  };
+
+  const matchesSearch = (item) => {
+    const title = item.cancelled
+      ? `❌ Cancelled - ${item.subCategory}`
+      : item.subCategory;
+    return title?.toLowerCase().includes(search.toLowerCase());
+  };
+
+  const selectedDayClasses = schedule
+    .filter((s) => isSameDay(toJsDate(s.start), selectedDate) && matchesSearch(s))
+    .sort((a, b) => (toJsDate(a.start)?.getTime() || 0) - (toJsDate(b.start)?.getTime() || 0));
+
+  const monthClassCount = schedule.filter((s) => {
+    const start = toJsDate(s.start);
+    return (
+      start &&
+      start.getMonth() === selectedDate.getMonth() &&
+      start.getFullYear() === selectedDate.getFullYear()
+    );
+  }).length;
+
+  const todayClassCount = schedule.filter((s) =>
+    isSameDay(toJsDate(s.start), new Date()),
+  ).length;
+
+  const selectedDayLabel = selectedDate.toLocaleDateString("en-US", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+
+  const getCalApi = () => calendarRef.current?.getApi();
+
+  const changeCalendarView = (view) => {
+    setCalendarView(view);
+    getCalApi()?.changeView(view);
+  };
+
+  const goToday = () => {
+    getCalApi()?.today();
+    setSelectedDate(new Date());
+  };
+
+  const openScheduledClass = (event) => {
+    const start = localDateParts(event.start);
+    const end = localDateParts(event.end);
+    setEditId(event.id);
+    setForm({
+      date: start.date,
+      startTime: start.time,
+      endTime: end.time,
+      category: event.category || "",
+      subCategory: event.subCategory || "",
+      branch: event.branch || "",
+      trainerId: event.trainerId || "",
+      students: event.students || [],
+    });
+    setShowModal(true);
+  };
+
   const cancelClass = async () => {
     if (!editId) return;
 
@@ -561,190 +677,384 @@ export default function ClassTime() {
       console.error(err);
     }
   };
+  const views = [
+    { id: "dayGridMonth", label: "Month" },
+    { id: "timeGridWeek", label: "Week" },
+    { id: "timeGridDay", label: "Day" },
+    { id: "listWeek", label: "List" },
+  ];
+
   return (
-    <div className="bg-gray-100 p-3 sm:p-4 rounded-xl min-h-screen">
-      {/* -------- TOP BAR -------- */}
-      <div className="flex flex-col sm:flex-row justify-between gap-3 mb-4">
-        {/* LEFT */}
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            className="border px-3 py-2 rounded-md bg-white text-sm w-full sm:w-auto"
-            onChange={(e) => {
-              const view = e.target.value;
-              calendarRef.current.getApi().changeView(view);
-            }}
-          >
-            <option value="timeGridDay">Day</option>
-            <option value="timeGridWeek">Week</option>
-            <option value="dayGridMonth">Month</option>
-            <option value="listWeek">List</option>
-          </select>
-
-          {/* TIME FORMAT */}
-          <div className="flex border rounded-md overflow-hidden text-sm w-full sm:w-auto">
-            <button
-              onClick={() => setIs24Hour(false)}
-              className={`flex-1 sm:flex-none px-3 py-2 ${
-                !is24Hour ? "bg-orange-500 text-white" : "bg-white"
-              }`}
-            >
-              12 hrs
-            </button>
-            <button
-              onClick={() => setIs24Hour(true)}
-              className={`flex-1 sm:flex-none px-3 py-2 ${
-                is24Hour ? "bg-orange-500 text-white" : "bg-white"
-              }`}
-            >
-              24 hrs
-            </button>
+    <div className="h-full min-h-0 flex flex-col overflow-hidden bg-transparent">
+      <div className="shrink-0 pb-2 sm:pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-[22px] sm:text-2xl font-bold text-gray-900 leading-tight">
+              Calendar
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+              View and manage all your classes.
+            </p>
           </div>
-        </div>
-
-        {/* RIGHT */}
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <input
-            type="text"
-            placeholder="Search here..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="border px-3 py-2 rounded-md w-full sm:w-56 text-sm"
-          />
-
           <button
             onClick={() => setShowModal(true)}
-            className="bg-orange-500 text-white px-4 py-2 rounded-md text-sm w-full sm:w-auto"
+            className="hidden sm:inline-flex items-center gap-1.5 bg-[#ff6a00] hover:bg-[#e85f00] text-white px-3.5 py-2 rounded-xl text-sm font-semibold shadow-sm"
           >
-            + Add New
+            <Plus size={16} />
+            Add New
           </button>
+        </div>
+
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+            <button
+              onClick={goToday}
+              className="shrink-0 h-9 px-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700"
+            >
+              Today
+            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => getCalApi()?.prev()}
+                className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
+                aria-label="Previous"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => getCalApi()?.next()}
+                className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
+                aria-label="Next"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+            <div className="flex shrink-0 border border-gray-200 rounded-xl overflow-hidden bg-white text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setIs24Hour(false)}
+                className={`h-9 px-2.5 ${
+                  !is24Hour ? "bg-[#ff6a00] text-white" : "text-gray-600"
+                }`}
+              >
+                12 hrs
+              </button>
+              <button
+                type="button"
+                onClick={() => setIs24Hour(true)}
+                className={`h-9 px-2.5 ${
+                  is24Hour ? "bg-[#ff6a00] text-white" : "text-gray-600"
+                }`}
+              >
+                24 hrs
+              </button>
+            </div>
+            <div className="relative min-w-[140px] flex-1 max-w-xs">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="text"
+                placeholder="Search here..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 w-full rounded-xl border border-gray-200 bg-white pl-8 pr-3 text-sm text-gray-800 placeholder:text-gray-400"
+              />
+            </div>
+            <button
+              onClick={() => setShowModal(true)}
+              className="sm:hidden shrink-0 inline-flex items-center gap-1 bg-[#ff6a00] text-white h-9 px-3 rounded-xl text-sm font-semibold"
+            >
+              <Plus size={16} />
+              Add
+            </button>
+          </div>
+
+          <div className="flex rounded-xl bg-gray-100 p-1 w-full sm:w-auto self-start">
+            {views.map((view) => (
+              <button
+                key={view.id}
+                type="button"
+                onClick={() => changeCalendarView(view.id)}
+                className={`h-8 px-3.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                  calendarView === view.id
+                    ? "bg-[#ff6a00] text-white shadow-sm"
+                    : "text-gray-600"
+                }`}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* -------- CALENDAR -------- */}
-      <div className="bg-white p-1 sm:p-3 rounded-xl border border-orange-300 overflow-hidden touch-manipulation">
-        <FullCalendar
-          ref={calendarRef}
-          plugins={[
-            dayGridPlugin,
-            timeGridPlugin,
-            interactionPlugin,
-            listPlugin,
-          ]}
-          selectable={true}
-          selectMirror={true}
-          /* 👇 MOBILE FIX */
-          longPressDelay={100}
-          selectLongPressDelay={100}
-          eventLongPressDelay={100}
-          /* 👇 IMPORTANT */
-          selectOverlap={false}
-          initialView="timeGridDay"
-          headerToolbar={false}
-          slotMinTime="09:00:00"
-          slotMaxTime="20:00:00"
-          allDaySlot={false}
-          height="auto"
-          events={filteredEvents}
-          selectable={true}
-          /* ✅ RESPONSIVE FIX */
-          expandRows={true}
-          slotMinWidth={36}
-          dayMaxEventRows={2}
-          stickyHeaderDates={true}
-          dayHeaderFormat={{
-            weekday: "short",
-            month: "numeric",
-            day: "numeric",
-          }}
-          slotLabelInterval="01:00"
-          dayMaxEvents={true}
-          /* TIME FORMAT */
-          slotLabelFormat={{
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: !is24Hour,
-          }}
-          eventTimeFormat={{
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: !is24Hour,
-          }}
-          /* SELECT */
-          select={(info) => {
-            const date = info.startStr.split("T")[0];
-            const start = info.startStr.split("T")[1]?.slice(0, 5);
-            const end = info.endStr.split("T")[1]?.slice(0, 5);
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="shrink-0 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 border-b border-gray-100">
+            <h2 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+              {calendarTitle || "Calendar"}
+            </h2>
+          </div>
 
-            setEditId(null);
+          <div className="flex-1 min-h-0 kridana-cal px-1 sm:px-2">
+            <FullCalendar
+              ref={calendarRef}
+              plugins={[
+                dayGridPlugin,
+                timeGridPlugin,
+                interactionPlugin,
+                listPlugin,
+              ]}
+              headerToolbar={false}
+              initialView="timeGridDay"
+              height="100%"
+              contentHeight="auto"
+              allDaySlot={false}
+              slotMinTime="00:00:00"
+              slotMaxTime="24:00:00"
+              slotDuration="00:30:00"
+              slotLabelInterval="01:00:00"
+              scrollTime="06:00:00"
+              scrollTimeReset={false}
+              nowIndicator={true}
+              stickyHeaderDates={true}
+              expandRows={true}
+              handleWindowResize={true}
+              windowResizeDelay={100}
+              longPressDelay={100}
+              selectLongPressDelay={100}
+              eventLongPressDelay={100}
+              dayMaxEvents={true}
+              dayMaxEventRows={2}
+              slotMinWidth={36}
+              dayHeaderFormat={{
+                weekday: "short",
+                month: "numeric",
+                day: "numeric",
+              }}
+              slotLabelFormat={{
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: !is24Hour,
+              }}
+              eventTimeFormat={{
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: !is24Hour,
+              }}
+              events={filteredEvents}
+              selectable={true}
+              dayCellClassNames={(arg) =>
+                isSameDay(arg.date, selectedDate) ? ["kridana-cal-selected"] : []
+              }
+              datesSet={(info) => {
+                setCalendarTitle(info.view.title);
+                setCalendarView(info.view.type);
+                const current = info.view.calendar.getDate();
+                setSelectedDate((prev) => {
+                  if (
+                    info.view.type === "dayGridMonth" &&
+                    prev.getMonth() === current.getMonth() &&
+                    prev.getFullYear() === current.getFullYear()
+                  ) {
+                    return prev;
+                  }
+                  return current;
+                });
+              }}
+              dateClick={(info) => setSelectedDate(info.date)}
+              select={(info) => {
+                const date = info.startStr.split("T")[0];
+                const start = info.startStr.split("T")[1]?.slice(0, 5);
+                const end = info.endStr.split("T")[1]?.slice(0, 5);
 
-            setForm({
-              date,
-              startTime: start,
-              endTime: end,
-              category: "",
-              subCategory: "",
-              branch: "",
-              trainerId: "",
-              students: [],
-            });
+                setEditId(null);
 
-            setShowModal(true);
-          }}
-          /* CLICK */
-          eventClick={(info) => {
-            const event = schedule.find((s) => s.id === info.event.id);
+                setForm({
+                  date,
+                  startTime: start,
+                  endTime: end,
+                  category: "",
+                  subCategory: "",
+                  branch: "",
+                  trainerId: "",
+                  students: [],
+                });
 
-            setEditId(event.id);
+                setShowModal(true);
+              }}
+              eventClick={(info) => {
+                const event = schedule.find((s) => s.id === info.event.id);
+                if (!event) return;
+                if (info.event.start) setSelectedDate(info.event.start);
 
-            setForm({
-              date: info.event.startStr.split("T")[0],
-              startTime: info.event.startStr.split("T")[1]?.slice(0, 5),
-              endTime: info.event.endStr.split("T")[1]?.slice(0, 5),
-              category: event.category || "",
-              subCategory: event.subCategory || "",
-              branch: event.branch || "",
-              trainerId: event.trainerId || "",
-              students: event.students || [],
-            });
+                setEditId(event.id);
 
-            setShowModal(true);
-          }}
-          /* EVENT UI */
-          eventContent={(info) => (
-            <div
-              className={`rounded-md px-2 py-1 text-xs
+                setForm({
+                  date: info.event.startStr.split("T")[0],
+                  startTime: info.event.startStr.split("T")[1]?.slice(0, 5),
+                  endTime: info.event.endStr.split("T")[1]?.slice(0, 5),
+                  category: event.category || "",
+                  subCategory: event.subCategory || "",
+                  branch: event.branch || "",
+                  trainerId: event.trainerId || "",
+                  students: event.students || [],
+                });
+
+                setShowModal(true);
+              }}
+              eventContent={(info) =>
+                info.view.type === "dayGridMonth" ? (
+                  <div
+                    className={`truncate rounded-full px-1.5 py-[1px] text-[9px] sm:text-[10px] font-semibold ${
+                      info.event.extendedProps.cancelled
+                        ? "bg-red-100 text-red-700"
+                        : "bg-orange-50 text-[#ff6a00]"
+                    }`}
+                  >
+                    • {info.event.title}
+                  </div>
+                ) : (
+                  <div
+                    className={`rounded-md px-2 py-1 text-xs
       ${
         info.event.extendedProps.cancelled
           ? "bg-red-200 text-red-800"
           : "bg-orange-200"
       }
     `}
+                  >
+                    <div className="font-semibold">{info.event.title}</div>
+
+                    <div>👤 {info.event.extendedProps.trainer}</div>
+
+                    <div>👥 {info.event.extendedProps.count}</div>
+
+                    {info.event.extendedProps.cancelled && (
+                      <div className="mt-1 text-[10px] font-medium">
+                        Reason: {info.event.extendedProps.cancelReason}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+            />
+          </div>
+
+          <div className="shrink-0 px-3 sm:px-4 py-2.5 bg-[#f6f7fb] border-t border-gray-100 flex items-center justify-between gap-2">
+            <p className="text-[11px] sm:text-xs text-gray-600">
+              Total classes this month{" "}
+              <span className="font-semibold text-gray-800">
+                ({monthClassCount} {monthClassCount === 1 ? "Class" : "Classes"})
+              </span>
+              <span className="hidden sm:inline text-gray-400"> · </span>
+              <span className="hidden sm:inline">
+                Upcoming today ({todayClassCount})
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={goToday}
+              className="shrink-0 h-8 px-3 rounded-lg bg-white border border-gray-200 text-[11px] sm:text-xs font-semibold text-gray-700"
             >
-              <div className="font-semibold">{info.event.title}</div>
+              View Today
+            </button>
+          </div>
+        </div>
 
-              <div>👤 {info.event.extendedProps.trainer}</div>
+        <aside className="h-[36%] min-h-[200px] lg:h-auto lg:w-[320px] xl:w-[360px] shrink-0 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="shrink-0 px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-gray-900 truncate">
+              Classes on {selectedDayLabel}
+            </h3>
+            <span className="h-6 min-w-[24px] px-1.5 rounded-full bg-[#ff6a00] text-white text-xs font-bold flex items-center justify-center">
+              {selectedDayClasses.length}
+            </span>
+          </div>
 
-              <div>👥 {info.event.extendedProps.count}</div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2.5">
+            {selectedDayClasses.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">
+                No classes on this day.
+              </p>
+            ) : (
+              selectedDayClasses.map((cls) => {
+                const accent = classAccent(cls.category, cls.cancelled);
+                return (
+                  <button
+                    key={cls.id}
+                    type="button"
+                    onClick={() => openScheduledClass(cls)}
+                    className="w-full text-left rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden"
+                  >
+                    <div className="flex">
+                      <span className={`w-1.5 shrink-0 ${accent.bar}`} />
+                      <div className="flex-1 min-w-0 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-gray-900 truncate">
+                            {cls.cancelled
+                              ? `Cancelled - ${cls.subCategory}`
+                              : cls.subCategory}
+                          </p>
+                          {cls.category ? (
+                            <span
+                              className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${accent.tag}`}
+                            >
+                              {cls.category}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5 truncate">
+                          {cls.trainerName || "Trainer"}
+                          {cls.branch ? ` · ${cls.branch}` : ""}
+                        </p>
+                        <p className="text-xs font-medium text-gray-700 mt-1.5">
+                          {formatClock(cls.start)} – {formatClock(cls.end)}
+                        </p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {cls.students?.length || 0} students
+                        </p>
+                        {cls.cancelled && cls.cancelReason ? (
+                          <p className="text-[11px] text-red-600 mt-1">
+                            Reason: {cls.cancelReason}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
 
-              {info.event.extendedProps.cancelled && (
-                <div className="mt-1 text-[10px] font-medium">
-                  Reason: {info.event.extendedProps.cancelReason}
-                </div>
-              )}
-            </div>
-          )}
-        />
+          <div className="shrink-0 p-3 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => {
+                changeCalendarView("timeGridDay");
+                getCalApi()?.gotoDate(selectedDate);
+              }}
+              className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 inline-flex items-center justify-center gap-2"
+            >
+              <CalendarDays size={16} className="text-[#ff6a00]" />
+              View Day ({selectedDate.getDate()}{" "}
+              {selectedDate.toLocaleDateString("en-US", { month: "short" })})
+            </button>
+          </div>
+        </aside>
       </div>
 
-      {/* ---------- MODAL ---------- */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-3">
-          <div className="bg-white p-4 sm:p-6 rounded-2xl w-full max-w-md shadow-xl space-y-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white p-4 sm:p-6 rounded-t-3xl sm:rounded-2xl w-full max-w-md shadow-xl space-y-4 max-h-[88dvh] overflow-y-auto">
             <h3 className="text-lg sm:text-xl font-semibold text-center">
-              {isEdit ? "✏️ Edit Class" : "📅 Schedule Class"}
+              {isEdit ? "Edit Class" : "Schedule Class"}
             </h3>
 
-            {/* DATE */}
             <div>
               <label className="text-sm text-gray-500">Date</label>
               <input
@@ -755,7 +1065,6 @@ export default function ClassTime() {
               />
             </div>
 
-            {/* TIME */}
             <div className="grid grid-cols-2 gap-3">
               <input
                 type="time"
@@ -773,7 +1082,6 @@ export default function ClassTime() {
               />
             </div>
 
-            {/* CATEGORY */}
             <select
               className="w-full border p-2 rounded-md"
               value={form.category}
@@ -791,7 +1099,6 @@ export default function ClassTime() {
               ))}
             </select>
 
-            {/* SUBCATEGORY */}
             <select
               className="w-full border p-2 rounded-md"
               value={form.subCategory}
@@ -808,7 +1115,6 @@ export default function ClassTime() {
               ))}
             </select>
 
-            {/* BRANCH */}
             <select
               className="w-full border p-2 rounded-md"
               value={form.branch}
@@ -825,7 +1131,6 @@ export default function ClassTime() {
               ))}
             </select>
 
-            {/* TRAINER */}
             <select
               className="w-full border p-2 rounded-md"
               value={form.trainerId}
@@ -844,26 +1149,25 @@ export default function ClassTime() {
               ))}
             </select>
 
-            {/* ACTIONS */}
             <div className="flex flex-col sm:flex-row gap-2 pt-2">
               {editId && (
                 <button
                   onClick={() => setShowCancelModal(true)}
-                  className="flex-1 bg-red-500 text-white py-2 rounded-lg"
+                  className="flex-1 bg-red-500 text-white py-2.5 rounded-lg font-medium"
                 >
                   Cancel Class
                 </button>
               )}
               <button
                 onClick={saveClass}
-                className="flex-1 bg-orange-500 text-white py-2 rounded-lg"
+                className="flex-1 bg-[#ff6a00] text-white py-2.5 rounded-lg font-medium"
               >
                 {editId ? "Update" : "Save"}
               </button>
 
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 bg-gray-200 py-2 rounded-lg"
+                className="flex-1 bg-gray-200 py-2.5 rounded-lg font-medium"
               >
                 Cancel
               </button>
@@ -872,8 +1176,8 @@ export default function ClassTime() {
         </div>
       )}
       {showCancelModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[999]">
-          <div className="bg-white p-5 rounded-xl w-[350px]">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+          <div className="bg-white p-5 rounded-t-3xl sm:rounded-2xl w-full max-w-md">
             <h3 className="font-semibold mb-3">Cancel Class</h3>
 
             <textarea

@@ -6,7 +6,6 @@ import {
   getDocs,
   query,
   where,
-  Timestamp,
   getDoc,
   doc,
 } from "firebase/firestore";
@@ -21,9 +20,63 @@ import {
   LineChart,
   Line,
 } from "recharts";
+import {
+  Eye,
+  Heart,
+  MessageCircle,
+  Play,
+  ThumbsDown,
+  Image as ImageIcon,
+  X,
+} from "lucide-react";
 
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+
+const getMediaUrl = (item) => {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  return item.url || item.videoUrl || item.src || "";
+};
+
+const getMediaCaption = (item, fallback) => {
+  if (item && typeof item === "object") {
+    return (
+      item.about ||
+      item.caption ||
+      item.title ||
+      item.description ||
+      fallback ||
+      ""
+    );
+  }
+  return fallback || "";
+};
+
+const getMediaDate = (item) => {
+  if (!item || typeof item !== "object") return null;
+  const value = item.createdAt || item.date || item.uploadedAt || item.createdOn;
+  if (!value) return null;
+  try {
+    if (value?.toDate) return value.toDate();
+    if (value?.seconds) return new Date(value.seconds * 1000);
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
+};
+
+const isVideoUrl = (url) => {
+  const value = String(url || "").toLowerCase();
+  return (
+    value.includes("/video") ||
+    value.includes(".mp4") ||
+    value.includes(".webm") ||
+    value.includes(".mov") ||
+    value.includes("video/upload")
+  );
+};
 
 const AnalyticsPage = () => {
   const user = auth.currentUser;
@@ -34,6 +87,12 @@ const AnalyticsPage = () => {
 
   const [showVideoPopup, setShowVideoPopup] = useState(false);
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
+  const [topPosts, setTopPosts] = useState([]);
+  const [contentFilter, setContentFilter] = useState("all");
+  const [contentSearch, setContentSearch] = useState("");
+  const [loadingContent, setLoadingContent] = useState(false);
+  const [commentDrawer, setCommentDrawer] = useState(null);
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -69,22 +128,97 @@ const AnalyticsPage = () => {
     { name: "Dec", value: "12" },
   ];
 
-  /* ================= MONTH FILTER ================= */
-
-  const getDateLimit = () => {
-    const now = new Date();
-
-    now.setMonth(now.getMonth() - 1);
-
-    return Timestamp.fromDate(now);
+  const getMonthRange = () => {
+    let start = startMonth ? parseInt(startMonth, 10) : 1;
+    let end = endMonth ? parseInt(endMonth, 10) : 12;
+    if (Number.isNaN(start)) start = 1;
+    if (Number.isNaN(end)) end = 12;
+    if (start > end) {
+      const swapped = start;
+      start = end;
+      end = swapped;
+    }
+    return { start, end };
   };
 
-  /* ================= FETCH TOP REELS ================= */
+  const matchesDateFilter = (date) => {
+    if (!date || Number.isNaN(date.getTime())) return true;
+    if (Number(date.getFullYear()) !== Number(selectedYear)) return false;
+    const month = date.getMonth() + 1;
+    const { start, end } = getMonthRange();
+    return month >= start && month <= end;
+  };
+
+  const resetFilters = () => {
+    setSelectedYear(new Date().getFullYear());
+    setStartMonth("");
+    setEndMonth("");
+    setContentFilter("all");
+    setActiveTab("views");
+    setContentSearch("");
+  };
+
+  /* ================= FETCH TOP REELS & POSTS ================= */
 
   useEffect(() => {
     if (!user) return;
 
+    const fetchReelStats = async (reelId) => {
+      const [viewsSnap, likesSnap, dislikeSnap, commentsSnap, reelDoc] =
+        await Promise.all([
+          getDocs(
+            query(collection(db, "reelViews"), where("reelId", "==", reelId)),
+          ),
+          getDocs(
+            query(collection(db, "reelLikes"), where("reelId", "==", reelId)),
+          ),
+          getDocs(
+            query(
+              collection(db, "reelDislikes"),
+              where("reelId", "==", reelId),
+            ),
+          ),
+          getDocs(collection(db, "reelComments", reelId, "comments")),
+          getDoc(doc(db, "reels", reelId)),
+        ]);
+
+      const stored = reelDoc.exists() ? reelDoc.data() : {};
+
+      return {
+        views: viewsSnap.size || stored.views || 0,
+        likes: likesSnap.size || stored.likes || 0,
+        dislikes: dislikeSnap.size || stored.dislikes || 0,
+        comments: commentsSnap.size || 0,
+      };
+    };
+
+    const fetchPostStats = async (postId) => {
+      const [viewsSnap, likesSnap, commentsSnap] = await Promise.all([
+        getDocs(
+          query(collection(db, "postviews"), where("postId", "==", postId)),
+        ),
+        getDocs(
+          query(collection(db, "postlikes"), where("postId", "==", postId)),
+        ),
+        getDocs(
+          query(
+            collection(db, "postcomments"),
+            where("postId", "==", postId),
+          ),
+        ),
+      ]);
+
+      return {
+        views: viewsSnap.size || 0,
+        likes: likesSnap.size || 0,
+        dislikes: 0,
+        comments: commentsSnap.size || 0,
+      };
+    };
+
     const fetchTopReels = async () => {
+      setLoadingContent(true);
+
       try {
         let ownerType = null;
         let ownerDoc = null;
@@ -105,101 +239,102 @@ const AnalyticsPage = () => {
           }
         }
 
-        if (!ownerType || !ownerDoc) return;
+        if (!ownerType) {
+          const trainerLoginSnap = await getDocs(
+            query(
+              collection(db, "InstituteTrainers"),
+              where("trainerUid", "==", user.uid),
+            ),
+          );
 
-        const data = ownerDoc.data();
-
-        const ownerId = ownerDoc.id;
-
-        const tasks = [];
-
-        if (Array.isArray(data.reels)) {
-          for (let idx = 0; idx < data.reels.length; idx++) {
-            const reelId = `${ownerType}_${ownerId}_${idx}`;
-
-            const videoUrl = data.reels[idx];
-
-            tasks.push(
-              Promise.all([
-                getDocs(
-                  query(
-                    collection(db, "reelViews"),
-                    where("reelId", "==", reelId),
-                  ),
-                ),
-
-                getDocs(
-                  query(
-                    collection(db, "reelLikes"),
-                    where("reelId", "==", reelId),
-                  ),
-                ),
-
-                getDocs(
-                  query(
-                    collection(db, "reelDislikes"),
-                    where("reelId", "==", reelId),
-                  ),
-                ),
-
-                getDocs(collection(db, "reelComments", reelId, "comments")),
-
-                getDocs(
-                  query(
-                    collection(db, "profileViews"),
-                    where("ownerId", "==", ownerId),
-                  ),
-                ),
-              ]).then(
-                ([
-                  viewsSnap,
-                  likesSnap,
-                  dislikeSnap,
-                  commentsSnap,
-                  profileSnap,
-                ]) => ({
-                  reelId,
-                  title: data.instituteName || data.trainerName || "Reel",
-
-                  videoUrl,
-
-                  views: viewsSnap.size || 0,
-                  likes: likesSnap.size || 0,
-                  dislikes: dislikeSnap.size || 0,
-                  comments: commentsSnap.size || 0,
-                  profileViews: profileSnap.size || 0,
-                }),
-              ),
-            );
+          if (!trainerLoginSnap.empty) {
+            ownerType = "trainer";
+            const trainerProfile = await getDoc(doc(db, "trainers", user.uid));
+            ownerDoc = trainerProfile.exists()
+              ? trainerProfile
+              : trainerLoginSnap.docs[0];
           }
         }
 
-        const reelStats = await Promise.all(tasks);
-
-        if (activeTab === "views") {
-          reelStats.sort((a, b) => b.views - a.views);
+        if (!ownerType || !ownerDoc) {
+          setTopReels([]);
+          setTopPosts([]);
+          return;
         }
 
-        if (activeTab === "likes") {
-          reelStats.sort((a, b) => b.likes - a.likes);
-        }
+        const data = ownerDoc.data() || {};
+        const ownerId = ownerType === "institute" ? ownerDoc.id : user.uid;
+        const ownerName =
+          data.instituteName ||
+          data.trainerName ||
+          `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
+          "Content";
 
-        if (activeTab === "comments") {
-          reelStats.sort((a, b) => b.comments - a.comments);
-        }
+        const reelItems = Array.isArray(data.reels) ? data.reels : [];
+        const imageItems = [
+          ...(Array.isArray(data.trainingImages) ? data.trainingImages : []),
+          ...(Array.isArray(data.mediaGallery?.trainingImages)
+            ? data.mediaGallery.trainingImages
+            : []),
+        ];
 
-        if (activeTab === "dislikes") {
-          reelStats.sort((a, b) => b.dislikes - a.dislikes);
-        }
+        const reelTasks = reelItems.map(async (item, idx) => {
+          const videoUrl = getMediaUrl(item);
+          if (!videoUrl) return null;
+          const reelId = `${ownerType}_${ownerId}_${idx}`;
+          const stats = await fetchReelStats(reelId);
+          return {
+            id: reelId,
+            reelId,
+            mediaType: "reel",
+            title: getMediaCaption(item, `${ownerName} reel`),
+            caption: getMediaCaption(item, ""),
+            videoUrl,
+            thumbnail: videoUrl,
+            createdAt: getMediaDate(item),
+            ...stats,
+          };
+        });
 
-        setTopReels(reelStats);
+        const seenUrls = new Set();
+        const postTasks = imageItems.map(async (item, idx) => {
+          const imageUrl = getMediaUrl(item);
+          if (!imageUrl || isVideoUrl(imageUrl)) return null;
+          const urlKey = String(imageUrl).split("?")[0];
+          if (seenUrls.has(urlKey)) return null;
+          seenUrls.add(urlKey);
+          const postId = `post_${ownerId}_img_${idx}`;
+          const stats = await fetchPostStats(postId);
+          return {
+            id: postId,
+            reelId: postId,
+            mediaType: "post",
+            title: getMediaCaption(item, `${ownerName} post`),
+            caption: getMediaCaption(item, ""),
+            videoUrl: imageUrl,
+            thumbnail: imageUrl,
+            ownerName,
+            createdAt: getMediaDate(item),
+            ...stats,
+          };
+        });
+
+        const [reelStats, postStats] = await Promise.all([
+          Promise.all(reelTasks),
+          Promise.all(postTasks),
+        ]);
+
+        setTopReels(reelStats.filter(Boolean));
+        setTopPosts(postStats.filter(Boolean));
       } catch (err) {
         console.error("Dynamic reel analytics error:", err);
+      } finally {
+        setLoadingContent(false);
       }
     };
 
     fetchTopReels();
-  }, [user, activeTab]);
+  }, [user]);
 
   /* ================= WORKFORCE ================= */
 
@@ -222,9 +357,7 @@ const AnalyticsPage = () => {
           ),
         );
 
-        const start = startMonth ? parseInt(startMonth) : 1;
-
-        const end = endMonth ? parseInt(endMonth) : 12;
+        const { start, end } = getMonthRange();
 
         let joinedEmployees = 0;
 
@@ -301,13 +434,98 @@ const AnalyticsPage = () => {
 
   /* ================= PLAY VIDEO ================= */
 
-  const handlePlayReel = (videoUrl) => {
-    if (!videoUrl) return;
+  const handlePlayReel = (item) => {
+    if (!item?.videoUrl) return;
+    if (item.mediaType === "post") {
+      setPreviewImage(item.videoUrl);
+      setActiveVideoUrl(null);
+      setShowVideoPopup(true);
+      return;
+    }
 
-    setActiveVideoUrl(videoUrl);
-
+    setPreviewImage(null);
+    setActiveVideoUrl(item.videoUrl);
     setShowVideoPopup(true);
   };
+
+  const openComments = async (item) => {
+    try {
+      let comments = [];
+      if (item.mediaType === "post") {
+        const snap = await getDocs(
+          query(
+            collection(db, "postcomments"),
+            where("postId", "==", item.id),
+          ),
+        );
+        comments = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+      } else {
+        const snap = await getDocs(
+          collection(db, "reelComments", item.id, "comments"),
+        );
+        comments = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+      }
+      setCommentDrawer({
+        title: item.title,
+        comments,
+      });
+    } catch (error) {
+      console.error(error);
+      setCommentDrawer({ title: item.title, comments: [] });
+    }
+  };
+
+  const displayedContent = useMemo(() => {
+    const keyword = contentSearch.trim().toLowerCase();
+    let items = [];
+    if (contentFilter !== "posts") items = [...items, ...topReels];
+    if (contentFilter !== "reels") items = [...items, ...topPosts];
+
+    return items
+      .filter((item) => matchesDateFilter(item.createdAt))
+      .filter((item) => {
+        if (!keyword) return true;
+        return `${item.title || ""} ${item.caption || ""}`
+          .toLowerCase()
+          .includes(keyword);
+      })
+      .sort((a, b) => Number(b[activeTab] || 0) - Number(a[activeTab] || 0));
+  }, [
+    topReels,
+    topPosts,
+    contentFilter,
+    activeTab,
+    contentSearch,
+    selectedYear,
+    startMonth,
+    endMonth,
+  ]);
+
+  const filteredReels = useMemo(
+    () => topReels.filter((item) => matchesDateFilter(item.createdAt)),
+    [topReels, selectedYear, startMonth, endMonth],
+  );
+
+  const filteredPosts = useMemo(
+    () => topPosts.filter((item) => matchesDateFilter(item.createdAt)),
+    [topPosts, selectedYear, startMonth, endMonth],
+  );
+
+  const contentTotals = useMemo(() => {
+    const all = [...filteredReels, ...filteredPosts];
+    return {
+      items: all.length,
+      views: all.reduce((sum, item) => sum + Number(item.views || 0), 0),
+      likes: all.reduce((sum, item) => sum + Number(item.likes || 0), 0),
+      comments: all.reduce((sum, item) => sum + Number(item.comments || 0), 0),
+    };
+  }, [filteredReels, filteredPosts]);
 
   /* ================= FETCH GRAPH DATA ================= */
 
@@ -333,9 +551,7 @@ const AnalyticsPage = () => {
           "Dec",
         ];
 
-        const start = startMonth ? parseInt(startMonth) : 1;
-
-        const end = endMonth ? parseInt(endMonth) : 12;
+        const { start, end } = getMonthRange();
 
         /* ===== FETCH ===== */
 
@@ -721,60 +937,90 @@ const AnalyticsPage = () => {
         {/* FILTERS */}
 
         <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full xl:w-auto">
-          {/* YEAR */}
+          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase">
+              Year
+            </span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
+            >
+              {[2023, 2024, 2025, 2026, new Date().getFullYear()]
+                .filter((year, index, list) => list.indexOf(year) === index)
+                .sort((a, b) => b - a)
+                .map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+            </select>
+          </label>
 
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full sm:w-auto"
-          >
-            {[2023, 2024, 2025, 2026].map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase">
+              From
+            </span>
+            <select
+              value={startMonth}
+              onChange={(e) => {
+                const value = e.target.value;
+                setStartMonth(value);
+                if (value && endMonth && Number(value) > Number(endMonth)) {
+                  setEndMonth(value);
+                }
+              }}
+              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
+            >
+              <option value="">Jan</option>
+              {monthsList.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          {/* START MONTH */}
+          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase">
+              To
+            </span>
+            <select
+              value={endMonth}
+              onChange={(e) => {
+                const value = e.target.value;
+                setEndMonth(value);
+                if (value && startMonth && Number(value) < Number(startMonth)) {
+                  setStartMonth(value);
+                }
+              }}
+              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
+            >
+              <option value="">Dec</option>
+              {monthsList.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <select
-            value={startMonth}
-            onChange={(e) => setStartMonth(e.target.value)}
-            className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full sm:w-auto"
-          >
-            <option value="">From Month</option>
-
-            {monthsList.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-
-          {/* END MONTH */}
-
-          <select
-            value={endMonth}
-            onChange={(e) => setEndMonth(e.target.value)}
-            className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full sm:w-auto"
-          >
-            <option value="">To Month</option>
-
-            {monthsList.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-
-          {/* DOWNLOAD */}
-
-          <button
-            onClick={downloadPDFReport}
-            className="bg-orange-500 hover:bg-orange-600 transition text-white px-5 py-3 rounded-xl font-semibold shadow-sm w-full sm:w-auto"
-          >
-            Download Report
-          </button>
+          <div className="flex gap-2 items-end w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="flex-1 sm:flex-none border border-gray-200 bg-white px-5 py-3 rounded-xl font-semibold text-sm text-gray-700"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={downloadPDFReport}
+              className="flex-1 sm:flex-none bg-orange-500 hover:bg-orange-600 transition text-white px-5 py-3 rounded-xl font-semibold shadow-sm"
+            >
+              Download Report
+            </button>
+          </div>
         </div>
       </div>
 
@@ -837,97 +1083,188 @@ const AnalyticsPage = () => {
           <p className="text-gray-500 text-sm">Video Views</p>
 
           <p className="text-lg sm:text-2xl font-bold text-orange-600 mt-2">
-            {topReels.reduce((s, r) => s + Number(r.views || 0), 0)}
+            {filteredReels.reduce((s, r) => s + Number(r.views || 0), 0)}
           </p>
         </div>
       </div>
 
       {/* TOP CONTENT */}
 
-      <div className="bg-white border rounded-3xl p-3 sm:p-6 shadow-sm overflow-hidden">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-5">
-          Top Content Insights
-        </h2>
-
-        {/* TABS */}
-
-        <div className="overflow-x-auto scrollbar-hide mb-5">
-          <div className="flex gap-3 min-w-max border-b pb-2">
-            {["views", "likes", "dislikes", "comments"].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`pb-3 px-2 whitespace-nowrap capitalize text-xs sm:text-sm md:text-base transition ${
-                  activeTab === tab
-                    ? "text-orange-600 border-b-2 border-orange-600 font-semibold"
-                    : "text-gray-500 hover:text-orange-500"
-                }`}
-              >
-                {`Most ${tab}`}
-              </button>
-            ))}
+      <div className="bg-white border border-orange-100 rounded-3xl p-3 sm:p-6 shadow-sm overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+              Content insights
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Reels, posts, likes, comments and views for this login
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="text-xs bg-orange-50 text-orange-700 px-3 py-1.5 rounded-full font-semibold">
+              {filteredReels.length} reels
+            </span>
+            <span className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-semibold">
+              {filteredPosts.length} posts
+            </span>
+            <span className="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full font-semibold">
+              {contentTotals.likes} likes
+            </span>
+            <span className="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full font-semibold">
+              {contentTotals.views} views
+            </span>
           </div>
         </div>
 
-        {/* TABLE */}
+        <input
+          value={contentSearch}
+          onChange={(event) => setContentSearch(event.target.value)}
+          placeholder="Search reels and posts"
+          className="w-full mb-4 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none"
+        />
 
-        <div className="bg-white rounded-xl border overflow-hidden">
-          <div className="hidden md:grid grid-cols-6 bg-black text-orange-500 text-sm font-semibold px-4 py-4">
-            <div className="col-span-2">Title</div>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4">
+          {[
+            { id: "all", label: "All", count: filteredReels.length + filteredPosts.length },
+            { id: "reels", label: "Reels", count: filteredReels.length },
+            { id: "posts", label: "Posts", count: filteredPosts.length },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setContentFilter(tab.id)}
+              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
+                contentFilter === tab.id
+                  ? "bg-[#FF6B00] text-white"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
 
-            <div className="text-center">Views</div>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-5">
+          {["views", "likes", "dislikes", "comments"].map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap capitalize transition ${
+                activeTab === tab
+                  ? "bg-black text-orange-400 font-semibold"
+                  : "bg-white border border-gray-200 text-gray-600"
+              }`}
+            >
+              Most {tab}
+            </button>
+          ))}
+        </div>
 
-            <div className="text-center">Likes</div>
-
-            <div className="text-center">Comments</div>
-          </div>
-
-          <div className="max-h-[420px] overflow-y-auto divide-y">
-            {topReels.map((reel, i) => (
+        {loadingContent ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {[1, 2, 3].map((item) => (
               <div
-                key={i}
-                className="flex md:grid md:grid-cols-6 flex-col md:flex-row gap-3 md:gap-0 px-4 py-4 text-sm hover:bg-gray-50 transition border-b"
+                key={item}
+                className="rounded-2xl border border-gray-100 p-4 animate-pulse"
               >
-                <div>
-                  <button
-                    onClick={() => handlePlayReel(reel.videoUrl)}
-                    className="bg-orange-100 text-orange-600 hover:bg-orange-200 rounded-xl px-3 py-2 text-xs font-semibold"
-                  >
-                    ▶ Play
-                  </button>
-                </div>
-
-                <div className="col-span-2 pr-2">
-                  <p className="line-clamp-2 font-medium text-gray-800">
-                    {reel.title}
-                  </p>
-                </div>
-
-                <div className="md:text-center font-medium">
-                  <span className="md:hidden text-gray-500 mr-2">Views:</span>
-
-                  {reel.views}
-                </div>
-
-                <div className="md:text-center font-medium">
-                  <span className="md:hidden text-gray-500 mr-2">Likes:</span>
-
-                  {reel.likes}
-                </div>
-
-                <div className="md:text-center font-medium">
-                  <span className="md:hidden text-gray-500 mr-2">
-                    Comments:
+                <div className="h-36 bg-gray-100 rounded-xl mb-3" />
+                <div className="h-3 w-2/3 bg-gray-100 rounded-full mb-2" />
+                <div className="h-3 w-1/2 bg-gray-50 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : displayedContent.length === 0 ? (
+          <div className="text-center py-12 px-4">
+            <p className="font-semibold text-gray-700">
+              {topReels.length + topPosts.length === 0
+                ? "No content yet"
+                : "No results for these filters"}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              {topReels.length + topPosts.length === 0
+                ? "Upload reels or posts to see views, likes and comments here."
+                : "Try another year, month range, type or search."}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {displayedContent.map((item, index) => (
+              <div
+                key={item.id}
+                className="group rounded-2xl border border-gray-100 overflow-hidden bg-[#F8F8F8] hover:shadow-md transition-all duration-200"
+                style={{ animation: `moreFadeUp 0.28s ease-out ${index * 40}ms both` }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handlePlayReel(item)}
+                  className="relative w-full h-40 bg-black overflow-hidden"
+                >
+                  {item.mediaType === "post" ? (
+                    <img
+                      src={item.thumbnail}
+                      alt=""
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                  ) : (
+                    <video
+                      src={item.videoUrl}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                  <span className="absolute top-3 left-3 text-[10px] font-bold uppercase bg-white/90 px-2 py-1 rounded-full">
+                    {item.mediaType === "post" ? "Post" : "Reel"}
                   </span>
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition">
+                    {item.mediaType === "post" ? (
+                      <ImageIcon className="text-white" size={28} />
+                    ) : (
+                      <Play className="text-white" size={28} fill="white" />
+                    )}
+                  </span>
+                </button>
 
-                  {reel.comments}
+                <div className="p-4">
+                  <p className="font-semibold text-gray-800 line-clamp-2 min-h-[40px]">
+                    {item.title || "Untitled"}
+                  </p>
+                  <div className="grid grid-cols-4 gap-2 mt-3 text-center">
+                    <div>
+                      <Eye size={14} className="mx-auto text-gray-400" />
+                      <p className="text-xs font-semibold mt-1">{item.views}</p>
+                    </div>
+                    <div>
+                      <Heart size={14} className="mx-auto text-rose-400" />
+                      <p className="text-xs font-semibold mt-1">{item.likes}</p>
+                    </div>
+                    <div>
+                      <ThumbsDown size={14} className="mx-auto text-gray-400" />
+                      <p className="text-xs font-semibold mt-1">
+                        {item.dislikes}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openComments(item)}
+                      className="active:scale-95"
+                    >
+                      <MessageCircle
+                        size={14}
+                        className="mx-auto text-orange-400"
+                      />
+                      <p className="text-xs font-semibold mt-1">
+                        {item.comments}
+                      </p>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-
-        {/* VIDEO POPUP */}
+        )}
 
         {showVideoPopup && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -935,21 +1272,80 @@ const AnalyticsPage = () => {
               <button
                 onClick={() => {
                   setShowVideoPopup(false);
-
                   setActiveVideoUrl(null);
+                  setPreviewImage(null);
                 }}
-                className="absolute top-2 right-3 text-white text-xl"
+                className="absolute top-2 right-3 text-white text-xl z-10"
               >
                 ✕
               </button>
+              {previewImage ? (
+                <img
+                  src={previewImage}
+                  alt=""
+                  className="w-full max-h-[80vh] object-contain rounded-xl"
+                />
+              ) : (
+                <video
+                  src={activeVideoUrl}
+                  controls
+                  autoPlay
+                  playsInline
+                  className="w-full rounded-xl"
+                />
+              )}
+            </div>
+          </div>
+        )}
 
-              <video
-                src={activeVideoUrl}
-                controls
-                autoPlay
-                playsInline
-                className="w-full rounded-xl"
-              />
+        {commentDrawer && (
+          <div
+            className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setCommentDrawer(null)}
+          >
+            <div
+              className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-5 max-h-[80vh] overflow-y-auto"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-bold text-gray-900">Comments</h3>
+                  <p className="text-xs text-gray-500 line-clamp-1">
+                    {commentDrawer.title}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCommentDrawer(null)}
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              {commentDrawer.comments.length === 0 ? (
+                <p className="text-sm text-gray-400 py-8 text-center">
+                  No comments yet
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {commentDrawer.comments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="rounded-2xl bg-gray-50 px-4 py-3"
+                    >
+                      <p className="text-sm font-semibold text-gray-800">
+                        {comment.userName ||
+                          comment.name ||
+                          comment.senderName ||
+                          "User"}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {comment.text || comment.comment || ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

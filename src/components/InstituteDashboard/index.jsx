@@ -46,6 +46,7 @@ import KYC from "./KYC";
 import BookingsList from "./BookingsList";
 import AddSportsFacilitiesPage from "./AddSportsFacilitiesPage";
 import RegisterNumber from "./RegisterNumber";
+import Uploadimages from "../../pages/Uploadimages";
 import {
   FaUsers,
   FaUserTie,
@@ -54,6 +55,7 @@ import {
   FaTachometerAlt,
   FaChevronDown,
   FaChevronRight,
+  FaChevronLeft,
 } from "react-icons/fa";
 const sidebarSections = [
   {
@@ -72,6 +74,11 @@ const sidebarSections = [
       "Fees Details",
       "Performance Reports",
     ],
+  },
+  {
+    title: "Posts",
+    icon: "management",
+    items: ["Uploadimages"],
   },
   {
     title: "Management",
@@ -121,6 +128,13 @@ const InstituteDashboard = () => {
   const toggleMenu = (title) => {
     setOpenMenu(openMenu === title ? null : title);
   };
+  const handleDeleteClick = () => {
+    setSidebarOpen(false); // Close sidebar first
+
+    setTimeout(() => {
+      setShowDeleteModal(true); // Then open delete modal
+    }, 300); // Match sidebar animation duration
+  };
   /* =============================
      📂 FETCH STUDENTS & TRAINERS
   ============================= */
@@ -131,6 +145,8 @@ const InstituteDashboard = () => {
       case "customers":
         return <FaUsers />;
       case "management":
+        return <FaUserTie />;
+      case "uploadimages":
         return <FaUserTie />;
       case "operations":
         return <FaCogs />;
@@ -263,6 +279,8 @@ const InstituteDashboard = () => {
         return <SalaryDetailsPage />;
       case "Management Details":
         return <AddTrainerDetailsPage />;
+      case "Uploadimages":
+        return <Uploadimages />;
       case "Add Customers":
         return <AddStudentDetailsPage />;
       case "Add Events":
@@ -290,7 +308,12 @@ const InstituteDashboard = () => {
       case "Edit My Account":
         return <MyAccountLayout />;
       case "Customer & Management Settings":
-        return <MyAccountPage setActiveMenu={setActiveMenu} />;
+        return (
+          <MyAccountPage
+            setActiveMenu={setActiveMenu}
+            closeSidebar={() => setSidebarOpen(false)}
+          />
+        );
       //case "BookingsList":
       //return <BookingsList />;
       //case "AddSportsFacilitiesPage":
@@ -374,54 +397,111 @@ const InstituteDashboard = () => {
   }, [user]);
 
   return (
-    <div className="fixed inset-0 bg-gray-100 md:bg-gray-200 md:pt-16">
+    <div className="fixed inset-0 bg-[#F4F6FB] md:bg-gray-200 md:pt-16 overflow-hidden">
       <div className="flex h-full flex-col md:flex-row overflow-hidden">
         {/* MOBILE TOPBAR */}
-        <div className="md:hidden fixed top-0 left-0 right-0 bg-black z-[60] flex items-center justify-between px-4 py-3">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="text-white text-2xl"
-          >
-            ☰
-          </button>
+        <div
+          className="md:hidden fixed top-0 left-0 right-0 z-[80] bg-black/95 backdrop-blur-xl border-b border-white/10"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
+          <div className="h-10 px-2.5 sm:px-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="w-8 h-8 rounded-xl bg-white/10 text-white text-base flex items-center justify-center active:scale-95 transition"
+              aria-label="Open menu"
+            >
+              ☰
+            </button>
 
-          <h2 className="text-orange-500 font-bold">
-            {institute?.instituteName || "Dashboard"}
-          </h2>
+            <h2 className="flex-1 min-w-0 text-center text-orange-500 font-semibold text-xs sm:text-sm truncate">
+              {institute?.instituteName || "Dashboard"}
+            </h2>
+
+            <div className="w-8 h-8 rounded-xl overflow-hidden border border-orange-400/70 bg-gray-800 flex items-center justify-center flex-shrink-0">
+              {institute?.profileImageUrl ? (
+                <img
+                  src={institute.profileImageUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-orange-400 font-bold text-xs">
+                  {institute?.instituteName?.charAt(0)?.toUpperCase() || "I"}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* LEFT SIDEBAR */}
         <aside
           className={`
-    fixed md:sticky
-    top-0 md:top-16
-    left-0
-    h-screen md:h-full
-    w-72 xl:w-80
-    shrink-0
-    bg-gray-700
-    border-r border-gray-600
-    z-[100]
-    transform transition-transform duration-300
-    ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-    md:translate-x-0
-  `}
+            fixed md:sticky
+            top-0 md:top-16
+            left-0
+            h-[100dvh] md:h-[calc(100vh-4rem)]
+            w-[min(20rem,88vw)] xl:w-80
+            shrink-0
+            bg-[#1A1C22]
+            border-r border-white/10
+            z-[10040]
+            transform transition-transform duration-300 ease-out
+            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+            md:translate-x-0
+            flex flex-col
+            overflow-hidden
+            shadow-2xl md:shadow-none
+          `}
         >
-          <div className="md:hidden flex justify-end mb-3">
+          {/* MOBILE SIDEBAR HEADER */}
+          <div
+            className="md:hidden flex-shrink-0 px-4 pb-2 flex items-center justify-between"
+            style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
+          >
+            <p className="text-white/60 text-xs font-semibold uppercase tracking-wider">
+              Menu
+            </p>
             <button
+              type="button"
               onClick={() => setSidebarOpen(false)}
-              className="text-white text-2xl"
+              aria-label="Close sidebar"
+              className="
+                w-10 h-10
+                flex items-center justify-center
+                rounded-full
+                bg-red-50 text-red-600
+                border border-red-200
+                shadow-sm
+                transition-all duration-200
+                hover:bg-red-100 hover:text-red-700 hover:border-red-300
+                active:scale-95
+                focus:outline-none focus:ring-2 focus:ring-red-300
+              "
             >
-              ✕
+              <FaChevronLeft size={18} />
             </button>
           </div>
-          <div className="h-full overflow-y-auto pr-2">
+
+          {/* SIDEBAR SCROLL AREA */}
+          <div
+            className="
+              flex-1 min-h-0
+              overflow-y-auto overflow-x-hidden
+              px-3 sm:px-4
+              pb-[calc(var(--bottom-navbar-height,64px)+24px)]
+              md:pb-6
+              overscroll-contain
+              scrollbar-hide
+            "
+            style={{
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
             {/* ===== INSTITUTE CARD ===== */}
-            {/* ===== INSTITUTE CARD ===== */}
-            <div className="bg-black rounded-2xl px-5 py-4 flex items-center gap-4 mb-4 shadow-lg">
-              {/* PROFILE IMAGE */}
+            <div className="bg-black rounded-2xl px-4 sm:px-5 py-4 flex items-center gap-3 sm:gap-4 mb-4 shadow-lg animate-moreFadeUp">
               <div className="flex-shrink-0">
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-orange-400 shadow-md">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-orange-400 shadow-md">
                   {institute?.profileImageUrl ? (
                     <img
                       src={institute.profileImageUrl}
@@ -439,78 +519,94 @@ const InstituteDashboard = () => {
                 </div>
               </div>
 
-              {/* INSTITUTE NAME */}
               <div className="flex-1 min-w-0">
-                <h2 className="text-orange-500 font-bold text-base sm:text-lg md:text-xl break-words text-center md:text-left leading-snug">
+                <p className="text-[10px] uppercase tracking-wider text-white/40 mb-0.5">
+                  Institute
+                </p>
+                <h2 className="text-orange-500 font-bold text-sm sm:text-lg md:text-xl break-words leading-snug">
                   {institute?.instituteName || "Institute Name"}
                 </h2>
               </div>
             </div>
 
             {/* ===== MENU CARD ===== */}
-            <div className="bg-black rounded-2xl p-4 mb-4 shadow-lg">
-              {sidebarSections.map((section) => (
-                <div key={section.title}>
-                  {/* MAIN MENU */}
+            <div className="bg-black rounded-2xl p-2 sm:p-3 mb-4 shadow-lg">
+              {sidebarSections.map((section, index) => (
+                <div
+                  key={section.title}
+                  style={{ animationDelay: `${index * 40}ms` }}
+                  className="animate-moreFadeUp"
+                >
                   <button
+                    type="button"
                     onClick={() => {
                       if (section.title === "Dashboard") {
                         setActiveMenu("Dashboard");
-                        setSidebarOpen(false); // ✅ ADD THIS
+                        setSidebarOpen(false);
                       } else {
                         toggleMenu(section.title);
                       }
                     }}
-                    className="
-w-full
-flex
-items-center
-justify-between
-px-4
-py-3
-rounded-xl
-text-white
-transition
-duration-200
-hover:bg-gray-800
-"
+                    className={`
+                      w-full flex items-center justify-between
+                      px-3 sm:px-4 py-3 min-h-[48px]
+                      rounded-xl text-white
+                      transition duration-200
+                      active:scale-[0.99]
+                      ${
+                        (section.title === "Dashboard" &&
+                          activeMenu === "Dashboard") ||
+                        openMenu === section.title
+                          ? "bg-white/10 text-orange-400"
+                          : "hover:bg-gray-800"
+                      }
+                    `}
                   >
-                    <div className="flex items-center gap-3">
-                      {getIcon(section.icon)}
-                      {section.title}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-orange-400 flex-shrink-0">
+                        {getIcon(section.icon)}
+                      </span>
+                      <span className="font-medium text-sm sm:text-base truncate">
+                        {section.title}
+                      </span>
                     </div>
 
                     {section.items.length > 0 &&
                       (openMenu === section.title ? (
-                        <FaChevronDown />
+                        <FaChevronDown
+                          size={12}
+                          className="flex-shrink-0 transition-transform duration-200"
+                        />
                       ) : (
-                        <FaChevronRight />
+                        <FaChevronRight
+                          size={12}
+                          className="flex-shrink-0 transition-transform duration-200"
+                        />
                       ))}
                   </button>
 
-                  {/* DROPDOWN ITEMS */}
                   {openMenu === section.title && (
-                    <div className="ml-8 mt-1 space-y-1">
+                    <div className="ml-4 sm:ml-8 mt-1 mb-2 space-y-1 animate-moreFadeUp">
                       {section.items.map((item) => (
                         <button
+                          type="button"
                           key={item}
                           onClick={() => {
                             setActiveMenu(item);
                             setOpenMenu(null);
                             setSidebarOpen(false);
                           }}
-                          className="
-block
-w-full
-text-left
-px-3
-py-2
-rounded-lg
-text-gray-300
-hover:bg-gray-800
-hover:text-orange-500
-transition
-"
+                          className={`
+                            block w-full text-left
+                            px-3 py-2.5 min-h-[44px]
+                            rounded-lg text-sm
+                            transition duration-200
+                            ${
+                              activeMenu === item
+                                ? "bg-orange-500/15 text-orange-400 font-semibold"
+                                : "text-gray-300 hover:bg-gray-800 hover:text-orange-500"
+                            }
+                          `}
                         >
                           {item}
                         </button>
@@ -522,52 +618,86 @@ transition
             </div>
 
             {/* ===== SETTINGS CARD ===== */}
-            <div className="bg-black rounded-2xl p-4 shadow-lg">
-              <h3 className="text-white font-bold text-lg mb-3">Settings</h3>
+            <div className="bg-black rounded-2xl p-3 sm:p-4 shadow-lg">
+              <h3 className="text-white font-bold text-base sm:text-lg mb-2 px-1">
+                Settings
+              </h3>
 
               <button
-                onClick={() => setActiveMenu("Terms & Conditions")}
-                className={`block w-full text-left py-2 ${
+                type="button"
+                onClick={() => {
+                  setSidebarOpen(false);
+
+                  setTimeout(() => {
+                    setActiveMenu("Terms & Conditions");
+                  }, 300);
+                }}
+                className={`block w-full text-left px-3 py-3 min-h-[44px] rounded-xl transition ${
                   activeMenu === "Terms & Conditions"
-                    ? "text-orange-500 font-semibold"
-                    : "text-white hover:text-orange-400"
+                    ? "text-orange-500 font-semibold bg-white/5"
+                    : "text-white hover:text-orange-400 hover:bg-white/5"
                 }`}
               >
                 Terms & Conditions
               </button>
 
               <button
-                onClick={() => setActiveMenu("Privacy Policy")}
-                className={`block w-full text-left py-2 ${
+                type="button"
+                onClick={() => {
+                  setSidebarOpen(false);
+
+                  setTimeout(() => {
+                    setActiveMenu("Privacy Policy");
+                  }, 300);
+                }}
+                className={`block w-full text-left px-3 py-3 min-h-[44px] rounded-xl transition ${
                   activeMenu === "Privacy Policy"
-                    ? "text-orange-500 font-semibold"
-                    : "text-white hover:text-orange-400"
+                    ? "text-orange-500 font-semibold bg-white/5"
+                    : "text-white hover:text-orange-400 hover:bg-white/5"
                 }`}
               >
                 Privacy Policy
               </button>
+
               <button
-                onClick={() => setActiveMenu("ResetPassword")}
-                className={`block w-full text-left py-2 ${
+                type="button"
+                onClick={() => {
+                  setSidebarOpen(false);
+
+                  setTimeout(() => {
+                    setActiveMenu("ResetPassword");
+                  }, 300);
+                }}
+                className={`block w-full text-left px-3 py-3 min-h-[44px] rounded-xl transition ${
                   activeMenu === "ResetPassword"
-                    ? "text-orange-500 font-semibold"
-                    : "text-white hover:text-orange-400"
+                    ? "text-orange-500 font-semibold bg-white/5"
+                    : "text-white hover:text-orange-400 hover:bg-white/5"
                 }`}
               >
                 Reset Password
               </button>
 
               <button
+                type="button"
                 onClick={() => signOut(auth)}
-                className="block w-full text-left py-2 text-white hover:text-red-400"
+                className="block w-full text-left px-3 py-3 min-h-[44px] rounded-xl text-white hover:text-red-400 hover:bg-red-500/10 transition"
               >
                 Logout
               </button>
             </div>
-            <div className="bg-black rounded-xl p-4 mt-3">
+
+            {/* DELETE ACCOUNT */}
+            <div className="bg-black rounded-xl p-3 sm:p-4 mt-3">
               <button
-                onClick={() => setShowDeleteModal(true)}
-                className="w-full text-left text-red-500 hover:text-red-400 font-semibold flex items-center gap-2"
+                type="button"
+                onClick={() => {
+                  setSidebarOpen(false);
+
+                  setTimeout(() => {
+                    setShowDeleteModal(true);
+                  }, 300);
+                }}
+                className="w-full text-left text-red-500 hover:text-red-400 font-semibold flex items-center gap-2 px-2 py-2 min-h-[44px] rounded-xl hover:bg-red-500/10 transition"
               >
                 <img src="/delete-icon.png" alt="delete" className="w-5 h-5" />
                 <span>Delete Account</span>
@@ -575,82 +705,97 @@ transition
             </div>
           </div>
         </aside>
-
+        {/* MOBILE SIDEBAR OVERLAY */}
+        {sidebarOpen && (
+          <div
+            className="md:hidden fixed inset-0 bg-black/55 backdrop-blur-[2px] z-[10030] animate-moreFadeUp"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         <main
           ref={mainContentRef}
-          className="
-flex-1
-min-w-0
-h-full
-bg-gray-100
-mt-14
-md:mt-0
-overflow-hidden
-"
+          className="flex-1 min-w-0 h-full dash-surface overflow-hidden"
         >
           <div
-            className="
-      h-full
-      overflow-y-auto
-      overflow-x-hidden
-      w-full
-     max-w-[1600px]
-      mx-auto
-      px-4
-      sm:px-6
-      md:px-8
-      lg:px-10
-      xl:px-12
-      py-6
-      md:py-8
-    "
+            className={`
+              h-full w-full max-w-[1600px] mx-auto
+              px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12
+              pt-[calc(2.5rem+env(safe-area-inset-top,0px))]
+              pb-[calc(var(--bottom-navbar-height,64px)+8px)]
+              md:pt-8 md:pb-8
+              ${
+                activeMenu === "Dashboard" ||
+                activeMenu === "Customers Attendance" ||
+                activeMenu === "Customer & Management Settings" ||
+                activeMenu === "Edit My Account" ||
+                activeMenu === "Time Table"
+                  ? "overflow-hidden flex flex-col min-h-0"
+                  : "overflow-y-auto overflow-x-hidden"
+              }
+            `}
             style={{
               WebkitOverflowScrolling: "touch",
               overscrollBehavior: "contain",
             }}
           >
-            {renderMainContent()}
+            <div
+              key={activeMenu}
+              className={
+                activeMenu === "Dashboard" ||
+                activeMenu === "Customers Attendance" ||
+                activeMenu === "Customer & Management Settings" ||
+                activeMenu === "Edit My Account" ||
+                activeMenu === "Time Table"
+                  ? "h-full min-h-0 flex flex-col overflow-hidden dash-page-in"
+                  : "dash-page-in md:pt-2"
+              }
+            >
+              {renderMainContent()}
+            </div>
           </div>
         </main>
 
         {/* DELETE CONFIRM MODAL */}
         {showDeleteModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-            <div className="bg-white w-[95%] max-w-xl rounded-lg p-8 relative text-center">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+            <div className="bg-white w-full sm:w-[95%] max-w-xl rounded-t-3xl sm:rounded-2xl p-6 sm:p-8 relative text-center shadow-2xl animate-slideUp sm:animate-moreFadeUp">
               <button
-                onClick={() => setShowDeleteModal(false)}
-                className="absolute top-4 right-4 text-2xl"
+                type="button"
+                onClick={handleDeleteClick}
+                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-100 text-xl flex items-center justify-center"
               >
                 ✕
               </button>
 
-              <h2 className="text-3xl font-bold text-red-600 mb-4">
+              <h2 className="text-2xl sm:text-3xl font-bold text-red-600 mb-4 pr-8">
                 Delete Account ?
               </h2>
 
-              <p className="text-gray-600 mb-2">
+              <p className="text-gray-600 mb-2 text-sm sm:text-base">
                 Are you sure you want delete your account ?
               </p>
 
-              <p className="text-gray-500 mb-2">
+              <p className="text-gray-500 mb-2 text-sm sm:text-base">
                 This action cannot be undone and all your data will be
                 permanently removed after 60 days
               </p>
 
-              <p className="text-green-600 mb-6 font-medium">
+              <p className="text-green-600 mb-6 font-medium text-sm sm:text-base">
                 You can re-activate your account within 60 days
               </p>
 
-              <div className="flex justify-center gap-4">
+              <div className="flex flex-col-reverse sm:flex-row justify-center gap-3">
                 <button
+                  type="button"
                   onClick={() => setShowDeleteModal(false)}
-                  className="px-6 py-2 bg-gray-300 rounded-md"
+                  className="px-6 py-3 min-h-[48px] bg-gray-200 rounded-xl font-semibold"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handleDeleteAccount}
-                  className="px-6 py-2 bg-red-600 text-white rounded-md"
+                  className="px-6 py-3 min-h-[48px] bg-red-600 text-white rounded-xl font-semibold"
                 >
                   Delete Account
                 </button>
@@ -658,16 +803,16 @@ overflow-hidden
             </div>
           </div>
         )}
-        {/* DELETE SUCCESS MODAL */}
         {showDeletedSuccess && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-            <div className="bg-white w-[95%] max-w-3xl min-h-[450px] rounded-lg relative flex flex-col items-center justify-center">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+            <div className="bg-white w-full sm:w-[95%] max-w-3xl min-h-[320px] sm:min-h-[450px] rounded-t-3xl sm:rounded-2xl relative flex flex-col items-center justify-center px-5 py-10">
               <button
+                type="button"
                 onClick={() => {
                   setShowDeletedSuccess(false);
                   navigate("/");
                 }}
-                className="absolute top-6 right-6 text-3xl"
+                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-100 text-2xl flex items-center justify-center"
               >
                 ✕
               </button>
@@ -675,10 +820,10 @@ overflow-hidden
               <img
                 src="/delete-success.png"
                 alt="deleted"
-                className="w-64 mb-8"
+                className="w-40 sm:w-64 mb-6 sm:mb-8"
               />
 
-              <h2 className="text-3xl font-semibold text-black text-center">
+              <h2 className="text-xl sm:text-3xl font-semibold text-black text-center max-w-lg">
                 Your Account has been deleted successfully
               </h2>
             </div>

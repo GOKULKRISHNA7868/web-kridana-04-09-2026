@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import React, { useEffect, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   collection,
   getDocs,
@@ -12,22 +12,39 @@ import {
   increment,
   serverTimestamp,
   onSnapshot,
+  query,
+  where,
 } from "firebase/firestore";
 import { getCurrentUserLocation } from "../utils/location";
 import { db } from "../firebase";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import {
-  ChevronLeft,
-  ChevronRight,
   Trophy,
-  Dribbble,
-  Users,
-  Dumbbell,
   ArrowRight,
-  Globe,
   UserCheck,
   Activity,
+  Globe,
+  Search,
+  SlidersHorizontal,
+  UserRound,
+  Building2,
+  Users,
+  ChevronRight,
+  ChevronLeft,
+  Grid2X2,
+  Bookmark,
+  MapPin,
+  Star,
+  Play,
+  Heart,
+  MessageCircle,
+  Eye,
+  X,
+  Image as ImageIcon,
+  Sparkles,
+  Film,
+  Clapperboard,
 } from "lucide-react";
 import {
   FaFistRaised,
@@ -80,6 +97,284 @@ const categories = [
   { name: "Wellness", path: "/services/wellness", icon: FaSpa },
   { name: "Dance", path: "/services/dance", icon: FaMusic },
 ];
+/* ===================================================== */
+/* ================= LOADING UI ======================== */
+/* ===================================================== */
+
+const SkeletonCircle = ({ size = "42px" }) => (
+  <div
+    className="rounded-full bg-gray-200 animate-pulse shrink-0"
+    style={{ width: size, height: size }}
+  />
+);
+
+const SkeletonLine = ({ width = "70%", height = "7px" }) => (
+  <div
+    className="bg-gray-200 rounded-full animate-pulse"
+    style={{ width, height }}
+  />
+);
+
+/* ================= RECOMMENDED LOADING ================= */
+
+const RecommendedSkeleton = () => (
+  <div className="flex gap-2 overflow-hidden pb-1">
+    {[1, 2].map((item) => (
+      <div
+        key={item}
+        className="
+          bg-white
+          rounded-[9px]
+          border border-[#E9E9E9]
+          shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+          p-2
+          min-w-[calc((100vw-32px)/2)]
+          w-[calc((100vw-32px)/2)]
+          shrink-0
+        "
+      >
+        <div className="flex items-center gap-1.5">
+          <SkeletonCircle size="38px" />
+
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <SkeletonLine width="75%" />
+            <SkeletonLine width="55%" height="6px" />
+            <SkeletonLine width="85%" height="6px" />
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center mt-3">
+          <SkeletonLine width="35%" height="6px" />
+
+          <div className="w-[48px] h-[15px] rounded-[4px] bg-gray-200 animate-pulse" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+/* ================= TRAINER / ACADEMY LOADING ================= */
+
+const ProfileSkeleton = () => (
+  <div
+    className="
+      bg-white
+      rounded-[9px]
+      border border-[#E8E8E8]
+      shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+      overflow-hidden
+      min-w-[calc((100vw-32px)/2)]
+      w-[calc((100vw-32px)/2)]
+      shrink-0
+    "
+  >
+    <div className="flex p-2 gap-1.5">
+      <SkeletonCircle size="42px" />
+
+      <div className="flex-1 min-w-0 space-y-1.5 pt-1">
+        <SkeletonLine width="70%" />
+        <SkeletonLine width="55%" height="6px" />
+        <SkeletonLine width="85%" height="6px" />
+        <SkeletonLine width="45%" height="6px" />
+      </div>
+    </div>
+
+    <div className="flex justify-end px-2 pb-2">
+      <SkeletonLine width="55px" height="7px" />
+    </div>
+  </div>
+);
+
+/* ================= VIDEO LOADING ================= */
+
+const VideoSkeleton = () => (
+  <div
+    className="
+      shrink-0
+      w-[174px]
+      h-[61px]
+      bg-white
+      rounded-[7px]
+      border border-[#E8E8E8]
+      shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+      overflow-hidden
+      flex
+    "
+  >
+    <div className="w-[84px] h-full bg-gray-200 animate-pulse shrink-0" />
+
+    <div className="flex-1 p-1.5 space-y-1.5">
+      <SkeletonLine width="90%" height="7px" />
+      <SkeletonLine width="70%" height="7px" />
+      <SkeletonLine width="40%" height="10px" />
+    </div>
+  </div>
+);
+
+function HScrollTrack({
+  children,
+  className = "",
+  desktopGrid = false,
+  itemCount = 0,
+}) {
+  const scrollerRef = useRef(null);
+  const [page, setPage] = useState(0);
+  const [pages, setPages] = useState(1);
+
+  const measure = () => {
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    if (window.matchMedia("(min-width: 640px)").matches && desktopGrid) {
+      setPages(1);
+      setPage(0);
+      return;
+    }
+
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (maxScroll <= 12) {
+      setPages(1);
+      setPage(0);
+      return;
+    }
+
+    const nextPages = Math.max(
+      2,
+      Math.ceil(el.scrollWidth / Math.max(el.clientWidth, 1)),
+    );
+    const nextPage = Math.min(
+      nextPages - 1,
+      Math.round(el.scrollLeft / Math.max(el.clientWidth, 1)),
+    );
+    setPages(nextPages);
+    setPage(nextPage);
+  };
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    const timer = window.setTimeout(measure, 80);
+
+    let startX = 0;
+    let startY = 0;
+    let axis = null;
+
+    const onTouchStart = (event) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      axis = null;
+    };
+
+    const onTouchMove = (event) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+
+      if (axis == null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        axis = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
+      }
+
+      if (axis === "y") {
+        event.preventDefault();
+        window.scrollBy(0, -dy);
+        startX = touch.clientX;
+        startY = touch.clientY;
+      }
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+
+    return () => {
+      el.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+      window.clearTimeout(timer);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+    };
+  }, [itemCount, desktopGrid]);
+
+  const goTo = (index) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTo({
+      left: index * el.clientWidth,
+      behavior: "smooth",
+    });
+  };
+
+  return (
+    <div className="relative">
+      <div
+        ref={scrollerRef}
+        className={`
+          flex gap-2 overflow-x-auto overflow-y-hidden
+          snap-x snap-mandatory pb-1 scrollbar-hide
+          touch-pan-x touch-pan-y [-webkit-overflow-scrolling:touch]
+          ${
+            desktopGrid
+              ? "sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:snap-none"
+              : ""
+          }
+          ${className}
+        `}
+      >
+        {children}
+      </div>
+
+      {pages > 1 && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-7 bg-gradient-to-l from-[#FAFAF9] to-transparent sm:hidden" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-[#FAFAF9] to-transparent sm:hidden opacity-70" />
+
+          <div className="mt-2 flex items-center justify-center gap-1.5 sm:hidden">
+            {page > 0 && (
+              <button
+                type="button"
+                aria-label="Previous"
+                onClick={() => goTo(Math.max(0, page - 1))}
+                className="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500"
+              >
+                <ChevronLeft size={10} />
+              </button>
+            )}
+
+            {Array.from({ length: Math.min(pages, 6) }).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Slide ${i + 1}`}
+                onClick={() => goTo(i)}
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  i === page ? "w-4 bg-[#FF6A00]" : "w-1.5 bg-gray-300"
+                }`}
+              />
+            ))}
+
+            {page < pages - 1 && (
+              <button
+                type="button"
+                aria-label="Next"
+                onClick={() => goTo(Math.min(pages - 1, page + 1))}
+                className="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-[#FF6A00]"
+              >
+                <ChevronRight size={10} />
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /* ================= DISTANCE ================= */
 const getDistance = (lat1, lon1, lat2, lon2) => {
@@ -96,11 +391,181 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 };
 
+const getCreatedMs = (value) => {
+  if (!value) return 0;
+  try {
+    if (value?.toDate) return value.toDate().getTime();
+    if (value?.seconds) return value.seconds * 1000;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
+  } catch {
+    return 0;
+  }
+};
+
+const getOwnerDisplayName = (data = {}, type) => {
+  if (type === "trainer") {
+    return (
+      data.trainerName ||
+      `${data.firstName || ""} ${data.lastName || ""}`.trim() ||
+      data.name ||
+      "Trainer"
+    );
+  }
+  return data.instituteName || data.name || "Institute";
+};
+
+const collectOwnerPosts = (ownerId, data, ownerType) => {
+  if (!ownerId || !data || data.isDeleted) return [];
+
+  const ownerName = getOwnerDisplayName(data, ownerType);
+  const profileImage = data.profileImageUrl || data.profileImage || "";
+  const items = [];
+  const seen = new Set();
+
+  const trainingImages = Array.isArray(data.trainingImages)
+    ? data.trainingImages
+    : [];
+  const mediaTraining = Array.isArray(data.mediaGallery?.trainingImages)
+    ? data.mediaGallery.trainingImages
+    : [];
+  const extraGallery = [
+    ...(data.mediaGallery?.facilityImages || []),
+    ...(data.mediaGallery?.equipmentImages || []),
+    ...(data.mediaGallery?.uniformImages || []),
+  ];
+  const allImages = [...trainingImages, ...mediaTraining, ...extraGallery];
+
+  allImages.forEach((item, index) => {
+    const url = typeof item === "string" ? item : item?.url;
+    if (!url || String(url).toLowerCase().includes(".mp4")) return;
+    const urlKey = String(url).split("?")[0].trim();
+    if (!urlKey || seen.has(urlKey)) return;
+    seen.add(urlKey);
+
+    const caption =
+      typeof item === "string"
+        ? ""
+        : item?.about || item?.caption || item?.title || item?.description || "";
+
+    items.push({
+      id: `post_${ownerId}_img_${index}`,
+      mediaType: "image",
+      url,
+      caption,
+      title: (typeof item === "object" && item?.title) || caption,
+      category:
+        (typeof item === "object" &&
+          (item.sportsCategory || item.category)) ||
+        data.subCategory ||
+        "",
+      createdAt: typeof item === "object" ? item?.createdAt : null,
+      postType:
+        (typeof item === "object" && item?.postType) || "achievement",
+      ownerId,
+      ownerType,
+      ownerName,
+      profileImage,
+      ownerLat: Number(data.latitude) || null,
+      ownerLng: Number(data.longitude) || null,
+      city: data.city || data.locationName || "",
+    });
+  });
+
+  (Array.isArray(data.reels) ? data.reels : []).forEach((item, index) => {
+    const url = typeof item === "string" ? item : item?.url;
+    if (!url) return;
+    const urlKey = String(url).split("?")[0].trim();
+    if (!urlKey || seen.has(urlKey)) return;
+    seen.add(urlKey);
+
+    const caption =
+      typeof item === "string"
+        ? ""
+        : item?.about || item?.caption || item?.title || item?.description || "";
+
+    const rawType =
+      (typeof item === "object" && item?.postType) || "reel";
+
+    items.push({
+      id:
+        ownerType === "trainer"
+          ? `trainer_${ownerId}_${index}`
+          : `institute_${ownerId}_${index}`,
+      mediaType: "video",
+      url,
+      coverUrl: typeof item === "object" ? item?.coverUrl || "" : "",
+      caption,
+      title:
+        (typeof item === "object" && (item.title || item.about)) ||
+        `${ownerName} reel`,
+      category:
+        (typeof item === "object" &&
+          (item.sportsCategory || item.category)) ||
+        data.subCategory ||
+        "",
+      createdAt: typeof item === "object" ? item?.createdAt : null,
+      postType: rawType === "video" ? "video" : "reel",
+      ownerId,
+      ownerType,
+      ownerName,
+      profileImage,
+      ownerLat: Number(data.latitude) || null,
+      ownerLng: Number(data.longitude) || null,
+      city: data.city || data.locationName || "",
+    });
+  });
+
+  return items;
+};
+
+const isPhotoPost = (post) => post?.mediaType === "image";
+const isReelPost = (post) =>
+  post?.mediaType === "video" && post?.postType !== "video";
+const isTrainingVideoPost = (post) =>
+  post?.mediaType === "video" && post?.postType === "video";
+
+/** Free on-device ranking (no paid AI APIs) */
+const scoreCommunityPost = (post, userLocation) => {
+  let score = 0;
+  const ageMs = Date.now() - (getCreatedMs(post.createdAt) || 0);
+  const days = ageMs / (1000 * 60 * 60 * 24);
+  score += Math.max(0, 40 - days); // fresher posts score higher
+
+  if (post.caption || post.title) score += 8;
+  if (post.category) score += 6;
+  if (isReelPost(post)) score += 10;
+  if (isPhotoPost(post)) score += 4;
+
+  if (
+    userLocation &&
+    Number.isFinite(post.ownerLat) &&
+    Number.isFinite(post.ownerLng)
+  ) {
+    const distance = getDistance(
+      userLocation.lat,
+      userLocation.lng,
+      post.ownerLat,
+      post.ownerLng,
+    );
+    if (distance <= 5) score += 35;
+    else if (distance <= 15) score += 25;
+    else if (distance <= 40) score += 15;
+    else if (distance <= 80) score += 6;
+  }
+
+  return score;
+};
+
 /* ===================================================== */
 /* ================= LANDING PAGE ====================== */
 /* ===================================================== */
 
 const Landing = () => {
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
+  const [isLoadingTrainers, setIsLoadingTrainers] = useState(true);
+  const [isLoadingInstitutes, setIsLoadingInstitutes] = useState(true);
+  const [isLoadingReels, setIsLoadingReels] = useState(true);
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [mode, setMode] = useState("top");
@@ -108,14 +573,29 @@ const Landing = () => {
   const [trainers, setTrainers] = useState([]);
   const [institutes, setInstitutes] = useState([]);
   const [reels, setReels] = useState([]);
+  const [visiblePostCount, setVisiblePostCount] = useState(8);
+  const [postFilter, setPostFilter] = useState("All");
+  const [selectedPost, setSelectedPost] = useState(null);
 
   const [showCommentsFor, setShowCommentsFor] = useState(null);
   const [commentsList, setCommentsList] = useState([]);
   const [showReelViewer, setShowReelViewer] = useState(false);
   const [activeReelIndex, setActiveReelIndex] = useState(0);
-
+  const [videoThumbs, setVideoThumbs] = useState({});
   const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState("idle");
+  const locationBoostApplied = useRef(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
+  const searchValue = String(searchTerm || "")
+    .toLowerCase()
+    .trim();
+  const normalizeSearch = (value) => {
+    return String(value ?? "")
+      .toLowerCase()
+      .trim();
+  };
   const [suggestedProfiles, setSuggestedProfiles] = useState([]);
   const [followingIds, setFollowingIds] = useState([]);
   const [reactionMap, setReactionMap] = useState({});
@@ -125,6 +605,40 @@ const Landing = () => {
   const [commentCounts, setCommentCounts] = useState({});
   const [likeCounts, setLikeCounts] = useState({});
   const [dislikeCounts, setDislikeCounts] = useState({});
+  const generateThumbnail = (videoUrl, reelId) => {
+    if (videoThumbs[reelId]) return;
+
+    const video = document.createElement("video");
+    video.crossOrigin = "anonymous";
+    video.src = videoUrl;
+    video.muted = true;
+    video.playsInline = true;
+
+    video.addEventListener("loadeddata", () => {
+      video.currentTime = 0.2;
+    });
+
+    video.addEventListener("seeked", () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0);
+
+      const image = canvas.toDataURL("image/jpeg", 0.8);
+
+      setVideoThumbs((prev) => ({
+        ...prev,
+        [reelId]: image,
+      }));
+    });
+  };
+  useEffect(() => {
+    reels.forEach((r) => {
+      generateThumbnail(r.videoUrl, r.reelId);
+    });
+  }, [reels]);
   /* ===================================================== */
   /* ================= FETCH SUGGESTED =================== */
   /* ===================================================== */
@@ -205,44 +719,53 @@ const Landing = () => {
 
   useEffect(() => {
     const loadSuggested = async () => {
-      const trainerSnap = await getDocs(collection(db, "trainers"));
-      const instituteSnap = await getDocs(collection(db, "institutes"));
+      setIsLoadingProfiles(true);
 
-      const trainerList = trainerSnap.docs.map((doc) => ({
-        id: doc.id,
-        type: "trainer",
-        ...doc.data(),
-      }));
+      try {
+        const trainerSnap = await getDocs(collection(db, "trainers"));
+        const instituteSnap = await getDocs(collection(db, "institutes"));
 
-      const instituteList = instituteSnap.docs.map((doc) => ({
-        id: doc.id,
-        type: "institute",
-        ...doc.data(),
-      }));
+        const trainerList = trainerSnap.docs.map((doc) => ({
+          id: doc.id,
+          type: "trainer",
+          ...doc.data(),
+        }));
 
-      let all = [...trainerList, ...instituteList];
+        const instituteList = instituteSnap.docs.map((doc) => ({
+          id: doc.id,
+          type: "institute",
+          ...doc.data(),
+        }));
 
-      all = all.map((item) => ({
-        ...item,
-        distance:
-          userLocation && item.latitude && item.longitude
-            ? getDistance(
-                userLocation.lat,
-                userLocation.lng,
-                Number(item.latitude),
-                Number(item.longitude),
-              )
-            : null,
-      }));
+        let all = [...trainerList, ...instituteList];
 
-      all.sort((a, b) => {
-        if (userLocation) {
-          return (a.distance || 9999) - (b.distance || 9999);
-        }
-        return Number(b.rating || 0) - Number(a.rating || 0);
-      });
+        all = all.map((item) => ({
+          ...item,
+          distance:
+            userLocation && item.latitude && item.longitude
+              ? getDistance(
+                  userLocation.lat,
+                  userLocation.lng,
+                  Number(item.latitude),
+                  Number(item.longitude),
+                )
+              : null,
+        }));
 
-      setSuggestedProfiles(all.slice(0, 8));
+        all.sort((a, b) => {
+          if (userLocation) {
+            return (a.distance || 9999) - (b.distance || 9999);
+          }
+
+          return Number(b.rating || 0) - Number(a.rating || 0);
+        });
+
+        setSuggestedProfiles(all.slice(0, 8));
+      } catch (error) {
+        console.error("Suggested profiles error:", error);
+      } finally {
+        setIsLoadingProfiles(false);
+      }
     };
 
     loadSuggested();
@@ -424,17 +947,20 @@ const Landing = () => {
   /* ================= FETCH TRAINERS + INSTITUTES ================= */
   useEffect(() => {
     const fetchData = async () => {
-      try {
-        const trainerSnap = await getDocs(collection(db, "trainers"));
-        const instituteSnap = await getDocs(collection(db, "institutes"));
+      setIsLoadingTrainers(true);
+      setIsLoadingInstitutes(true);
 
-        // ✅ Trainers
+      try {
+        const [trainerSnap, instituteSnap] = await Promise.all([
+          getDocs(collection(db, "trainers")),
+          getDocs(collection(db, "institutes")),
+        ]);
+
         const trainerList = trainerSnap.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        // ✅ Institutes
         const instituteList = instituteSnap.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -444,6 +970,9 @@ const Landing = () => {
         setInstitutes(instituteList);
       } catch (error) {
         console.error("❌ Error fetching data:", error);
+      } finally {
+        setIsLoadingTrainers(false);
+        setIsLoadingInstitutes(false);
       }
     };
 
@@ -453,866 +982,2613 @@ const Landing = () => {
 
   useEffect(() => {
     const loadLocation = async () => {
+      setLocationStatus("loading");
       const loc = await getCurrentUserLocation();
-      setUserLocation(loc);
+      if (loc?.lat && loc?.lng) {
+        setUserLocation(loc);
+        setLocationStatus("ready");
+      } else {
+        setLocationStatus("denied");
+      }
     };
 
     loadLocation();
   }, []);
 
+  /* Auto-prefer nearby trainers / institutes once location is available */
+  useEffect(() => {
+    if (!userLocation || locationBoostApplied.current) return;
+    locationBoostApplied.current = true;
+    setMode("nearby");
+    setInstituteMode("nearby");
+    setPostFilter((prev) => (prev === "All" ? "Near you" : prev));
+  }, [userLocation]);
+
   /* ================= FETCH TRAINERS + INSTITUTES ================= */
 
   /* ================= FETCH REELS ================= */
   /* ================= ✅ FETCH REELS FROM TRAINERS + INSTITUTES ================= */
+
   useEffect(() => {
     const fetchReels = async () => {
-      const trainerSnap = await getDocs(collection(db, "trainers"));
-      const instituteSnap = await getDocs(collection(db, "institutes"));
+      setIsLoadingReels(true);
 
-      let all = []; // ✅ correct variable
+      try {
+        const [trainerSnap, instituteSnap] = await Promise.all([
+          getDocs(collection(db, "trainers")),
+          getDocs(collection(db, "institutes")),
+        ]);
 
-      // ✅ TRAINERS
-      trainerSnap.docs.forEach((doc) => {
-        const data = doc.data();
+        let all = [];
 
-        if (data.reels && Array.isArray(data.reels)) {
-          data.reels.forEach((video, index) => {
-            // ✅ index added
-            all.push({
-              reelId: `trainer_${doc.id}_${index}`, // ✅ correct
-              videoUrl: video,
-              ownerId: doc.id,
-              type: "trainer",
-              title: data.trainerName || "Trainer Reel",
+        trainerSnap.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.isDeleted) return;
+
+          if (Array.isArray(data.reels)) {
+            data.reels.forEach((video, index) => {
+              const videoUrl = typeof video === "string" ? video : video?.url;
+              if (!videoUrl) return;
+              all.push({
+                reelId: `trainer_${docSnap.id}_${index}`,
+                videoUrl,
+                about:
+                  typeof video === "object"
+                    ? video?.about || video?.caption || video?.title || ""
+                    : "",
+                ownerId: docSnap.id,
+                type: "trainer",
+                title:
+                  (typeof video === "object" && (video.title || video.about)) ||
+                  getOwnerDisplayName(data, "trainer"),
+                ownerName: getOwnerDisplayName(data, "trainer"),
+                ownerPhoto: data.profileImageUrl || "",
+                category:
+                  (typeof video === "object" &&
+                    (video.sportsCategory || video.category)) ||
+                  data.subCategory ||
+                  data.category ||
+                  "",
+              });
             });
-          });
-        }
-      });
+          }
+        });
 
-      // ✅ INSTITUTES
-      instituteSnap.docs.forEach((doc) => {
-        const data = doc.data();
+        instituteSnap.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.isDeleted) return;
 
-        if (data.reels && Array.isArray(data.reels)) {
-          data.reels.forEach((video, index) => {
-            // ✅ index added
-            all.push({
-              reelId: `institute_${doc.id}_${index}`, // ✅ correct
-              videoUrl: video,
-              ownerId: doc.id,
-              type: "institute",
-              title: data.instituteName || "Institute Reel",
+          if (Array.isArray(data.reels)) {
+            data.reels.forEach((video, index) => {
+              const videoUrl = typeof video === "string" ? video : video?.url;
+              if (!videoUrl) return;
+              all.push({
+                reelId: `institute_${docSnap.id}_${index}`,
+                videoUrl,
+                about:
+                  typeof video === "object"
+                    ? video?.about || video?.caption || video?.title || ""
+                    : "",
+                ownerId: docSnap.id,
+                type: "institute",
+                title:
+                  (typeof video === "object" && (video.title || video.about)) ||
+                  getOwnerDisplayName(data, "institute"),
+                ownerName: getOwnerDisplayName(data, "institute"),
+                ownerPhoto: data.profileImageUrl || "",
+                category:
+                  (typeof video === "object" &&
+                    (video.sportsCategory || video.category)) ||
+                  data.subCategory ||
+                  data.category ||
+                  "",
+              });
             });
-          });
-        }
-      });
+          }
+        });
 
-      // ✅ Shuffle
-      all = all.sort(() => Math.random() - 0.5);
+        all = all.sort(() => Math.random() - 0.5);
 
-      // ✅ Limit
-      setReels(all.slice(0, 5));
+        setReels(all);
+      } catch (error) {
+        console.error("Reels loading error:", error);
+      } finally {
+        setIsLoadingReels(false);
+      }
     };
 
     fetchReels();
   }, []);
+  const searchedTrainers = searchValue
+    ? trainers.filter((trainer) => {
+        const searchableText = [
+          trainer.firstName,
+          trainer.lastName,
+          trainer.trainerName,
+          trainer.name,
+          trainer.category,
+          trainer.subCategory,
+          trainer.city,
+          trainer.state,
+          trainer.location,
+        ]
+          .filter(Boolean)
+          .map(normalizeSearch)
+          .join(" ");
 
-  useEffect(() => {
-    const fetchReels = async () => {
-      const trainerSnap = await getDocs(collection(db, "trainers"));
-      const instituteSnap = await getDocs(collection(db, "institutes"));
+        return searchableText.includes(searchValue);
+      })
+    : [];
 
-      let all = [];
+  const communityPosts = React.useMemo(() => {
+    const all = [];
+    trainers.forEach((trainer) => {
+      all.push(...collectOwnerPosts(trainer.id, trainer, "trainer"));
+    });
+    institutes.forEach((institute) => {
+      all.push(...collectOwnerPosts(institute.id, institute, "institute"));
+    });
 
-      trainerSnap.docs.forEach((doc) => {
-        const data = doc.data();
-        if (data.reels) {
-          data.reels.forEach((video) => {
-            all.push({
-              reelId: `trainer_${doc.id}_${index}`,
-              videoUrl: video,
-              ownerId: doc.id, // ✅ REQUIRED
-              type: "trainer",
-              title: data.trainerName || "Trainer Reel",
-            });
-          });
-        }
+    return all
+      .map((post) => {
+        const hasCoords =
+          userLocation &&
+          Number.isFinite(post.ownerLat) &&
+          Number.isFinite(post.ownerLng);
+        const distance = hasCoords
+          ? getDistance(
+              userLocation.lat,
+              userLocation.lng,
+              post.ownerLat,
+              post.ownerLng,
+            )
+          : null;
+        return {
+          ...post,
+          distance,
+          aiScore: scoreCommunityPost(
+            { ...post, distance },
+            userLocation,
+          ),
+        };
+      })
+      .sort((a, b) => getCreatedMs(b.createdAt) - getCreatedMs(a.createdAt));
+  }, [trainers, institutes, userLocation]);
+
+  const feedPosts = React.useMemo(() => {
+    let list = communityPosts.filter((post) => {
+      if (postFilter === "Photos" && !isPhotoPost(post)) return false;
+      if (postFilter === "Reels" && !isReelPost(post)) return false;
+      if (postFilter === "Videos" && !isTrainingVideoPost(post)) return false;
+      if (postFilter === "Near you") {
+        if (post.distance == null) return false;
+        return post.distance <= 80;
+      }
+      return true;
+    });
+
+    if (postFilter === "Near you") {
+      list = [...list].sort(
+        (a, b) => (a.distance ?? 9999) - (b.distance ?? 9999),
+      );
+    } else if (postFilter === "For you") {
+      list = [...list].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
+    } else if (userLocation && postFilter === "All") {
+      list = [...list].sort((a, b) => {
+        const distA = a.distance ?? 9999;
+        const distB = b.distance ?? 9999;
+        if (Math.abs(distA - distB) > 0.5) return distA - distB;
+        return getCreatedMs(b.createdAt) - getCreatedMs(a.createdAt);
       });
+    }
 
-      instituteSnap.docs.forEach((doc) => {
-        const data = doc.data();
-        if (data.reels) {
-          data.reels.forEach((video) => {
-            all.push({
-              reelId: `institute_${doc.id}_${index}`,
-              videoUrl: video,
-              ownerId: doc.id, // ✅ REQUIRED
-              type: "institute",
-              title: data.instituteName || "Institute Reel",
-            });
-          });
-        }
-      });
+    return list;
+  }, [communityPosts, postFilter, userLocation]);
 
-      all = all.sort(() => Math.random() - 0.5);
-      setReels(all.slice(0, 4));
-    };
+  const searchedPosts = searchValue
+    ? communityPosts.filter((post) => {
+        const searchableText = [
+          post.caption,
+          post.title,
+          post.ownerName,
+          post.category,
+        ]
+          .filter(Boolean)
+          .map(normalizeSearch)
+          .join(" ");
+        return searchableText.includes(searchValue);
+      })
+    : [];
 
-    fetchReels();
-  }, []);
+  /* ================= ACADEMIES SEARCH ================= */
 
+  const searchedInstitutes = searchValue
+    ? institutes.filter((institute) => {
+        const searchableText = [
+          institute.instituteName,
+          institute.name,
+          institute.category,
+          institute.subCategory,
+          institute.city,
+          institute.state,
+          institute.location,
+          institute.address,
+        ]
+          .filter(Boolean)
+          .map(normalizeSearch)
+          .join(" ");
+
+        return searchableText.includes(searchValue);
+      })
+    : [];
+
+  /* ================= CATEGORY SEARCH ================= */
+
+  const filteredCategories = searchValue
+    ? categories.filter((cat) => {
+        const categoryName = normalizeSearch(cat.name);
+
+        return categoryName.includes(searchValue);
+      })
+    : categories;
+
+  /* ================= SEARCH RESULT CHECK ================= */
+
+  const hasSearchResults =
+    searchedTrainers.length > 0 ||
+    searchedInstitutes.length > 0 ||
+    filteredCategories.length > 0 ||
+    searchedPosts.length > 0;
   return (
-    <div className="w-full font-sans pb-50">
+    <div className="page-content w-full font-sans pb-0 touch-pan-x touch-pan-y">
       {/* 3px white line */}
       <div className="w-full h-[10px] bg-white"></div>
 
       <section className="w-full bg-[#FFFBF8] border-b border-orange-100 py-2 md:py-20 overflow-hidden">
         {/* ==================== MOBILE VIEW ===================== */}
-        <div className="flex md:hidden flex-col px-4 gap-2">
-          {/* Top Tagline Badge */}
-          <div>
-            <span className="inline-flex items-center gap-1 bg-[#FFF5EE] border border-[#FF6A00] px-3 py-1 rounded-full text-[11px] font-semibold text-[#FF6A00]">
-              <Trophy className="w-3 h-3" /> DISCOVER YOUR SPORT
-            </span>
-          </div>
+        {/* ========================================================= */}
+        {/* ================= MOBILE LANDING PAGE =================== */}
+        {/* ========================================================= */}
 
-          {/* Main Headings */}
-          <div className="flex flex-col gap-1">
-            <h1 className="text-[32px] font-extrabold text-[#0B0B0B] leading-tight tracking-tight">
-              Search your <br />
-              favourite <span className="text-[#FF6A00]">Sports</span>
-            </h1>
-            <h2 className="text-[20px] font-bold text-[#0B0B0B] mt-1">
-              Train hard. <span className="text-[#FF6A00]">Enjoy & Sweat.</span>
-            </h2>
-            <p className="mt-3 text-[14px] text-gray-600 font-normal leading-relaxed">
-              Find indoor or outdoor sports, connect with expert trainers and
-              track your progress — all in one place.
-            </p>
-          </div>
+        <div
+          className="
+    w-full
+    max-w-lg
+    mx-auto
+    bg-[#FAFAF9]
+    text-[#171717]
+    overflow-x-hidden
+    overflow-y-visible
+    h-auto
+    pb-0
+  "
+        >
+          {/* ===================================================== */}
+          {/* HEADER / HERO */}
+          {/* ===================================================== */}
 
-          {/* Main Image Asset Showcase */}
-          <div className="w-full flex justify-center py-2 relative">
-            <img
-              src="/image.png" // Replace with your complete right-side compiled banner asset
-              alt="Sports dashboard composite"
-              className="w-[85%] h-auto object-contain drop-shadow-xl"
-            />
-          </div>
-
-          {/* Features Minimal Feature Cards Block */}
-
-          {/* Action Call to Action Buttons */}
-          <div className="flex flex-col gap-1 mt-2 w-full">
-            <button
-              onClick={() => navigate("/MobileCategoriesPage")}
-              className="w-full bg-[#FF6A00] hover:bg-orange-600 transition-colors text-white py-3.5 rounded-xl text-[14px] font-bold flex items-center justify-center gap-2 shadow-md shadow-orange-500/20"
-            >
-              Explore Sports <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* ==================== DESKTOP VIEW ===================== */}
-        <div className="hidden md:flex max-w-[1280px] mx-auto items-center justify-between px-8 gap-8">
-          {/* LEFT TEXT PANEL */}
-          <div className="w-[50%] flex flex-col items-start">
-            {/* Top Tagline Badge */}
-            <div className="mb-6">
-              <span className="inline-flex items-center gap-1.5 bg-[#FFF5EE] border border-[#FF6A00] text-[#FF6A00] px-4 py-1.5 rounded-full text-[13px] font-bold uppercase tracking-wider">
-                <Trophy className="w-3.5 h-3.5" /> DISCOVER YOUR SPORT
-              </span>
-            </div>
-
-            {/* Core App Headings */}
-            <h1 className="text-[56px] font-black text-[#0B0B0B] leading-[1.1] tracking-tight">
-              Search your <br />
-              favourite <span className="text-[#FF6A00]">Sports</span>
-            </h1>
-
-            <h2 className="text-[32px] font-extrabold text-[#0B0B0B] mt-3">
-              Train hard. <span className="text-[#FF6A00]">Enjoy & Sweat.</span>
-            </h2>
-
-            {/* Subtext Description */}
-            <p className="text-gray-600 mt-5 text-[16px] leading-[1.6] max-w-[500px] font-medium">
-              Find indoor or outdoor sports, connect with expert trainers and
-              track your progress — all in one place.
-            </p>
-
-            {/* Feature Grid Quick Metrics */}
-            <div className="grid grid-cols-4 gap-4 mt-8 w-full max-w-[540px]">
-              <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-[#FFF5EE] rounded-xl flex items-center justify-center text-[#FF6A00] mb-2.5">
-                  <Trophy className="w-5 h-5" />
-                </div>
-                <span className="text-[13px] font-bold text-[#0B0B0B] whitespace-nowrap">
-                  Indoor Sports
-                </span>
-              </div>
-
-              <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-[#FFF5EE] rounded-xl flex items-center justify-center text-[#FF6A00] mb-2.5">
-                  <Globe className="w-5 h-5" />
-                </div>
-                <span className="text-[13px] font-bold text-[#0B0B0B] whitespace-nowrap">
-                  Outdoor Sports
-                </span>
-              </div>
-
-              <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-[#FFF5EE] rounded-xl flex items-center justify-center text-[#FF6A00] mb-2.5">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <span className="text-[13px] font-bold text-[#0B0B0B] whitespace-nowrap">
-                  Expert Trainers
-                </span>
-              </div>
-
-              <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-sm hover:shadow-md transition-shadow">
-                <div className="w-10 h-10 bg-[#FFF5EE] rounded-xl flex items-center justify-center text-[#FF6A00] mb-2.5">
-                  <Activity className="w-5 h-5" />
-                </div>
-                <span className="text-[13px] font-bold text-[#0B0B0B] whitespace-nowrap">
-                  Stay Fit
-                </span>
-              </div>
-            </div>
-
-            {/* Action Trigger Buttons */}
-            <div className="flex items-center gap-2 mt-8">
-              <button
-                onClick={() => navigate("/book")}
-                className="bg-[#FF6A00] hover:bg-orange-600 transition-colors text-white px-8 py-3.5 rounded-xl text-[15px] font-bold flex items-center gap-2 shadow-lg shadow-orange-500/10"
-              >
-                Explore Sports <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={() => navigate("/features")}
-                className="border border-[#FF6A00] hover:bg-[#FFF5EE] transition-colors text-[#FF6A00] px-8 py-3.5 rounded-xl text-[15px] font-bold flex items-center gap-2 bg-white"
-              >
-                Join Community <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* RIGHT SIDE GRAPHICS WRAPPER */}
-          <div className="w-[50%] flex justify-end relative">
-            <img
-              src="/hero.png" // Point this image route directly to your UI asset layout
-              alt="Comprehensive Sports Dashboard Showcase"
-              className="w-full max-w-[560px] h-auto object-contain drop-shadow-2xl"
-            />
-          </div>
-        </div>
-      </section>
-      {/* ================= CATEGORIES ================= */}
-      <section className="px-4 py-2 bg-gray-50">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-xl font-bold">Categories</h2>
-          <button
-            onClick={() => navigate("/MobileCategoriesPage")}
-            className="text-orange-500 text-sm font-semibold"
+          <section
+            className="
+    w-full
+    bg-[#FFFBF8]
+    border-b
+    border-orange-100
+    py-3
+    px-3
+    md:py-20
+    overflow-hidden
+  "
           >
-            See All
-          </button>
-        </div>
+            {/* Heading */}
+            <div className="mb-3">
+              <h1 className="text-[22px] leading-[26px] font-extrabold tracking-[-0.3px] text-[#171717]">
+                Find Your Sport.
+              </h1>
 
-        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2">
-          {categories.map((cat, index) => {
-            const Icon = cat.icon;
+              <h2 className="text-[22px] leading-[26px] font-extrabold tracking-[-0.3px] text-[#171717]">
+                Find Your <span className="text-[#FF6A00]">Community.</span>
+              </h2>
 
-            return (
+              <p className="mt-2 text-[13px] leading-[18px] text-gray-500 max-w-[320px]">
+                Discover trainers, academies and posts from the sports community
+                around you.
+              </p>
+            </div>
+
+            {/* ================================================= */}
+            {/* SEARCH BAR */}
+            {/* ================================================= */}
+
+            <div className="relative mb-2.5">
               <div
-                key={index}
-                onClick={() => {
-                  navigate(cat.path);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                className="min-w-[90px] flex-shrink-0 flex flex-col items-center cursor-pointer"
+                className="
+          min-h-[44px]
+          w-full
+          bg-white
+          rounded-[12px]
+          border border-[#ECECEC]
+          shadow-[0_2px_8px_rgba(0,0,0,0.06)]
+          flex items-center
+          px-3
+        "
               >
-                <div className="w-14 h-14 rounded-full border border-gray-300 flex items-center justify-center bg-white shadow-sm">
-                  <Icon className="text-gray-700 text-lg" />
-                </div>
+                <Search
+                  size={16}
+                  strokeWidth={2}
+                  className="text-gray-400 shrink-0"
+                />
 
-                <p className="text-[11px] text-orange-500 text-center mt-2 font-medium">
-                  {cat.name}
-                </p>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setShowSearchResults(true);
+                  }}
+                  onFocus={() => {
+                    if (searchTerm.trim()) {
+                      setShowSearchResults(true);
+                    }
+                  }}
+                  placeholder="Search sports, trainers, academies, posts..."
+                  className="
+    flex-1
+    min-w-0
+    ml-2
+    bg-transparent
+    outline-none
+    text-sm
+    text-gray-700
+    placeholder:text-gray-400
+  "
+                />
               </div>
-            );
-          })}
-        </div>
-      </section>
+            </div>
+            {/* =========================================================
+    GLOBAL SEARCH RESULTS
+========================================================= */}
 
-      {/* ================= SUGGESTED ================= */}
-      <section className="px-4 py-2 bg-gray-50">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Suggested</h2>
+            {showSearchResults && searchValue && (
+              <div className="mt-2 mb-3">
+                {/* SEARCH RESULT HEADER */}
 
-          <button
-            onClick={() => {
-              navigate("/suggested");
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-            className="text-orange-500 text-sm font-semibold hover:text-orange-600 shrink-0"
-          >
-            See All
-          </button>
-        </div>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="text-[11px] font-extrabold text-[#171717]">
+                      Search Results
+                    </p>
 
-        <div className="flex gap-4 overflow-x-auto scrollbar-hide">
-          {suggestedProfiles.map((item) => {
-            const liked = reactionMap[item.id] === "like";
-            const disliked = reactionMap[item.id] === "dislike";
-            const followed = followingIds.includes(item.id);
-
-            const name =
-              item.type === "trainer"
-                ? `${item.firstName || ""} ${item.lastName || ""}`
-                : item.instituteName;
-
-            const category = item.subCategory || item.category || "Sports";
-
-            return (
-              <div
-                key={item.id}
-                className="min-w-[260px] bg-white rounded-xl shadow-sm border"
-              >
-                {/* HEADER */}
-                <div className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-2">
-                    <img
-                      src={item.profileImageUrl || "/images/default-avatar.png"}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-
-                    <div>
-                      <p className="text-sm font-semibold line-clamp-1">
-                        {name}
-                      </p>
-                      <p className="text-xs text-gray-500">{category}</p>
-                    </div>
+                    <p className="text-[7px] text-gray-400 mt-0.5">
+                      Results for "{searchTerm}"
+                    </p>
                   </div>
 
                   <button
-                    onClick={() => handleFollow(item.id)}
-                    disabled={followed}
-                    className={`text-xs px-3 py-1 rounded-full ${
-                      followed
-                        ? "bg-gray-200 text-gray-600"
-                        : "bg-orange-500 text-white"
-                    }`}
+                    onClick={() => {
+                      setSearchTerm("");
+                      setShowSearchResults(false);
+                    }}
+                    className="
+          text-[8px]
+          font-semibold
+          text-[#FF6A00]
+        "
                   >
-                    {followed ? "Following" : "Follow"}
+                    Clear
                   </button>
                 </div>
 
-                {/* IMAGE */}
-                <div
-                  className="w-full h-52 sm:h-56 md:h-60 bg-gray-100 cursor-pointer overflow-hidden rounded-lg"
-                  onClick={() =>
-                    navigate(
-                      item.type === "trainer"
-                        ? `/trainers/${item.id}`
-                        : `/institutes/${item.id}`,
-                    )
-                  }
-                >
-                  <img
-                    src={item.profileImageUrl}
-                    className="w-full h-full object-contain bg-gray-100"
-                  />
-                </div>
+                {/* =====================================================
+        RELATED SPORTS / CATEGORIES
+    ===================================================== */}
 
-                {/* ACTIONS */}
-                <div className="flex items-center gap-4 px-3 py-2 text-lg">
-                  <button
-                    onClick={() => handleReaction(item, "like")}
-                    className={`flex items-center gap-1 ${
-                      liked ? "text-green-500" : "text-gray-400"
-                    }`}
-                  >
-                    👍{" "}
-                    <span className="text-xs">{likeCounts[item.id] || 0}</span>
-                  </button>
+                {filteredCategories.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h3 className="text-[9px] font-bold text-[#222]">
+                        Sports
+                      </h3>
+                    </div>
 
-                  <button
-                    onClick={() => handleReaction(item, "dislike")}
-                    className={`flex items-center gap-1 ${
-                      disliked ? "text-red-500" : "text-gray-400"
-                    }`}
-                  >
-                    👎{" "}
-                    <span className="text-xs">
-                      {dislikeCounts[item.id] || 0}
-                    </span>
-                  </button>
+                    <HScrollTrack itemCount={filteredCategories.length} className="gap-1.5">
+                      {filteredCategories.slice(0, 8).map((cat, index) => {
+                        const Icon = cat.icon;
 
-                  <button
-                    onClick={() => openComments(item)}
-                    className="flex items-center gap-1 text-gray-500 hover:text-orange-500 transition"
-                  >
-                    💬
-                    <span className="text-xs font-medium">
-                      {commentCounts[item.id] || 0}
-                    </span>
-                  </button>
-                </div>
-
-                {/* MOBILE PROFESSIONAL COMMENT SHEET */}
-                {showCommentsFor?.id === item.id && (
-                  <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center">
-                    <div
-                      className="
-    bg-white w-full md:w-[450px]
-    rounded-t-3xl md:rounded-2xl
-    shadow-2xl flex flex-col
-    animate-slideUp
-    max-h-[calc(100vh-90px)]
-    md:max-h-[85vh]
-    pb-[env(safe-area-inset-bottom)]
-    mb-16 md:mb-0
-  "
-                    >
-                      {/* TOP BAR */}
-                      <div className="sticky top-0 bg-white border-b px-4 py-3 rounded-t-3xl">
-                        <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-3"></div>
-
-                        <div className="flex justify-between items-center">
-                          <h3 className="font-semibold text-lg">
-                            Comments ({commentCounts[item.id] || 0})
-                          </h3>
-
+                        return (
                           <button
-                            onClick={() => setShowCommentsFor(null)}
-                            className="text-gray-500 text-xl"
+                            key={index}
+                            onClick={() => {
+                              if (cat.path) {
+                                navigate(cat.path);
+                              }
+                            }}
+                            className="
+                  shrink-0
+                  flex
+                  items-center
+                  gap-1.5
+                  px-2
+                  py-1.5
+                  bg-white
+                  border border-[#E8E8E8]
+                  rounded-full
+                  shadow-[0_1px_4px_rgba(0,0,0,0.04)]
+                "
                           >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* COMMENTS LIST */}
-                      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
-                        {commentsList.length === 0 ? (
-                          <div className="text-center text-sm text-gray-500 py-10">
-                            No comments yet
-                          </div>
-                        ) : (
-                          commentsList.map((c) => (
-                            <div
-                              key={c.id}
-                              className="bg-gray-50 border rounded-2xl px-3 py-2"
-                            >
-                              <div className="flex items-start gap-2">
-                                <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-sm font-semibold text-orange-500">
-                                  {c.name?.charAt(0) || "U"}
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-800">
-                                    {c.name || "User"}
-                                  </p>
-
-                                  <p className="text-sm text-gray-700 break-words">
-                                    {c.text}
-                                  </p>
-                                </div>
+                            {Icon && (
+                              <div
+                                className="
+                      w-[20px]
+                      h-[20px]
+                      rounded-full
+                      bg-[#FFF0E6]
+                      flex
+                      items-center
+                      justify-center
+                    "
+                              >
+                                <Icon size={11} className="text-[#FF6A00]" />
                               </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                            )}
 
-                      {/* INPUT BOX */}
-                      <div className="border-t bg-white p-3">
-                        <div className="flex items-end gap-2">
-                          <textarea
-                            rows="1"
-                            value={commentText}
-                            onChange={(e) => setCommentText(e.target.value)}
-                            placeholder="Write a comment..."
-                            className="flex-1 resize-none border rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 max-h-28 overflow-y-auto"
-                          />
-
-                          <button
-                            onClick={() => submitComment(item)}
-                            className="bg-orange-500 text-white px-4 py-2 rounded-2xl text-sm font-medium active:scale-95 transition"
-                          >
-                            Send
+                            <span className="text-[7px] font-semibold text-[#333]">
+                              {cat.name}
+                            </span>
                           </button>
-                        </div>
-                      </div>
+                        );
+                      })}
+                    </HScrollTrack>
+                  </div>
+                )}
+
+                {/* =====================================================
+        TRAINERS
+    ===================================================== */}
+
+                {searchedTrainers.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h3 className="text-[9px] font-bold text-[#222]">
+                        Trainers & Coaches
+                      </h3>
+
+                      <button
+                        onClick={() => navigate("/trainers")}
+                        className="text-[7px] font-semibold text-[#FF6A00]"
+                      >
+                        View All
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {searchedTrainers.slice(0, 4).map((trainer) => (
+                        <button
+                          key={trainer.id}
+                          onClick={() => navigate(`/trainers/${trainer.id}`)}
+                          className="
+                text-left
+                bg-white
+                rounded-[8px]
+                border border-[#E8E8E8]
+                shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+                p-1.5
+                active:scale-[0.98]
+                transition
+              "
+                        >
+                          <div className="flex gap-1.5">
+                            <div
+                              className="
+                    w-[42px]
+                    h-[42px]
+                    rounded-full
+                    overflow-hidden
+                    shrink-0
+                    bg-gray-100
+                  "
+                            >
+                              <img
+                                src={
+                                  trainer.profileImageUrl ||
+                                  "/images/default-avatar.png"
+                                }
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[7.5px] font-bold truncate text-[#222]">
+                                {trainer.firstName} {trainer.lastName}
+                              </p>
+
+                              <p className="text-[6px] text-gray-500 truncate">
+                                {trainer.subCategory ||
+                                  trainer.category ||
+                                  "Sports Trainer"}
+                              </p>
+
+                              <p className="flex items-center gap-0.5 text-[6px] text-gray-400 mt-0.5 truncate">
+                                <MapPin size={7} />
+                                {trainer.city ||
+                                  trainer.location ||
+                                  "Bengaluru"}
+                              </p>
+
+                              <p className="flex items-center gap-0.5 text-[6px] text-gray-500 mt-0.5">
+                                <Star
+                                  size={7}
+                                  fill="#FFB800"
+                                  className="text-[#FFB800]"
+                                />
+
+                                {trainer.rating || "4.7"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-right mt-1">
+                            <span className="text-[6px] font-semibold text-[#FF6A00]">
+                              View Profile →
+                            </span>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
-                {/* CAPTION */}
-                <div className="px-3 pb-3 text-xs text-gray-600">
-                  Rated {item.rating || 0} ⭐
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
 
-      {/* ================================================= */}
-      {/* ================= DOMAINS SECTION ================= */}
-      {/* ================================================= */}
+                {/* =====================================================
+        ACADEMIES / INSTITUTES
+    ===================================================== */}
 
-      {/* ================================================= */}
-      {/* ================= DOMAINS SECTION ================= */}
-      {/* ================================================= */}
+                {searchedInstitutes.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <h3 className="text-[9px] font-bold text-[#222]">
+                        Academies
+                      </h3>
 
-      {/* ================= ADS SECTION ================= */}
-
-      {/* ================================================= */}
-      {/* ================= TOP TRAINERS =================== */}
-      {/* ================================================= */}
-
-      <section className="px-2 md:px-2 md:px-20 py-8 bg-white">
-        {/* Header Row */}
-        <div className="flex flex-col sm:flex-row md:flex-row md:items-center md:justify-between gap-2 mb-10">
-          <h2 className="text-3xl md:text-4xl font-bold">Top Trainers</h2>
-
-          {/* Filter Buttons */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => setMode("top")}
-              className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                mode === "top"
-                  ? "bg-orange-500 text-white"
-                  : "border border-orange-500 text-orange-500"
-              }`}
-            >
-              <svg
-                className="w-4 h-4 text-yellow-400"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.955a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.45a1 1 0 00-.364 1.118l1.287 3.955c.3.921-.755 1.688-1.538 1.118l-3.37-2.45a1 1 0 00-1.175 0l-3.37 2.45c-.783.57-1.838-.197-1.538-1.118l1.287-3.955a1 1 0 00-.364-1.118l-3.37-2.45c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.955z" />
-              </svg>
-              Top Rated
-            </button>
-
-            <button
-              onClick={() => setMode("nearby")}
-              className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                mode === "nearby"
-                  ? "bg-orange-500 text-white"
-                  : "border border-orange-500 text-orange-500"
-              }`}
-            >
-              <img
-                src="/location-icon.png"
-                className="w-4 h-4"
-                alt="location"
-              />
-              Near Me
-            </button>
-          </div>
-        </div>
-
-        {/* Trainers Grid */}
-        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
-          {(mode === "top"
-            ? [...trainers].sort(
-                (a, b) => Number(b.rating || 0) - Number(a.rating || 0),
-              )
-            : userLocation
-            ? trainers
-                .filter(
-                  (t) =>
-                    t.latitude !== undefined &&
-                    t.longitude !== undefined &&
-                    t.latitude !== null &&
-                    t.longitude !== null,
-                )
-                .map((t) => ({
-                  ...t,
-                  distance: getDistance(
-                    userLocation.lat,
-                    userLocation.lng,
-                    Number(t.latitude),
-                    Number(t.longitude),
-                  ),
-                }))
-                .sort((a, b) => a.distance - b.distance)
-            : []
-          )
-            .slice(0, 3)
-            .map((t) => (
-              <div
-                key={t.id}
-                className="rounded-xl overflow-hidden border border-orange-400 shadow-sm bg-white"
-              >
-                {/* Image */}
-                <div className="h-72 w-full bg-white overflow-hidden">
-                  <img
-                    src={t.profileImageUrl || "/images/default-avatar.png"}
-                    alt={t.trainerName}
-                    className="w-full h-full object-contain bg-white"
-                  />
-                </div>
-
-                {/* Bottom Content */}
-                <div className="p-4 flex justify-between items-start">
-                  {/* Left */}
-                  <div>
-                    <h3 className="font-bold text-lg">
-                      {t.firstName} {t.lastName}
-                    </h3>
-
-                    {/* ✅ CATEGORY TAGS LIKE INSTITUTES */}
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {t.category && (
-                        <span className="px-3 py-1 text-xs border border-orange-400 text-orange-500 rounded-full">
-                          {t.category}
-                        </span>
-                      )}
-
-                      {t.subCategory && (
-                        <span className="px-3 py-1 text-xs border border-orange-400 text-orange-500 rounded-full">
-                          {t.subCategory}
-                        </span>
-                      )}
+                      <button
+                        onClick={() => navigate("/institutes")}
+                        className="text-[7px] font-semibold text-[#FF6A00]"
+                      >
+                        View All
+                      </button>
                     </div>
-                    {t.distance && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {t.distance.toFixed(1)} km away
-                      </p>
-                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {searchedInstitutes.slice(0, 4).map((institute) => (
+                        <button
+                          key={institute.id}
+                          onClick={() =>
+                            navigate(`/institutes/${institute.id}`)
+                          }
+                          className="
+                text-left
+                bg-white
+                rounded-[8px]
+                border border-[#E8E8E8]
+                shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+                p-1.5
+                active:scale-[0.98]
+                transition
+              "
+                        >
+                          <div className="flex gap-1.5">
+                            <div
+                              className="
+                    w-[42px]
+                    h-[42px]
+                    rounded-full
+                    overflow-hidden
+                    shrink-0
+                    bg-gray-50
+                    border border-gray-100
+                  "
+                            >
+                              <img
+                                src={
+                                  institute.profileImageUrl &&
+                                  !institute.profileImageUrl.endsWith(".mp4")
+                                    ? institute.profileImageUrl
+                                    : "/images/default-institute.png"
+                                }
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[7.5px] font-bold truncate text-[#222]">
+                                {institute.instituteName ||
+                                  institute.name ||
+                                  "Sports Academy"}
+                              </p>
+
+                              <p className="text-[6px] text-gray-500 truncate">
+                                {institute.subCategory ||
+                                  institute.category ||
+                                  "Sports Academy"}
+                              </p>
+
+                              <p className="flex items-center gap-0.5 text-[6px] text-gray-400 mt-0.5 truncate">
+                                <MapPin size={7} />
+
+                                {institute.city || "Bengaluru"}
+                              </p>
+
+                              <p className="flex items-center gap-0.5 text-[6px] text-gray-500 mt-0.5">
+                                <Star
+                                  size={7}
+                                  fill="#FFB800"
+                                  className="text-[#FFB800]"
+                                />
+
+                                {institute.rating || "4.6"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-right mt-1">
+                            <span className="text-[6px] font-semibold text-[#FF6A00]">
+                              View Profile →
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                )}
 
-                  {/* Right */}
-                  <button
-                    onClick={() => navigate(`/trainers/${t.id}`)}
-                    className="text-orange-500 font-semibold hover:underline"
+                {searchedPosts.length > 0 && (
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-[11px] font-extrabold text-[#222]">
+                        Posts
+                      </h3>
+                    </div>
+                    <HScrollTrack itemCount={searchedPosts.length}>
+                      {searchedPosts.slice(0, 8).map((post) => (
+                        <CommunityPostPreview
+                          key={post.id}
+                          post={post}
+                          onOpen={() => setSelectedPost(post)}
+                        />
+                      ))}
+                    </HScrollTrack>
+                  </div>
+                )}
+
+                {/* =====================================================
+        NO RESULTS
+    ===================================================== */}
+
+                {!hasSearchResults && (
+                  <div
+                    className="
+          bg-white
+          border border-[#E8E8E8]
+          rounded-[9px]
+          px-3
+          py-5
+          text-center
+        "
                   >
-                    View Profile
-                  </button>
-                </div>
-              </div>
-            ))}
-        </div>
+                    <Search size={20} className="mx-auto text-gray-300 mb-2" />
 
-        {/* See More */}
-        <div className="text-center mt-10">
-          <button
-            onClick={() => navigate("/trainers")}
-            className="bg-orange-500 text-white px-8 py-3 rounded-md text-lg hover:bg-orange-600 transition"
-          >
-            See more
-          </button>
-        </div>
-      </section>
-
-      {/* ================================================= */}
-      {/* ================= TOP INSTITUTES ================= */}
-      {/* ================================================= */}
-
-      {/* ================================================= */}
-      {/* ================= TOP INSTITUTES ================= */}
-      {/* ================================================= */}
-
-      <section className="px-6 md:px-20 py-4 bg-gray-50">
-        {/* Header + Filters */}
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-10 gap-2">
-          <h2 className="text-3xl md:text-4xl font-bold">Top Institutes</h2>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => setInstituteMode("top")}
-              className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                instituteMode === "top"
-                  ? "bg-orange-500 text-white"
-                  : "border border-orange-500 text-orange-500"
-              }`}
-            >
-              <svg
-                className="w-4 h-4 text-yellow-400"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.955a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.37 2.45a1 1 0 00-.364 1.118l1.287 3.955c.3.921-.755 1.688-1.538 1.118l-3.37-2.45a1 1 0 00-1.175 0l-3.37 2.45c-.783.57-1.838-.197-1.538-1.118l1.287-3.955a1 1 0 00-.364-1.118l-3.37-2.45c-.783-.57-.38-1.81.588-1.81h4.162a1 1 0 00.95-.69l1.286-3.955z" />
-              </svg>
-              Top Rated
-            </button>
-
-            <button
-              onClick={() => setInstituteMode("nearby")}
-              className={`px-4 py-2 rounded-md flex items-center gap-2 ${
-                instituteMode === "nearby"
-                  ? "bg-orange-500 text-white"
-                  : "border border-orange-500 text-orange-500"
-              }`}
-            >
-              <img
-                src="/location-icon.png"
-                className="w-4 h-4"
-                alt="location"
-              />
-              Near Me
-            </button>
-          </div>
-        </div>
-
-        {/* Institutes Grid */}
-        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
-          {(instituteMode === "top"
-            ? [...institutes].sort(
-                (a, b) => Number(b.rating || 0) - Number(a.rating || 0),
-              )
-            : userLocation
-            ? institutes
-                .filter(
-                  (i) =>
-                    i.latitude !== undefined &&
-                    i.longitude !== undefined &&
-                    i.latitude !== null &&
-                    i.longitude !== null,
-                )
-                .map((i) => ({
-                  ...i,
-                  distance: getDistance(
-                    userLocation.lat,
-                    userLocation.lng,
-                    Number(i.latitude),
-                    Number(i.longitude),
-                  ),
-                }))
-                .sort((a, b) => a.distance - b.distance)
-            : []
-          )
-            .slice(0, 3)
-            .map((i) => (
-              <div
-                key={i.id}
-                className="bg-white rounded-2xl overflow-hidden shadow-md border border-orange-400 hover:shadow-xl transition"
-              >
-                {/* Image */}
-                <div className="h-64 w-full overflow-hidden bg-white">
-                  <img
-                    src={
-                      i.profileImageUrl && !i.profileImageUrl.endsWith(".mp4")
-                        ? i.profileImageUrl
-                        : "/images/default-institute.png"
-                    }
-                    alt={i.instituteName}
-                    className="w-full h-full object-contain bg-white"
-                  />
-                </div>
-
-                {/* Content */}
-                <div className="p-4 flex justify-between items-start">
-                  {/* Left Side */}
-                  <div>
-                    <h3 className="font-bold text-lg">{i.instituteName}</h3>
-
-                    <p className="text-sm text-gray-500 mt-1 flex items-center gap-1">
-                      <img
-                        src="/location-icon.png"
-                        className="w-4 h-4"
-                        alt="location"
-                      />
-                      {i.city || "Unknown"}, {i.state || ""}
+                    <p className="text-[9px] font-semibold text-gray-600">
+                      No results found
                     </p>
 
-                    {i.distance && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {i.distance.toFixed(1)} km away
-                      </p>
-                    )}
+                    <p className="text-[7px] text-gray-400 mt-1">
+                      Try another sport, category, trainer, academy or post.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* ================================================= */}
+            {/* QUICK ACTION CARDS */}
+            {/* ================================================= */}
 
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {i.category && (
-                        <span className="px-3 py-1 text-xs border border-orange-400 text-orange-500 rounded-full">
-                          {i.category}
-                        </span>
-                      )}
-                      {i.subCategory && (
-                        <span className="px-3 py-1 text-xs border border-orange-400 text-orange-500 rounded-full">
-                          {i.subCategory}
-                        </span>
-                      )}
+            <div className="grid grid-cols-3 gap-4">
+              {/* Explore Sports */}
+              <button
+                onClick={() => navigate("/MobileCategoriesPage")}
+                className="
+          h-[86px]
+          bg-white
+          rounded-[9px]
+          border border-[#EEEEEE]
+          shadow-[0_2px_7px_rgba(0,0,0,0.05)]
+          flex flex-col
+          items-center
+          justify-center
+          px-1
+          active:scale-[0.98]
+          transition
+        "
+              >
+                <div
+                  className="
+            w-[29px]
+            h-[29px]
+            rounded-full
+            bg-[#FFF0E6]
+            flex
+            items-center
+            justify-center
+            mb-2
+          "
+                >
+                  <Trophy
+                    size={15}
+                    strokeWidth={1.8}
+                    className="text-[#FF6A00]"
+                  />
+                </div>
+
+                <p className="text-[8.5px] font-bold text-[#222]">
+                  Explore Sports
+                </p>
+
+                <p className="mt-1 text-[6.5px] leading-[8px] text-gray-400 text-center">
+                  Find your favorite
+                  <br />
+                  sports
+                </p>
+              </button>
+
+              {/* Trainers */}
+              <button
+                onClick={() => navigate("/trainers")}
+                className="
+          h-[86px]
+          bg-white
+          rounded-[9px]
+          border border-[#EEEEEE]
+          shadow-[0_2px_7px_rgba(0,0,0,0.05)]
+          flex flex-col
+          items-center
+          justify-center
+          px-1
+          active:scale-[0.98]
+          transition
+        "
+              >
+                <div
+                  className="
+            w-[29px]
+            h-[29px]
+            rounded-full
+            bg-[#EEF8E9]
+            flex
+            items-center
+            justify-center
+            mb-2
+          "
+                >
+                  <UserRound
+                    size={15}
+                    strokeWidth={1.8}
+                    className="text-[#72A84F]"
+                  />
+                </div>
+
+                <p className="text-[8.5px] font-bold text-[#222]">
+                  Find Trainers
+                </p>
+
+                <p className="mt-1 text-[6.5px] leading-[8px] text-gray-400 text-center">
+                  Connect with top
+                  <br />
+                  coaches
+                </p>
+              </button>
+
+              {/* Academies */}
+              <button
+                onClick={() => navigate("/institutes")}
+                className="
+          h-[86px]
+          bg-white
+          rounded-[9px]
+          border border-[#EEEEEE]
+          shadow-[0_2px_7px_rgba(0,0,0,0.05)]
+          flex flex-col
+          items-center
+          justify-center
+          px-1
+          active:scale-[0.98]
+          transition
+        "
+              >
+                <div
+                  className="
+            w-[29px]
+            h-[29px]
+            rounded-full
+            bg-[#F2EDFF]
+            flex
+            items-center
+            justify-center
+            mb-2
+          "
+                >
+                  <Building2
+                    size={15}
+                    strokeWidth={1.8}
+                    className="text-[#8264D8]"
+                  />
+                </div>
+
+                <p className="text-[8.5px] font-bold text-[#222]">
+                  Find Academies
+                </p>
+
+                <p className="mt-1 text-[6.5px] leading-[8px] text-gray-400 text-center">
+                  Discover top sports
+                  <br />
+                  academies
+                </p>
+              </button>
+
+              {/* Community */}
+            </div>
+          </section>
+
+          {/* ===================================================== */}
+          {/* COMMUNITY POSTS FROM TRAINERS + INSTITUTES */}
+          {/* ===================================================== */}
+
+          <section className="px-3 pt-3 pb-4">
+            <div className="flex items-center justify-between mb-1.5 gap-2">
+              <div className="min-w-0">
+                <h2 className="text-[11px] font-extrabold text-[#171717]">
+                  Community posts
+                </h2>
+                <p className="text-[7px] text-gray-400 mt-0.5 truncate">
+                  {locationStatus === "ready"
+                    ? "Showing nearby sports updates first"
+                    : locationStatus === "loading"
+                      ? "Detecting your location…"
+                      : "Photos, reels and academy highlights"}
+                </p>
+              </div>
+              {feedPosts.length > visiblePostCount && (
+                <button
+                  type="button"
+                  onClick={() => setVisiblePostCount((count) => count + 8)}
+                  className="text-[8px] font-semibold text-[#FF6A00] shrink-0"
+                >
+                  See All
+                </button>
+              )}
+            </div>
+
+            <div className="mb-2 flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+              <span
+                className={`inline-flex items-center gap-1 shrink-0 h-[20px] px-2 rounded-full text-[6.5px] font-semibold border ${
+                  locationStatus === "ready"
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                    : locationStatus === "loading"
+                      ? "bg-orange-50 text-orange-600 border-orange-100"
+                      : "bg-gray-50 text-gray-500 border-gray-100"
+                }`}
+              >
+                <MapPin size={8} />
+                {locationStatus === "ready"
+                  ? "Location on"
+                  : locationStatus === "loading"
+                    ? "Locating…"
+                    : "Location off"}
+              </span>
+              <span className="inline-flex items-center gap-1 shrink-0 h-[20px] px-2 rounded-full text-[6.5px] font-semibold bg-violet-50 text-violet-700 border border-violet-100">
+                <Sparkles size={8} />
+                Free smart sort
+              </span>
+            </div>
+
+            <div className="flex gap-1.5 mb-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+              {[
+                { id: "All", label: "All", icon: null },
+                { id: "For you", label: "For you", icon: Sparkles },
+                { id: "Near you", label: "Near you", icon: MapPin },
+                { id: "Photos", label: "Photos", icon: ImageIcon },
+                { id: "Reels", label: "Reels", icon: Film },
+                { id: "Videos", label: "Videos", icon: Clapperboard },
+              ].map((filter) => {
+                const Icon = filter.icon;
+                const active = postFilter === filter.id;
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    onClick={() => {
+                      setPostFilter(filter.id);
+                      setVisiblePostCount(8);
+                    }}
+                    className={`
+                      h-[22px]
+                      px-2.5
+                      rounded-full
+                      flex
+                      items-center
+                      gap-1
+                      text-[6.5px]
+                      font-semibold
+                      transition-all
+                      active:scale-95
+                      shrink-0
+                      ${
+                        active
+                          ? "bg-[#FF6A00] text-white shadow-sm"
+                          : "bg-white border border-[#E8E8E8] text-gray-500"
+                      }
+                    `}
+                  >
+                    {Icon ? <Icon size={8} /> : null}
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {isLoadingTrainers || isLoadingInstitutes ? (
+              <HScrollTrack itemCount={2}>
+                {[1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="
+                      bg-white rounded-[9px] border border-[#E9E9E9]
+                      min-w-[calc((100vw-32px)/2)] w-[calc((100vw-32px)/2)]
+                      shrink-0 snap-start overflow-hidden animate-pulse
+                    "
+                  >
+                    <div className="aspect-square bg-gray-200" />
+                    <div className="p-2 space-y-1.5">
+                      <div className="h-[7px] w-[70%] bg-gray-200 rounded-full" />
+                      <div className="h-[6px] w-[50%] bg-gray-200 rounded-full" />
                     </div>
                   </div>
-
-                  {/* Right Side Button */}
-                  <button
-                    onClick={() => navigate(`/institutes/${i.id}`)}
-                    className="text-orange-500 font-semibold hover:underline"
-                  >
-                    View Profile
-                  </button>
-                </div>
+                ))}
+              </HScrollTrack>
+            ) : feedPosts.length === 0 ? (
+              <div className="rounded-[9px] bg-white border border-[#E8E8E8] px-3 py-6 text-center">
+                <ImageIcon size={22} className="mx-auto text-gray-300" />
+                <p className="mt-2 text-[9px] font-semibold text-gray-600">
+                  {postFilter === "Near you"
+                    ? "No nearby posts yet"
+                    : postFilter === "Reels"
+                      ? "No reels yet"
+                      : "No posts yet"}
+                </p>
+                <p className="mt-1 text-[7px] text-gray-400">
+                  {postFilter === "Near you" && locationStatus !== "ready"
+                    ? "Allow location to discover posts around you."
+                    : "Try another filter or check back soon."}
+                </p>
               </div>
-            ))}
-        </div>
+            ) : (
+              <HScrollTrack itemCount={feedPosts.slice(0, visiblePostCount).length}>
+                {feedPosts.slice(0, visiblePostCount).map((post) => (
+                  <CommunityPostPreview
+                    key={post.id}
+                    post={post}
+                    onOpen={() => setSelectedPost(post)}
+                  />
+                ))}
+              </HScrollTrack>
+            )}
+          </section>
 
-        {/* See More Button */}
-        <div className="flex justify-center mt-10">
-          <button
-            onClick={() => navigate("/institutes")}
-            className="bg-orange-500 text-white px-8 py-3 rounded-md hover:bg-orange-600 transition"
-          >
-            See More
-          </button>
-        </div>
-      </section>
-      {/* ================= FULLSCREEN REEL VIEWER ================= */}
-      <section className="py-10 sm:py-10 md:py-14 px-4 sm:px-6 md:px-12 lg:px-16 bg-gray-50 overflow-hidden pb-10 md:pb-16">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3 mb-6">
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 leading-tight">
-            Trending Reels & Training Videos 🎥
-          </h2>
-        </div>
+          {/* ===================================================== */}
+          {/* EXPLORE SPORTS */}
+          {/* ===================================================== */}
 
-        {/* Reels Row */}
-        <div className="flex gap-4 sm:gap-5 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide">
-          {reels.slice(0, 3).map((r, index) => (
-            <motion.div
-              key={r.reelId}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => {
-                navigate(`/reels/${index}`, {
-                  state: { reels },
-                });
-              }}
-              className="snap-start shrink-0 w-[78vw] xs:w-[72vw] sm:w-[320px] md:w-[340px] lg:w-[360px] rounded-3xl overflow-hidden bg-white shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer border border-gray-100"
-            >
-              {/* Video */}
-              <div className="relative h-[420px] sm:h-[460px] md:h-[500px] bg-black">
-                <video
-                  src={r.videoUrl}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  preload="metadata"
-                />
+          <section className="px-3 pt-1 pb-5">
+            <div className="flex items-center justify-between mb-1.5">
+              <h2 className="text-[11px] font-extrabold text-[#171717]">
+                Explore Sports
+              </h2>
 
-                {/* Subtle bottom gradient (professional look, no icons) */}
-                <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/80 via-black/30 to-transparent">
-                  <p className="text-white font-semibold text-sm sm:text-base line-clamp-2">
-                    {r.title || "Training Reel"}
+              <button
+                onClick={() => navigate("/MobileCategoriesPage")}
+                className="
+        flex
+        items-center
+        gap-0.5
+        text-[8px]
+        font-semibold
+        text-[#FF6A00]
+      "
+              >
+                View All
+                <ChevronRight size={10} />
+              </button>
+            </div>
+
+            {/* 4 Sports + More */}
+            <div className="flex items-start justify-between w-full px-1">
+              {categories.slice(0, 4).map((cat, index) => {
+                const Icon = cat.icon;
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => {
+                      navigate(cat.path);
+                      window.scrollTo({
+                        top: 0,
+                        behavior: "smooth",
+                      });
+                    }}
+                    className="
+            flex
+            flex-col
+            items-center
+            justify-center
+            flex-1
+            min-w-0
+            active:scale-95
+            transition-transform
+          "
+                  >
+                    {/* Icon */}
+                    <div
+                      className="
+              w-[42px]
+              h-[42px]
+              rounded-full
+              bg-white
+              border
+              border-[#E8E8E8]
+              shadow-[0_1px_5px_rgba(0,0,0,0.05)]
+              flex
+              items-center
+              justify-center
+            "
+                    >
+                      <Icon
+                        size={20}
+                        strokeWidth={1.5}
+                        className="text-[#202020]"
+                      />
+                    </div>
+
+                    {/* Name */}
+                    <span
+                      className="
+              mt-1.5
+              text-[7px]
+              text-[#333]
+              text-center
+              truncate
+              max-w-[55px]
+            "
+                    >
+                      {cat.name}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {/* More */}
+              <button
+                onClick={() => navigate("/MobileCategoriesPage")}
+                className="
+        flex
+        flex-col
+        items-center
+        justify-center
+        flex-1
+        min-w-0
+        active:scale-95
+        transition-transform
+      "
+              >
+                <div
+                  className="
+          w-[42px]
+          h-[42px]
+          rounded-full
+          bg-white
+          border
+          border-[#E8E8E8]
+          shadow-[0_1px_5px_rgba(0,0,0,0.05)]
+          flex
+          items-center
+          justify-center
+        "
+                >
+                  <Grid2X2
+                    size={19}
+                    strokeWidth={1.5}
+                    className="text-gray-500"
+                  />
+                </div>
+
+                <span className="mt-1.5 text-[7px] text-gray-500">More</span>
+              </button>
+            </div>
+          </section>
+
+          {/* ===================================================== */}
+          {/* RECOMMENDED FOR YOU */}
+          {/* ===================================================== */}
+
+          <section className="px-3 pt-1 pb-6">
+            <div className="flex items-center justify-between mb-1.5 gap-2">
+              <div className="min-w-0">
+                <h2 className="text-[11px] font-extrabold">
+                  Recommended for You
+                </h2>
+                <p className="text-[7px] text-gray-400 mt-0.5 truncate">
+                  {userLocation
+                    ? "Sorted by distance around you"
+                    : "Top picks from trainers and academies"}
+                </p>
+              </div>
+
+              <button
+                onClick={() => navigate("/trainers")}
+                className="text-[8px] font-semibold text-[#FF6A00] shrink-0"
+              >
+                See All
+              </button>
+            </div>
+
+            <div>
+              {isLoadingProfiles ? (
+                <RecommendedSkeleton />
+              ) : suggestedProfiles.length > 0 ? (
+                <HScrollTrack
+                  desktopGrid
+                  itemCount={suggestedProfiles.slice(0, 4).length}
+                >
+                  {suggestedProfiles.slice(0, 4).map((item) => {
+                    const name =
+                      item.type === "trainer"
+                        ? `${item.firstName || ""} ${
+                            item.lastName || ""
+                          }`.trim()
+                        : item.instituteName || "Academy";
+
+                    const category =
+                      item.subCategory || item.category || "Sports";
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="
+            bg-white
+            rounded-[9px]
+            border border-[#E9E9E9]
+            shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+            p-2
+            min-w-[calc((100vw-32px)/2)]
+            w-[calc((100vw-32px)/2)]
+            snap-start
+            shrink-0
+            sm:min-w-0
+            sm:w-auto
+            sm:shrink
+          "
+                      >
+                        {/* Profile Top */}
+                        <div className="flex items-center gap-1.5">
+                          <div
+                            className="
+                w-[38px]
+                h-[38px]
+                rounded-full
+                overflow-hidden
+                shrink-0
+                border border-[#EEEEEE]
+                bg-gray-100
+              "
+                          >
+                            <img
+                              src={
+                                item.profileImageUrl ||
+                                "/images/default-avatar.png"
+                              }
+                              alt={name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-1">
+                              <p className="text-[8px] font-bold text-[#222] truncate">
+                                {name}
+                              </p>
+
+                              <Bookmark
+                                size={10}
+                                strokeWidth={1.7}
+                                className="text-gray-400 shrink-0"
+                              />
+                            </div>
+
+                            <p className="text-[6.5px] text-gray-500 truncate">
+                              {category}
+                            </p>
+
+                            <p className="flex items-center gap-0.5 mt-0.5 text-[6px] text-gray-400 truncate">
+                              <MapPin size={7} />
+                              {item.city ||
+                                item.location ||
+                                "Bengaluru, Karnataka"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Rating + Button */}
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="flex items-center gap-0.5 text-[6px] text-gray-500 whitespace-nowrap">
+                            <Star
+                              size={7}
+                              fill="#FFB800"
+                              className="text-[#FFB800]"
+                            />
+                            {item.rating || "4.8"} ({item.reviewCount || "120"})
+                          </span>
+
+                          <button
+                            onClick={() =>
+                              navigate(
+                                item.type === "trainer"
+                                  ? `/trainers/${item.id}`
+                                  : `/institutes/${item.id}`,
+                              )
+                            }
+                            className="
+                border
+                border-[#FF6A00]
+                text-[#FF6A00]
+                rounded-[4px]
+                px-1.5
+                py-[3px]
+                text-[5.5px]
+                font-semibold
+                leading-none
+                whitespace-nowrap
+                active:scale-95
+                transition-transform
+              "
+                          >
+                            View Profile
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </HScrollTrack>
+              ) : (
+                <div className="py-4 text-center">
+                  <p className="text-[8px] text-gray-400">
+                    No recommendations available yet
                   </p>
                 </div>
+              )}
+            </div>
+          </section>
+
+          {/* ===================================================== */}
+          {/* TOP TRAINERS */}
+          {/* ===================================================== */}
+          {/* ===================================================== */}
+          {/* ================= TOP TRAINERS ====================== */}
+          {/* ===================================================== */}
+
+          <section className="px-3 pt-1 pb-2">
+            {/* ================= HEADER ================= */}
+
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-[11px] font-extrabold text-[#171717]">
+                Top Trainers & Coaches
+              </h2>
+
+              <button
+                onClick={() => navigate("/trainers")}
+                className="
+        text-[8px]
+        font-semibold
+        text-[#FF6A00]
+        active:opacity-70
+      "
+              >
+                See All
+              </button>
+            </div>
+
+            {/* ================= FILTER ================= */}
+
+            <div className="flex gap-1.5 mb-1.5">
+              {/* TOP RATED */}
+
+              <button
+                onClick={() => setMode("top")}
+                className={`
+        h-[20px]
+        px-2.5
+        rounded-full
+        flex
+        items-center
+        gap-1
+        text-[6.5px]
+        font-medium
+        transition-all
+        active:scale-95
+
+        ${
+          mode === "top"
+            ? "bg-[#FF6A00] text-white"
+            : "bg-white border border-[#E8E8E8] text-gray-500"
+        }
+      `}
+              >
+                <Star
+                  size={8}
+                  fill={mode === "top" ? "white" : "#FFB800"}
+                  className={mode === "top" ? "text-white" : "text-[#FFB800]"}
+                />
+                Top Rated
+              </button>
+
+              {/* NEAR ME */}
+
+              <button
+                onClick={() => setMode("nearby")}
+                className={`
+        h-[20px]
+        px-2.5
+        rounded-full
+        flex
+        items-center
+        gap-1
+        text-[6.5px]
+        font-medium
+        transition-all
+        active:scale-95
+
+        ${
+          mode === "nearby"
+            ? "bg-[#FF6A00] text-white"
+            : "bg-white border border-[#E8E8E8] text-gray-500"
+        }
+      `}
+              >
+                <MapPin size={8} />
+                Near Me
+              </button>
+            </div>
+
+            {/* ===================================================== */}
+            {/* ================= LOADING STATE ==================== */}
+            {/* ===================================================== */}
+
+            {isLoadingTrainers ? (
+              <div
+                className="
+        flex
+        gap-2
+        overflow-hidden
+        pb-1
+      "
+              >
+                {[1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="
+            bg-white
+            rounded-[9px]
+            border border-[#E8E8E8]
+            shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+            overflow-hidden
+
+            min-w-[calc((100vw-32px)/2)]
+            w-[calc((100vw-32px)/2)]
+
+            shrink-0
+
+            animate-pulse
+          "
+                  >
+                    {/* Skeleton Trainer Details */}
+
+                    <div className="flex p-2 gap-1.5">
+                      {/* Image Skeleton */}
+
+                      <div
+                        className="
+                w-[42px]
+                h-[42px]
+                rounded-full
+                shrink-0
+                bg-gray-200
+              "
+                      />
+
+                      {/* Text Skeleton */}
+
+                      <div className="min-w-0 flex-1 pt-0.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <div
+                            className="
+                    h-[7px]
+                    w-[58px]
+                    bg-gray-200
+                    rounded-full
+                  "
+                          />
+
+                          <div
+                            className="
+                    w-[9px]
+                    h-[9px]
+                    bg-gray-200
+                    rounded-sm
+                  "
+                          />
+                        </div>
+
+                        <div
+                          className="
+                  mt-1.5
+                  h-[6px]
+                  w-[65px]
+                  bg-gray-200
+                  rounded-full
+                "
+                        />
+
+                        <div
+                          className="
+                  mt-1.5
+                  h-[6px]
+                  w-[72px]
+                  bg-gray-200
+                  rounded-full
+                "
+                        />
+
+                        <div
+                          className="
+                  mt-1.5
+                  h-[6px]
+                  w-[48px]
+                  bg-gray-200
+                  rounded-full
+                "
+                        />
+                      </div>
+                    </div>
+
+                    {/* Skeleton Button */}
+
+                    <div className="flex justify-end px-2 pb-2">
+                      <div
+                        className="
+                h-[7px]
+                w-[52px]
+                bg-gray-200
+                rounded-full
+              "
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-            </motion.div>
-          ))}
+            ) : (
+              <>
+                {/* ===================================================== */}
+                {/* ================= TRAINERS ========================== */}
+                {/* ===================================================== */}
+
+                {(() => {
+                  const displayedTrainers =
+                    mode === "top"
+                      ? [...trainers].sort(
+                          (a, b) =>
+                            Number(b.rating || 0) - Number(a.rating || 0),
+                        )
+                      : userLocation
+                      ? trainers
+                          .filter(
+                            (t) =>
+                              t.latitude !== undefined &&
+                              t.longitude !== undefined &&
+                              t.latitude !== null &&
+                              t.longitude !== null,
+                          )
+                          .map((t) => ({
+                            ...t,
+                            distance: getDistance(
+                              userLocation.lat,
+                              userLocation.lng,
+                              Number(t.latitude),
+                              Number(t.longitude),
+                            ),
+                          }))
+                          .sort((a, b) => a.distance - b.distance)
+                      : [];
+
+                  const visibleTrainers = displayedTrainers.slice(0, 4);
+
+                  /* ================================================= */
+                  /* ================= NO TRAINERS =================== */
+                  /* ================================================= */
+
+                  if (visibleTrainers.length === 0) {
+                    return (
+                      <div
+                        className="
+                w-full
+                bg-white
+                border border-[#E8E8E8]
+                rounded-[9px]
+                px-3
+                py-4
+                text-center
+              "
+                      >
+                        <div
+                          className="
+                  w-[30px]
+                  h-[30px]
+                  rounded-full
+                  bg-[#FFF0E6]
+                  mx-auto
+                  flex
+                  items-center
+                  justify-center
+                  mb-2
+                "
+                        >
+                          <UserRound size={15} className="text-[#FF6A00]" />
+                        </div>
+
+                        <p
+                          className="
+                  text-[8px]
+                  font-semibold
+                  text-[#333]
+                "
+                        >
+                          {mode === "nearby"
+                            ? "No trainers found nearby"
+                            : "No trainers available"}
+                        </p>
+
+                        <p
+                          className="
+                  text-[6.5px]
+                  text-gray-400
+                  mt-1
+                "
+                        >
+                          {mode === "nearby"
+                            ? "Try Top Rated to explore trainers."
+                            : "Check back soon for trainers and coaches."}
+                        </p>
+
+                        {mode === "nearby" && (
+                          <button
+                            onClick={() => setMode("top")}
+                            className="
+                    mt-2
+                    text-[7px]
+                    font-semibold
+                    text-[#FF6A00]
+                  "
+                          >
+                            View Top Rated →
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <HScrollTrack
+                      desktopGrid
+                      itemCount={visibleTrainers.length}
+                    >
+                      {visibleTrainers.map((t) => (
+                        <div
+                          key={t.id}
+                          className="
+                  bg-white
+                  rounded-[9px]
+                  border border-[#E8E8E8]
+                  shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+                  overflow-hidden
+
+                  min-w-[calc((100vw-32px)/2)]
+                  w-[calc((100vw-32px)/2)]
+
+                  shrink-0
+                  snap-start
+
+                  sm:min-w-0
+                  sm:w-auto
+                  sm:shrink
+                "
+                        >
+                          {/* ======================================= */}
+                          {/* TRAINER DETAILS */}
+                          {/* ======================================= */}
+
+                          <div className="flex p-2 gap-1.5">
+                            {/* Trainer Image */}
+
+                            <div
+                              className="
+                      w-[42px]
+                      h-[42px]
+                      rounded-full
+                      overflow-hidden
+                      shrink-0
+                      bg-gray-100
+                      border border-[#EEEEEE]
+                    "
+                            >
+                              <img
+                                src={
+                                  t.profileImageUrl ||
+                                  "/images/default-avatar.png"
+                                }
+                                alt={`${t.firstName || ""} ${t.lastName || ""}`}
+                                className="
+                        w-full
+                        h-full
+                        object-cover
+                      "
+                                loading="lazy"
+                              />
+                            </div>
+
+                            {/* Trainer Information */}
+
+                            <div className="min-w-0 flex-1">
+                              {/* Name + Bookmark */}
+
+                              <div className="flex items-start justify-between gap-1">
+                                <p
+                                  className="
+                          text-[7.5px]
+                          font-bold
+                          text-[#222]
+                          truncate
+                        "
+                                >
+                                  {t.firstName || ""} {t.lastName || ""}
+                                </p>
+
+                                <Bookmark
+                                  size={9}
+                                  strokeWidth={1.7}
+                                  className="
+                          text-gray-400
+                          shrink-0
+                        "
+                                />
+                              </div>
+
+                              {/* Category */}
+
+                              <p
+                                className="
+                        text-[6px]
+                        text-gray-500
+                        truncate
+                      "
+                              >
+                                {t.subCategory ||
+                                  t.category ||
+                                  "Fitness Trainer"}
+                              </p>
+
+                              {/* Location */}
+
+                              <p
+                                className="
+                        flex
+                        items-center
+                        gap-0.5
+                        text-[6px]
+                        text-gray-400
+                        mt-0.5
+                        truncate
+                      "
+                              >
+                                <MapPin size={7} />
+
+                                {t.city || "Bengaluru, Karnataka"}
+                              </p>
+
+                              {/* Rating */}
+
+                              <p
+                                className="
+                        flex
+                        items-center
+                        gap-0.5
+                        text-[6px]
+                        text-gray-500
+                        mt-0.5
+                        whitespace-nowrap
+                      "
+                              >
+                                <Star
+                                  size={7}
+                                  fill="#FFB800"
+                                  className="text-[#FFB800]"
+                                />
+
+                                {t.rating || "4.7"}
+
+                                {" ("}
+
+                                {t.reviewCount || "98"}
+
+                                {")"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* ======================================= */}
+                          {/* PROFILE BUTTON */}
+                          {/* ======================================= */}
+
+                          <div
+                            className="
+                    flex
+                    justify-end
+                    px-2
+                    pb-1.5
+                  "
+                          >
+                            <button
+                              onClick={() => navigate(`/trainers/${t.id}`)}
+                              className="
+                      text-[6px]
+                      font-semibold
+                      text-[#FF6A00]
+                      active:scale-95
+                      transition-transform
+                      whitespace-nowrap
+                    "
+                            >
+                              View Profile →
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </HScrollTrack>
+                  );
+                })()}
+              </>
+            )}
+          </section>
+
+          {/* ===================================================== */}
+          {/* FEATURED ACADEMIES */}
+          {/* ===================================================== */}
+
+          {/* ===================================================== */}
+          {/* ================= FEATURED ACADEMIES ================= */}
+          {/* ===================================================== */}
+
+          <section className="px-3 pt-1 pb-5">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-[11px] font-extrabold">Featured Academies</h2>
+
+              <button
+                onClick={() => navigate("/institutes")}
+                className="text-[8px] font-semibold text-[#FF6A00]"
+              >
+                See All
+              </button>
+            </div>
+
+            {/* ===================================================== */}
+            {/* FILTERS */}
+            {/* ===================================================== */}
+
+            <div className="flex gap-1.5 mb-1.5">
+              {/* Top Rated */}
+              <button
+                onClick={() => setInstituteMode("top")}
+                className={`
+        h-[20px]
+        px-2.5
+        rounded-full
+        flex
+        items-center
+        gap-1
+        text-[6.5px]
+        font-medium
+        transition-all
+        active:scale-95
+        ${
+          instituteMode === "top"
+            ? "bg-[#FF6A00] text-white"
+            : "bg-white border border-[#E8E8E8] text-gray-500"
+        }
+      `}
+              >
+                <Star
+                  size={8}
+                  fill={instituteMode === "top" ? "white" : "#FFB800"}
+                  className={
+                    instituteMode === "top" ? "text-white" : "text-[#FFB800]"
+                  }
+                />
+                Top Rated
+              </button>
+
+              {/* Near Me */}
+              <button
+                onClick={() => setInstituteMode("nearby")}
+                className={`
+        h-[20px]
+        px-2.5
+        rounded-full
+        flex
+        items-center
+        gap-1
+        text-[6.5px]
+        font-medium
+        transition-all
+        active:scale-95
+        ${
+          instituteMode === "nearby"
+            ? "bg-[#FF6A00] text-white"
+            : "bg-white border border-[#E8E8E8] text-gray-500"
+        }
+      `}
+              >
+                <MapPin size={8} />
+                Near Me
+              </button>
+            </div>
+
+            {/* ===================================================== */}
+            {/* LOADING / ACADEMIES */}
+            {/* ===================================================== */}
+
+            {isLoadingInstitutes ? (
+              /* ================= LOADING ================= */
+
+              <div
+                className="
+        flex
+        gap-2
+        overflow-hidden
+        pb-1
+      "
+              >
+                {[1, 2].map((item) => (
+                  <ProfileSkeleton key={item} />
+                ))}
+              </div>
+            ) : (
+              /* ================= LOADED ================= */
+
+              <HScrollTrack
+                desktopGrid
+                itemCount={institutes.length}
+              >
+                {(instituteMode === "top"
+                  ? [...institutes].sort(
+                      (a, b) => Number(b.rating || 0) - Number(a.rating || 0),
+                    )
+                  : userLocation
+                  ? institutes
+                      .filter(
+                        (i) =>
+                          i.latitude !== undefined &&
+                          i.longitude !== undefined &&
+                          i.latitude !== null &&
+                          i.longitude !== null,
+                      )
+                      .map((i) => ({
+                        ...i,
+                        distance: getDistance(
+                          userLocation.lat,
+                          userLocation.lng,
+                          Number(i.latitude),
+                          Number(i.longitude),
+                        ),
+                      }))
+                      .sort((a, b) => a.distance - b.distance)
+                  : []
+                )
+                  .slice(0, 4)
+                  .map((i) => (
+                    <div
+                      key={i.id}
+                      className="
+              bg-white
+              rounded-[9px]
+              border border-[#E8E8E8]
+              shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+              overflow-hidden
+
+              min-w-[calc((100vw-32px)/2)]
+              w-[calc((100vw-32px)/2)]
+              shrink-0
+              snap-start
+
+              sm:min-w-0
+              sm:w-auto
+              sm:shrink
+            "
+                    >
+                      {/* ================================================= */}
+                      {/* ACADEMY DETAILS */}
+                      {/* ================================================= */}
+
+                      <div className="flex p-2 gap-1.5">
+                        {/* Academy Image */}
+                        <div
+                          className="
+                  w-[42px]
+                  h-[42px]
+                  rounded-full
+                  overflow-hidden
+                  shrink-0
+                  bg-gray-50
+                  border border-gray-100
+                "
+                        >
+                          <img
+                            src={
+                              i.profileImageUrl &&
+                              !i.profileImageUrl.endsWith(".mp4")
+                                ? i.profileImageUrl
+                                : "/images/default-institute.png"
+                            }
+                            alt={i.instituteName || "Academy"}
+                            className="
+                    w-full
+                    h-full
+                    object-cover
+                  "
+                            onError={(e) => {
+                              e.currentTarget.src =
+                                "/images/default-institute.png";
+                            }}
+                          />
+                        </div>
+
+                        {/* Academy Info */}
+                        <div className="min-w-0 flex-1">
+                          {/* Name + Bookmark */}
+                          <div className="flex items-start justify-between gap-1">
+                            <p
+                              className="
+                      text-[7.5px]
+                      font-bold
+                      text-[#222]
+                      truncate
+                    "
+                            >
+                              {i.instituteName || i.name || "Sports Academy"}
+                            </p>
+
+                            <Bookmark
+                              size={9}
+                              strokeWidth={1.7}
+                              className="
+                      text-gray-400
+                      shrink-0
+                    "
+                            />
+                          </div>
+
+                          {/* Category */}
+                          <p
+                            className="
+                    text-[6px]
+                    text-gray-500
+                    truncate
+                  "
+                          >
+                            {i.subCategory || i.category || "Sports Academy"}
+                          </p>
+
+                          {/* Location */}
+                          <p
+                            className="
+                    flex
+                    items-center
+                    gap-0.5
+                    text-[6px]
+                    text-gray-400
+                    mt-0.5
+                    truncate
+                  "
+                          >
+                            <MapPin size={7} />
+
+                            {i.city || "Bengaluru"}
+                            {i.state ? `, ${i.state}` : ", Karnataka"}
+                          </p>
+
+                          {/* Rating */}
+                          <p
+                            className="
+                    flex
+                    items-center
+                    gap-0.5
+                    text-[6px]
+                    text-gray-500
+                    mt-0.5
+                    whitespace-nowrap
+                  "
+                          >
+                            <Star
+                              size={7}
+                              fill="#FFB800"
+                              className="text-[#FFB800]"
+                            />
+                            {i.rating || "4.6"} ({i.reviewCount || "74"})
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* ================================================= */}
+                      {/* VIEW PROFILE */}
+                      {/* ================================================= */}
+
+                      <div
+                        className="
+                flex
+                justify-end
+                px-2
+                pb-1.5
+              "
+                      >
+                        <button
+                          onClick={() => navigate(`/institutes/${i.id}`)}
+                          className="
+                  text-[6px]
+                  font-semibold
+                  text-[#FF6A00]
+                  active:scale-95
+                  transition-transform
+                  whitespace-nowrap
+                "
+                        >
+                          View Profile →
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </HScrollTrack>
+            )}
+          </section>
+          {/* ===================================================== */}
+          {/* TRAINING & SPORTS VIDEOS */}
+          {/* ===================================================== */}
+
+          <section className="px-3 pt-1 pb-3">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-[16px] font-extrabold">
+                Training & Sports Videos
+              </h2>
+
+              <button
+                onClick={() => navigate("/reels")}
+                className="text-[13px] font-semibold text-[#FF6A00]"
+              >
+                See All
+              </button>
+            </div>
+
+            {isLoadingReels ? (
+              <HScrollTrack itemCount={3}>
+                {[1, 2, 3].map((item) => (
+                  <VideoSkeleton key={item} />
+                ))}
+              </HScrollTrack>
+            ) : reels.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4">No videos uploaded yet.</p>
+            ) : (
+              <HScrollTrack itemCount={reels.slice(0, 8).length}>
+                {reels.slice(0, 8).map((r, index) => (
+                  <motion.div
+                    key={r.reelId}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      navigate(`/reels/${index}`, {
+                        state: { reels },
+                      });
+                    }}
+                    className="
+            shrink-0
+            w-[210px]
+            bg-white
+            rounded-2xl
+            border border-[#E8E8E8]
+            shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+            overflow-hidden
+            cursor-pointer
+          "
+                  >
+                    <div className="relative h-[118px] w-full bg-black">
+                      <video
+                        src={r.videoUrl}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-cover pointer-events-none"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/15">
+                        <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center">
+                          <Play
+                            size={14}
+                            fill="#222"
+                            className="text-[#222] ml-[1px]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-2.5">
+                      <p className="text-[13px] font-bold leading-4 line-clamp-2 text-gray-900">
+                        {r.title || r.ownerName || "Training video"}
+                      </p>
+                      {r.about ? (
+                        <p className="text-[12px] text-gray-500 mt-1 line-clamp-2">
+                          {r.about}
+                        </p>
+                      ) : null}
+                      <p className="text-[11px] text-[#FF6A00] font-medium mt-1 truncate">
+                        {r.category ||
+                          (r.type === "trainer" ? "Trainer" : "Institute")}
+                      </p>
+                    </div>
+                  </motion.div>
+                ))}
+              </HScrollTrack>
+            )}
+          </section>
         </div>
+
+        {/* ==================== DESKTOP VIEW ===================== */}
       </section>
+      {/* ================= CATEGORIES ================= */}
+
+      {/* ================= SUGGESTED ================= */}
 
       {/* ================================================= */}
       {/* ================= SPOTLIGHT REELS ================ */}
       {/* ================================================= */}
+
+      <AnimatePresence>
+        {selectedPost && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed left-0 right-0 top-0 z-[90] bg-black/50 backdrop-blur-[2px]"
+            style={{
+              bottom:
+                "calc(var(--bottom-navbar-height, 64px) + env(safe-area-inset-bottom, 0px))",
+            }}
+            onClick={() => setSelectedPost(null)}
+          >
+            <motion.div
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              transition={{ type: "spring", damping: 24, stiffness: 280 }}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute left-0 right-0 bottom-0 mx-auto max-w-lg max-h-[88%] overflow-y-auto rounded-t-3xl bg-[#F4F5F7] shadow-[0_-12px_40px_rgba(0,0,0,0.18)]"
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 px-3 py-2.5 border-b border-gray-100 rounded-t-3xl backdrop-blur">
+                <div className="w-10" />
+                <div className="w-12 h-1.5 rounded-full bg-gray-200" />
+                <button
+                  type="button"
+                  onClick={() => setSelectedPost(null)}
+                  className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center active:scale-95"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-3 pb-5">
+                <CommunityPostCard
+                  post={selectedPost}
+                  user={user}
+                  navigate={navigate}
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+
+function CommunityPostPreview({ post, onOpen }) {
+  const isReel = isReelPost(post);
+  const isVideo = isTrainingVideoPost(post);
+  const caption = post.caption || post.title || "";
+  const nearLabel =
+    post.distance != null && post.distance <= 40
+      ? post.distance < 1
+        ? "Nearby"
+        : `${post.distance.toFixed(1)} km`
+      : null;
+
+  return (
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.98 }}
+      onClick={onOpen}
+      className="
+        bg-white
+        rounded-[9px]
+        border border-[#E9E9E9]
+        shadow-[0_2px_6px_rgba(0,0,0,0.04)]
+        overflow-hidden
+        min-w-[calc((min(100vw,32rem)-32px)/2)]
+        w-[calc((min(100vw,32rem)-32px)/2)]
+        snap-start
+        shrink-0
+        text-left
+      "
+    >
+      <div className="relative aspect-square bg-gray-100">
+        {post.mediaType === "video" ? (
+          <video
+            src={post.coverUrl || post.url}
+            muted
+            playsInline
+            preload="metadata"
+            className="h-full w-full object-cover pointer-events-none"
+          />
+        ) : (
+          <img src={post.url} alt="" className="h-full w-full object-cover" />
+        )}
+        {post.mediaType === "video" && (
+          <span className="absolute inset-0 flex items-center justify-center bg-black/15">
+            <span className="w-7 h-7 rounded-full bg-white/90 flex items-center justify-center">
+              <Play size={11} fill="#222" className="ml-[1px]" />
+            </span>
+          </span>
+        )}
+        <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 max-w-[90%]">
+          <span className="rounded-full bg-black/55 text-white text-[6px] font-semibold px-1.5 py-0.5 backdrop-blur-sm">
+            {isReel ? "Reel" : isVideo ? "Video" : "Photo"}
+          </span>
+          {nearLabel ? (
+            <span className="rounded-full bg-[#FF6A00]/95 text-white text-[6px] font-semibold px-1.5 py-0.5">
+              {nearLabel}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="p-2">
+        <div className="flex items-center gap-1.5">
+          <img
+            src={post.profileImage || "/images/default-avatar.png"}
+            alt=""
+            className="w-[22px] h-[22px] rounded-full object-cover bg-gray-100 shrink-0"
+          />
+          <p className="text-[8px] font-bold text-[#222] truncate">
+            {post.ownerName}
+          </p>
+        </div>
+        <p className="mt-1 text-[7px] text-gray-500 line-clamp-2 leading-[9px] min-h-[18px]">
+          {caption ||
+            (post.ownerType === "trainer" ? "Trainer post" : "Academy post")}
+        </p>
+        <p className="mt-1 text-right text-[6px] font-semibold text-[#FF6A00]">
+          View →
+        </p>
+      </div>
+    </motion.button>
+  );
+}
+
+function CommunityPostCard({ post, user, navigate, compact = false }) {
+  const isReel = post.mediaType === "video";
+  const [likes, setLikes] = useState(0);
+  const [views, setViews] = useState(0);
+  const [comments, setComments] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [commentList, setCommentList] = useState([]);
+  const [expanded, setExpanded] = useState(false);
+  const [openImage, setOpenImage] = useState(false);
+  const itemId = post.id;
+  const caption = post.caption || post.title || "";
+  const shouldTrim = caption.length > 110;
+
+  useEffect(() => {
+    let unsub1;
+    let unsub2;
+    let unsub3;
+
+    if (isReel) {
+      unsub1 = onSnapshot(
+        query(collection(db, "reelLikes"), where("reelId", "==", itemId)),
+        (snap) => {
+          setLikes(snap.size);
+          if (user) {
+            setLiked(snap.docs.some((d) => d.data().userId === user.uid));
+          }
+        },
+      );
+      unsub2 = onSnapshot(
+        query(collection(db, "reelViews"), where("reelId", "==", itemId)),
+        (snap) => setViews(snap.size),
+      );
+      unsub3 = onSnapshot(
+        collection(db, "reelComments", itemId, "comments"),
+        (snap) => {
+          setComments(snap.size);
+          setCommentList(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        },
+      );
+    } else {
+      unsub1 = onSnapshot(
+        query(collection(db, "postlikes"), where("postId", "==", itemId)),
+        (snap) => {
+          setLikes(snap.size);
+          if (user) {
+            setLiked(snap.docs.some((d) => d.data().userId === user.uid));
+          }
+        },
+      );
+      unsub2 = onSnapshot(
+        query(collection(db, "postviews"), where("postId", "==", itemId)),
+        (snap) => setViews(snap.size),
+      );
+      unsub3 = onSnapshot(
+        query(collection(db, "postcomments"), where("postId", "==", itemId)),
+        (snap) => {
+          setComments(snap.size);
+          setCommentList(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        },
+      );
+    }
+
+    return () => {
+      unsub1 && unsub1();
+      unsub2 && unsub2();
+      unsub3 && unsub3();
+    };
+  }, [itemId, isReel, user]);
+
+  const handleLike = async () => {
+    if (!user) {
+      alert("Please login first");
+      return;
+    }
+    const docId = `${itemId}_${user.uid}`;
+    if (isReel) {
+      const ref = doc(db, "reelLikes", docId);
+      if (liked) await deleteDoc(ref);
+      else await setDoc(ref, { reelId: itemId, userId: user.uid });
+    } else {
+      const ref = doc(db, "postlikes", docId);
+      if (liked) await deleteDoc(ref);
+      else await setDoc(ref, { postId: itemId, userId: user.uid });
+    }
+  };
+
+  const handleView = async () => {
+    if (!user) return;
+    const docId = `${itemId}_${user.uid}`;
+    if (isReel) {
+      await setDoc(
+        doc(db, "reelViews", docId),
+        {
+          reelId: itemId,
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    } else {
+      await setDoc(
+        doc(db, "postviews", docId),
+        {
+          postId: itemId,
+          userId: user.uid,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }
+  };
+
+  const sendComment = async () => {
+    if (!user) {
+      alert("Please login first");
+      return;
+    }
+    if (!commentText.trim()) return;
+    if (isReel) {
+      await addDoc(collection(db, "reelComments", itemId, "comments"), {
+        text: commentText,
+        userId: user.uid,
+        userName: user.email || "User",
+        createdAt: serverTimestamp(),
+      });
+    } else {
+      await addDoc(collection(db, "postcomments"), {
+        postId: itemId,
+        text: commentText,
+        userId: user.uid,
+        userName: user.email || "User",
+        createdAt: serverTimestamp(),
+      });
+    }
+    setCommentText("");
+  };
+
+  const goToProfile = () => {
+    navigate(
+      post.ownerType === "trainer"
+        ? `/trainers/${post.ownerId}`
+        : `/institutes/${post.ownerId}`,
+    );
+  };
+
+  return (
+    <article className="overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
+      <button
+        type="button"
+        onClick={goToProfile}
+        className="w-full flex items-center gap-3 px-3 py-3 text-left"
+      >
+        <img
+          src={post.profileImage || "/images/default-avatar.png"}
+          alt=""
+          className="h-10 w-10 rounded-full object-cover bg-gray-100"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-gray-900 truncate">
+            {post.ownerName}
+          </p>
+          <p className="text-xs text-gray-500 truncate">
+            {post.ownerType === "trainer" ? "Trainer" : "Institute"}
+            {post.category ? ` · ${post.category}` : ""}
+          </p>
+        </div>
+      </button>
+
+      <div className={`relative bg-black ${compact ? "aspect-[16/10]" : "aspect-[4/5] sm:aspect-[16/10]"}`}>
+        {isReel ? (
+          <video
+            src={post.coverUrl || post.url}
+            controls
+            playsInline
+            onPlay={handleView}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <img
+            src={post.url}
+            alt=""
+            onClick={() => {
+              handleView();
+              setOpenImage(true);
+            }}
+            className="h-full w-full object-cover cursor-pointer"
+          />
+        )}
+      </div>
+
+      {caption ? (
+        <div className="px-3 pt-3">
+          <p
+            className={`text-sm text-gray-700 leading-5 ${
+              expanded || !shouldTrim ? "" : "line-clamp-2"
+            }`}
+          >
+            {caption}
+          </p>
+          {shouldTrim && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1 text-sm font-semibold text-[#FF6A00]"
+            >
+              {expanded ? "See less" : "See more"}
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      <div className="flex items-center justify-between px-3 py-3 text-sm text-gray-500">
+        <button
+          type="button"
+          onClick={handleLike}
+          className={`flex items-center gap-1 ${liked ? "text-red-500" : ""}`}
+        >
+          <Heart size={17} fill={liked ? "currentColor" : "none"} />
+          {likes}
+        </button>
+        <div className="flex items-center gap-1">
+          <Eye size={17} />
+          {views}
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowComments((v) => !v)}
+          className="flex items-center gap-1"
+        >
+          <MessageCircle size={17} />
+          {comments}
+        </button>
+      </div>
+
+      {showComments && (
+        <div className="border-t border-gray-100 px-3 py-3">
+          <div className="flex gap-2">
+            <input
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Write a comment..."
+              className="flex-1 min-h-[44px] rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-[#FF6A00]"
+            />
+            <button
+              type="button"
+              onClick={sendComment}
+              className="min-h-[44px] rounded-xl bg-[#FF6A00] px-4 text-sm font-semibold text-white"
+            >
+              Send
+            </button>
+          </div>
+          <div className="mt-3 max-h-40 overflow-y-auto space-y-2">
+            {commentList.map((c) => (
+              <div key={c.id} className="rounded-xl bg-gray-50 px-3 py-2">
+                <p className="text-xs font-semibold text-gray-700">
+                  {c.userName || "User"}
+                </p>
+                <p className="text-sm text-gray-600">{c.text}</p>
+              </div>
+            ))}
+            {commentList.length === 0 && (
+              <p className="text-xs text-gray-400">No comments yet</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {openImage && (
+        <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={() => setOpenImage(false)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 flex items-center justify-center"
+          >
+            <X size={18} />
+          </button>
+          <img
+            src={post.url}
+            alt=""
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+      )}
+    </article>
+  );
+}
 
 export default Landing;
