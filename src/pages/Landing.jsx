@@ -64,6 +64,9 @@ import {
   BannerAdSize,
   BannerAdPosition,
 } from "@capacitor-community/admob";
+import { ADMOB_BANNER_ID, ADMOB_TESTING } from "../constants/admobConfig";
+import { initializeAdMob } from "../utils/admob";
+import YoutubeStylePlayer from "../components/YoutubeStylePlayer";
 const categories = [
   { name: "Martial Arts", path: "/services/martial-arts", icon: FaFistRaised },
   {
@@ -525,6 +528,20 @@ const isReelPost = (post) =>
 const isTrainingVideoPost = (post) =>
   post?.mediaType === "video" && post?.postType === "video";
 
+const toReelViewerItem = (post) => ({
+  reelId: post.id,
+  videoUrl: post.url,
+  url: post.url,
+  about: post.caption || post.title || "",
+  ownerId: post.ownerId,
+  type: post.ownerType === "trainer" ? "trainer" : "institute",
+  title: post.title || post.ownerName,
+  ownerName: post.ownerName,
+  ownerPhoto: post.profileImage,
+  profileImage: post.profileImage,
+  category: post.category || "",
+});
+
 /** Free on-device ranking (no paid AI APIs) */
 const scoreCommunityPost = (post, userLocation) => {
   let score = 0;
@@ -576,6 +593,7 @@ const Landing = () => {
   const [visiblePostCount, setVisiblePostCount] = useState(8);
   const [postFilter, setPostFilter] = useState("All");
   const [selectedPost, setSelectedPost] = useState(null);
+  const [youtubeVideo, setYoutubeVideo] = useState(null);
 
   const [showCommentsFor, setShowCommentsFor] = useState(null);
   const [commentsList, setCommentsList] = useState([]);
@@ -663,9 +681,7 @@ const Landing = () => {
 
     const loadAds = async () => {
       try {
-        await AdMob.initialize({
-          initializeForTesting: true,
-        });
+        await initializeAdMob();
 
         bannerLoadedListener = await AdMob.addListener("bannerAdLoaded", () => {
           console.log("Banner loaded");
@@ -679,11 +695,11 @@ const Landing = () => {
         );
 
         await AdMob.showBanner({
-          adId: "ca-app-pub-3940256099942544/6300978111",
+          adId: ADMOB_BANNER_ID,
           adSize: BannerAdSize.ADAPTIVE_BANNER,
           position: BannerAdPosition.TOP_CENTER,
           margin: 0,
-          isTesting: true,
+          isTesting: ADMOB_TESTING,
         });
       } catch (err) {
         console.log(err);
@@ -1200,6 +1216,31 @@ const Landing = () => {
       })
     : [];
 
+  const communityVideos = React.useMemo(
+    () => communityPosts.filter(isTrainingVideoPost),
+    [communityPosts],
+  );
+
+  const openCommunityPost = (post) => {
+    if (isReelPost(post)) {
+      const reelPosts = communityPosts.filter(isReelPost);
+      const mapped = reelPosts.map(toReelViewerItem);
+      const index = Math.max(
+        0,
+        reelPosts.findIndex((item) => item.id === post.id),
+      );
+      navigate(`/reels/${index}`, { state: { reels: mapped } });
+      return;
+    }
+
+    if (isTrainingVideoPost(post)) {
+      setYoutubeVideo(post);
+      return;
+    }
+
+    setSelectedPost(post);
+  };
+
   /* ================= ACADEMIES SEARCH ================= */
 
   const searchedInstitutes = searchValue
@@ -1252,8 +1293,10 @@ const Landing = () => {
 
         <div
           className="
+    landing-shell
     w-full
     max-w-lg
+    md:max-w-7xl
     mx-auto
     bg-[#FAFAF9]
     text-[#171717]
@@ -1281,15 +1324,15 @@ const Landing = () => {
           >
             {/* Heading */}
             <div className="mb-3">
-              <h1 className="text-[22px] leading-[26px] font-extrabold tracking-[-0.3px] text-[#171717]">
+              <h1 className="text-[22px] md:text-5xl leading-[26px] md:leading-tight font-extrabold tracking-[-0.3px] text-[#171717]">
                 Find Your Sport.
               </h1>
 
-              <h2 className="text-[22px] leading-[26px] font-extrabold tracking-[-0.3px] text-[#171717]">
+              <h2 className="text-[22px] md:text-5xl leading-[26px] md:leading-tight font-extrabold tracking-[-0.3px] text-[#171717]">
                 Find Your <span className="text-[#FF6A00]">Community.</span>
               </h2>
 
-              <p className="mt-2 text-[13px] leading-[18px] text-gray-500 max-w-[320px]">
+              <p className="mt-2 text-[13px] md:text-lg leading-[18px] md:leading-relaxed text-gray-500 max-w-[320px] md:max-w-2xl">
                 Discover trainers, academies and posts from the sports community
                 around you.
               </p>
@@ -1460,7 +1503,7 @@ const Landing = () => {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
                       {searchedTrainers.slice(0, 4).map((trainer) => (
                         <button
                           key={trainer.id}
@@ -1557,7 +1600,7 @@ const Landing = () => {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
                       {searchedInstitutes.slice(0, 4).map((institute) => (
                         <button
                           key={institute.id}
@@ -1653,7 +1696,7 @@ const Landing = () => {
                         <CommunityPostPreview
                           key={post.id}
                           post={post}
-                          onOpen={() => setSelectedPost(post)}
+                          onOpen={() => openCommunityPost(post)}
                         />
                       ))}
                     </HScrollTrack>
@@ -1692,7 +1735,7 @@ const Landing = () => {
             {/* QUICK ACTION CARDS */}
             {/* ================================================= */}
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-3 gap-4 md:gap-6 md:max-w-4xl">
               {/* Explore Sports */}
               <button
                 onClick={() => navigate("/MobileCategoriesPage")}
@@ -1971,12 +2014,15 @@ const Landing = () => {
                 </p>
               </div>
             ) : (
-              <HScrollTrack itemCount={feedPosts.slice(0, visiblePostCount).length}>
+              <HScrollTrack
+                  desktopGrid
+                  itemCount={feedPosts.slice(0, visiblePostCount).length}
+                >
                 {feedPosts.slice(0, visiblePostCount).map((post) => (
                   <CommunityPostPreview
                     key={post.id}
                     post={post}
-                    onOpen={() => setSelectedPost(post)}
+                    onOpen={() => openCommunityPost(post)}
                   />
                 ))}
               </HScrollTrack>
@@ -3079,17 +3125,10 @@ const Landing = () => {
           {/* ===================================================== */}
 
           <section className="px-3 pt-1 pb-3">
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2">
               <h2 className="text-[16px] font-extrabold">
                 Training & Sports Videos
               </h2>
-
-              <button
-                onClick={() => navigate("/reels")}
-                className="text-[13px] font-semibold text-[#FF6A00]"
-              >
-                See All
-              </button>
             </div>
 
             {isLoadingReels ? (
@@ -3101,7 +3140,7 @@ const Landing = () => {
             ) : reels.length === 0 ? (
               <p className="text-sm text-gray-400 py-4">No videos uploaded yet.</p>
             ) : (
-              <HScrollTrack itemCount={reels.slice(0, 8).length}>
+              <HScrollTrack desktopGrid itemCount={reels.slice(0, 8).length}>
                 {reels.slice(0, 8).map((r, index) => (
                   <motion.div
                     key={r.reelId}
@@ -3190,7 +3229,7 @@ const Landing = () => {
               exit={{ y: 80, opacity: 0 }}
               transition={{ type: "spring", damping: 24, stiffness: 280 }}
               onClick={(e) => e.stopPropagation()}
-              className="absolute left-0 right-0 bottom-0 mx-auto max-w-lg max-h-[88%] overflow-y-auto rounded-t-3xl bg-[#F4F5F7] shadow-[0_-12px_40px_rgba(0,0,0,0.18)]"
+              className="absolute left-0 right-0 bottom-0 mx-auto max-w-lg md:max-w-2xl md:bottom-8 md:rounded-3xl max-h-[88%] overflow-y-auto rounded-t-3xl bg-[#F4F5F7] shadow-[0_-12px_40px_rgba(0,0,0,0.18)]"
             >
               <div className="sticky top-0 z-10 flex items-center justify-between bg-white/95 px-3 py-2.5 border-b border-gray-100 rounded-t-3xl backdrop-blur">
                 <div className="w-10" />
@@ -3215,6 +3254,26 @@ const Landing = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {youtubeVideo && (
+        <YoutubeStylePlayer
+          video={youtubeVideo}
+          relatedVideos={communityVideos}
+          onClose={() => setYoutubeVideo(null)}
+          onSelectRelated={(item) => setYoutubeVideo(item)}
+          onViewProfile={(item) => {
+            setYoutubeVideo(null);
+            if (window.history.state?.kridanaYtPlayer) {
+              window.history.replaceState(null, "");
+            }
+            navigate(
+              item.ownerType === "trainer"
+                ? `/trainers/${item.ownerId}`
+                : `/institutes/${item.ownerId}`,
+            );
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -3245,6 +3304,9 @@ function CommunityPostPreview({ post, onOpen }) {
         w-[calc((min(100vw,32rem)-32px)/2)]
         snap-start
         shrink-0
+        sm:min-w-0
+        sm:w-auto
+        sm:shrink
         text-left
       "
     >

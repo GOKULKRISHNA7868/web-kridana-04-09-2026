@@ -15,7 +15,10 @@ import { db, auth } from "../../firebase";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { App } from "@capacitor/app";
+import useChatThreadHistory from "../../hooks/useChatThreadHistory";
 import ChatMuteMenuItems from "../chat/ChatMuteMenuItems";
+import ChatSelectionToolbar from "../chat/ChatSelectionToolbar";
+import ChatDeleteConfirmModal from "../chat/ChatDeleteConfirmModal";
 import { getChatDayKey, getChatDayLabel } from "../../utils/chatDayLabel";
 import {
   ensureChatNotifications,
@@ -75,7 +78,7 @@ const ChatBox = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [activeChat, setActiveChat] = useState(null);
   const [activeChatName, setActiveChatName] = useState("");
-  const [text, setText] = useState("");
+  const [draftsByChat, setDraftsByChat] = useState({});
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [groupName, setGroupName] = useState("");
@@ -88,6 +91,7 @@ const ChatBox = () => {
   const [selectedMessages, setSelectedMessages] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingMessages, setDeletingMessages] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -114,6 +118,38 @@ const ChatBox = () => {
   useEffect(() => {
     return () => setActiveChatId(null);
   }, []);
+
+  const closeOpenChat = () => {
+    setActiveChat(null);
+    setActiveChatName("");
+    setMessages([]);
+    setSelectedMessages([]);
+    setSelectionMode(false);
+    setShowCreateGroup(false);
+  };
+
+  const draftText = activeChat?.id ? draftsByChat[activeChat.id] || "" : "";
+
+  const updateDraft = (value) => {
+    if (!activeChat?.id) return;
+    const chatId = activeChat.id;
+    setDraftsByChat((prev) => {
+      if (prev[chatId] === value) return prev;
+      return { ...prev, [chatId]: value };
+    });
+  };
+
+  const clearDraft = (chatId = activeChat?.id) => {
+    if (!chatId) return;
+    setDraftsByChat((prev) => {
+      if (!(chatId in prev)) return prev;
+      const next = { ...prev };
+      delete next[chatId];
+      return next;
+    });
+  };
+
+  const requestCloseChat = useChatThreadHistory(activeChat?.id, closeOpenChat);
 
   useEffect(() => {
     usersRef.current = users;
@@ -305,24 +341,7 @@ const ChatBox = () => {
     return () => window.removeEventListener("kridana-incoming-chat", handler);
   }, []);
 
-  /* Hardware / swipe-back: close chat before leaving page */
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let handle;
-    const setup = async () => {
-      handle = await App.addListener("backButton", () => {
-        if (activeChatRef.current) {
-          setActiveChat(null);
-          setActiveChatName("");
-          setMessages([]);
-        } else {
-          navigate(-1);
-        }
-      });
-    };
-    setup();
-    return () => handle?.remove();
-  }, [navigate]);
+  /* Hardware / corner-swipe back is handled by useChatThreadHistory */
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
@@ -675,6 +694,7 @@ const ChatBox = () => {
     );
     await deleteDoc(doc(db, "chats", activeChat.id));
     await deleteDoc(groupRef);
+    clearDraft(activeChat.id);
     setActiveChat(null);
     setActiveChatName("");
     setMessages([]);
@@ -682,20 +702,21 @@ const ChatBox = () => {
   };
 
   const sendMessage = async () => {
-    const message = text.trim();
+    const message = draftText.trim();
     if (!message || !activeChat?.id || !user || sending) return;
     if (message.length > 2000) return;
 
+    const chatId = activeChat.id;
     setSending(true);
-    setText("");
+    clearDraft(chatId);
 
     try {
-      const chatRef = doc(db, "chats", activeChat.id);
+      const chatRef = doc(db, "chats", chatId);
       const chatSnap = await getDoc(chatRef);
       if (!chatSnap.exists()) return;
       if (!(chatSnap.data().members || []).includes(user.uid)) return;
 
-      await addDoc(collection(db, "chats", activeChat.id, "messages"), {
+      await addDoc(collection(db, "chats", chatId, "messages"), {
         text: message,
         senderId: user.uid,
         createdAt: serverTimestamp(),
@@ -709,7 +730,7 @@ const ChatBox = () => {
       });
     } catch (error) {
       console.error("Send message error:", error);
-      setText(message);
+      setDraftsByChat((prev) => ({ ...prev, [chatId]: message }));
     } finally {
       setSending(false);
     }
@@ -856,6 +877,8 @@ const ChatBox = () => {
   const deleteSelectedMessages = async () => {
     if (!activeChat?.id || !user?.uid || !selectedMessages.length) return;
 
+    setDeletingMessages(true);
+
     try {
       for (const messageId of selectedMessages) {
         const messageRef = doc(
@@ -897,8 +920,14 @@ const ChatBox = () => {
       closeSelectionMode();
     } catch (error) {
       console.error("Delete selected messages error:", error);
+    } finally {
+      setDeletingMessages(false);
     }
   };
+
+  const selectedMessagePreviews = messages.filter((message) =>
+    selectedMessages.includes(message.id),
+  );
 
   const memberObjects = (
     groups.find((group) => group.id === activeChat?.id)?.members || []
@@ -985,10 +1014,7 @@ const ChatBox = () => {
               type="button"
               onClick={() => {
                 if (activeChat) {
-                  setActiveChat(null);
-                  setActiveChatName("");
-                  setMessages([]);
-                  closeSelectionMode();
+                  requestCloseChat();
                 } else {
                   navigate(-1);
                 }
@@ -1207,129 +1233,112 @@ const ChatBox = () => {
         } flex-1 flex-col bg-[#F4F4F4] h-full overflow-hidden`}
       >
         <div className="sticky top-0 bg-white border-b border-gray-100 px-4 pt-[max(env(safe-area-inset-top),12px)] pb-3 flex items-center justify-between flex-shrink-0 z-20">
-          <div className="flex items-center gap-3 min-w-0">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveChat(null);
-                setActiveChatName("");
-                setMessages([]);
-                closeSelectionMode();
-              }}
-              className="md:hidden text-xl"
-            >
-              ←
-            </button>
-            <img
-              src={getValidImage("", activeChatName)}
-              alt=""
-              className="w-11 h-11 rounded-full object-cover"
+          {selectedMessages.length > 0 ? (
+            <ChatSelectionToolbar
+              count={selectedMessages.length}
+              onCancel={closeSelectionMode}
+              onDelete={() => setShowDeleteConfirm(true)}
             />
-            <div className="min-w-0">
-              <h2 className="font-semibold text-[15px] truncate">
-                {activeChatName || "Select a chat"}
-              </h2>
-              <p
-                className={`text-xs ${
-                  activeChat?.uid && onlineUsers[activeChat.uid]?.online
-                    ? "text-green-500"
-                    : "text-gray-400"
-                }`}
-              >
-                {activeChat?.uid && onlineUsers[activeChat.uid]?.online
-                  ? "Online"
-                  : onlineUsers[activeChat?.uid]?.lastSeen?.toDate
-                    ? `Last seen ${onlineUsers[activeChat.uid].lastSeen
-                        .toDate()
-                        .toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}`
-                    : activeChat
-                      ? "Offline"
-                      : ""}
-              </p>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={requestCloseChat}
+                  className="md:hidden text-xl shrink-0"
+                >
+                  ←
+                </button>
+                <img
+                  src={getValidImage("", activeChatName)}
+                  alt=""
+                  className="w-11 h-11 rounded-full object-cover shrink-0"
+                />
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-[15px] truncate">
+                    {activeChatName || "Select a chat"}
+                  </h2>
+                  <p
+                    className={`text-xs ${
+                      activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                        ? "text-green-500"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                      ? "Online"
+                      : onlineUsers[activeChat?.uid]?.lastSeen?.toDate
+                        ? `Last seen ${onlineUsers[activeChat.uid].lastSeen
+                            .toDate()
+                            .toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}`
+                        : activeChat
+                          ? "Offline"
+                          : ""}
+                  </p>
+                </div>
+              </div>
 
-          {activeChat && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedMessages.length > 0) {
-                    setShowMenu((prev) => !prev);
-                    setShowChatMenu(false);
-                  } else {
-                    setShowChatMenu((prev) => !prev);
-                    setShowMenu(false);
-                  }
-                }}
-                className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500"
-              >
-                <MoreVertical size={21} />
-              </button>
-
-              {showChatMenu && selectedMessages.length === 0 && (
-                <div className="absolute right-0 top-11 z-[100] w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+              {activeChat && (
+                <div className="relative shrink-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowChatSearch(true);
-                      setShowChatMenu(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                    onClick={() => setShowChatMenu((prev) => !prev)}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500"
+                    aria-label="Chat options"
                   >
-                    <Search size={16} />
-                    Search messages
+                    <MoreVertical size={21} />
                   </button>
-                  <ChatMuteMenuItems
-                    conversationMuted={conversationMuted}
-                    globalMuted={isMuted}
-                    onToggleConversation={async () => {
-                      if (!user || !activeChat?.id) return;
-                      const next = !conversationMuted;
-                      setConversationMuted(next);
-                      setShowChatMenu(false);
-                      await setConversationMute(user.uid, activeChat.id, next);
-                    }}
-                    onToggleGlobal={async () => {
-                      if (!user) return;
-                      const next = !isMuted;
-                      setIsMuted(next);
-                      setShowChatMenu(false);
-                      await setGlobalMute(user.uid, next);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowChatMenu(false);
-                      setShowMenu(true);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
-                  >
-                    <Info size={16} />
-                    Chat info
-                  </button>
+
+                  {showChatMenu && (
+                    <div className="absolute right-0 top-11 z-[100] w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowChatSearch(true);
+                          setShowChatMenu(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                      >
+                        <Search size={16} />
+                        Search messages
+                      </button>
+                      <ChatMuteMenuItems
+                        conversationMuted={conversationMuted}
+                        globalMuted={isMuted}
+                        onToggleConversation={async () => {
+                          if (!user || !activeChat?.id) return;
+                          const next = !conversationMuted;
+                          setConversationMuted(next);
+                          setShowChatMenu(false);
+                          await setConversationMute(user.uid, activeChat.id, next);
+                        }}
+                        onToggleGlobal={async () => {
+                          if (!user) return;
+                          const next = !isMuted;
+                          setIsMuted(next);
+                          setShowChatMenu(false);
+                          await setGlobalMute(user.uid, next);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowChatMenu(false);
+                          setShowMenu(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                      >
+                        <Info size={16} />
+                        Chat info
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
-
-              {selectedMessages.length > 0 && showMenu && (
-                <div className="absolute right-0 top-11 z-[100] w-48 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMenu(false);
-                      setShowDeleteConfirm(true);
-                    }}
-                    className="w-full px-4 py-3 text-left text-red-600 text-sm font-semibold hover:bg-red-50"
-                  >
-                    Delete {selectedMessages.length} selected
-                  </button>
-                </div>
-              )}
-            </div>
+            </>
           )}
         </div>
 
@@ -1488,8 +1497,13 @@ const ChatBox = () => {
                     isMine
                       ? "bg-[#FFE2CF] rounded-2xl rounded-tr-sm"
                       : "bg-white rounded-2xl rounded-tl-sm"
-                  } ${isSelected ? "ring-2 ring-orange-500" : ""}`}
+                  } ${isSelected ? "ring-2 ring-orange-500 ring-offset-1" : ""}`}
                 >
+                  {isSelected && (
+                    <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold shadow-md">
+                      ✓
+                    </div>
+                  )}
                   {activeChat?.type === "group" && !isMine && (
                     <p className="text-[11px] font-semibold text-[#FF6B00] mb-1">
                       {sender?.name || "User"}
@@ -1528,8 +1542,8 @@ const ChatBox = () => {
           <div className="flex items-end gap-3">
             <div className="flex-1 bg-white rounded-full px-4 py-3 flex items-center gap-3 shadow-sm">
               <input
-                value={text}
-                onChange={(event) => setText(event.target.value)}
+                value={draftText}
+                onChange={(event) => updateDraft(event.target.value)}
                 placeholder={activeChat ? "Message" : "Select a chat first"}
                 disabled={!activeChat || sending}
                 className="flex-1 outline-none text-sm bg-transparent"
@@ -1540,13 +1554,13 @@ const ChatBox = () => {
             </div>
             <button
               type="button"
-              onClick={text.trim() ? sendMessage : handleMic}
+              onClick={draftText.trim() ? sendMessage : handleMic}
               disabled={sending || !activeChat}
               className="w-14 h-12 rounded-full bg-[#FF6B00] flex items-center justify-center shadow-lg shrink-0 disabled:opacity-50"
             >
               {sending ? (
                 <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              ) : text.trim() ? (
+              ) : draftText.trim() ? (
                 <Send size={20} className="text-white" />
               ) : (
                 <span className="text-white text-lg">
@@ -1620,40 +1634,14 @@ const ChatBox = () => {
         </div>
       )}
 
-      {showDeleteConfirm && (
-        <div
-          className="fixed inset-0 z-[2000] bg-black/50 flex items-center justify-center px-5"
-          onClick={() => setShowDeleteConfirm(false)}
-        >
-          <div
-            className="w-full max-w-[370px] bg-white rounded-[28px] p-6 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 className="text-center text-lg font-bold text-gray-900">
-              Delete selected messages?
-            </h3>
-            <p className="text-center text-sm text-gray-500 mt-2">
-              Only your own messages will be removed.
-            </p>
-            <div className="grid grid-cols-2 gap-3 mt-6">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(false)}
-                className="py-3 rounded-2xl bg-gray-100 text-gray-700 font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={deleteSelectedMessages}
-                className="py-3 rounded-2xl bg-red-500 text-white font-semibold"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ChatDeleteConfirmModal
+        open={showDeleteConfirm}
+        count={selectedMessages.length}
+        messages={selectedMessagePreviews}
+        deleting={deletingMessages}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={deleteSelectedMessages}
+      />
     </div>
   );
 };

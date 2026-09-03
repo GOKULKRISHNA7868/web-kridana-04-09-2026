@@ -10,9 +10,8 @@ const firebaseConfig = {
   storageBucket: "testing-kridana.firebasestorage.app",
   messagingSenderId: "778865160582",
   appId: "1:778865160582:web:bdbd05366d1474b717fc07",
-  measurementId: "G-TWJ54WX0HN",
+  measurementId: "G-TWJ54WX0HN"
 };
-
 const app = initializeApp(firebaseConfig);
 let analytics = null;
 

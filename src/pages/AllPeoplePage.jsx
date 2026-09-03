@@ -458,7 +458,7 @@ export default function AllPeoplePage() {
   );
 
   return (
-    <div className="h-screen bg-gradient-to-b from-orange-50 via-white to-white max-w-md mx-auto flex flex-col overflow-hidden">
+    <div className="h-screen bg-gradient-to-b from-orange-50 via-white to-white w-full max-w-md md:max-w-5xl mx-auto flex flex-col overflow-hidden">
       {/* HEADER */}
       <div className="sticky top-0 z-50 bg-white/90 backdrop-blur-md px-4 pt-4 pb-3 border-b border-orange-100 shadow-sm relative flex-shrink-0">
         {/* TOP */}

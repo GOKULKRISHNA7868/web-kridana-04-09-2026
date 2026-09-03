@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
-import { useAuth } from "../../../../context/AuthContext";
+import { useAccountScope } from "../AccountScopeContext";
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
 import { MapPin } from "lucide-react";
 import StepHeader from "../StepHeader";
-const LocationAccessibility = ({ setStep }) => {
-  const { user } = useAuth();
+const LocationAccessibility = ({ setStep, onSaved }) => {
+  const { instituteId } = useAccountScope();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -32,13 +32,13 @@ const LocationAccessibility = ({ setStep }) => {
   // ✅ LOAD EXISTING DATA
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
 
       try {
-        const instituteId = user.uid;
+        
         const docRef = doc(db, "institutes", instituteId);
         const docSnap = await getDoc(docRef);
 
@@ -86,7 +86,7 @@ const LocationAccessibility = ({ setStep }) => {
     };
 
     fetchData();
-  }, [user]);
+  }, [instituteId]);
 
   // 🔥 GET CURRENT LOCATION
   const handleGetLocation = async () => {
@@ -219,7 +219,7 @@ const LocationAccessibility = ({ setStep }) => {
 
   // ✅ SAVE
   const handleSave = async () => {
-    if (!user?.uid) {
+    if (!instituteId) {
       alert("User not logged in");
       return;
     }
@@ -233,7 +233,7 @@ const LocationAccessibility = ({ setStep }) => {
     try {
       setSaving(true);
 
-      const instituteId = user.uid;
+      
       const docRef = doc(db, "institutes", instituteId);
 
       await setDoc(
@@ -255,7 +255,7 @@ const LocationAccessibility = ({ setStep }) => {
         { merge: true },
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Location & Accessibility");
     } catch (error) {
       console.error("Error saving:", error);
       alert("Error saving data");
@@ -358,22 +358,26 @@ const LocationAccessibility = ({ setStep }) => {
           <label className="text-sm font-medium mb-1.5 block">
             Contact Number <span className="text-red-500">*</span>
           </label>
-          <div className="flex gap-2">
-            <div className={`${fieldClass(false)} w-[88px] shrink-0 px-2 flex items-center`}>
+          <div className="flex items-stretch gap-2">
+            <div className="h-12 w-[92px] shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-3 flex items-center justify-center text-sm font-semibold text-gray-800">
               +91
             </div>
             <input
+              type="tel"
               name="contactNumber"
               value={formData.contactNumber}
               maxLength={10}
               inputMode="numeric"
+              autoComplete="tel-national"
               onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, "");
+                const value = e.target.value.replace(/\D/g, "").slice(0, 10);
                 setFormData((prev) => ({ ...prev, contactNumber: value }));
                 setErrors((prev) => ({ ...prev, contactNumber: "" }));
               }}
-              className={fieldClass("contactNumber")}
-              placeholder="10-digit number"
+              className={`flex-1 min-w-0 min-h-[48px] text-base rounded-xl border ${
+                errors.contactNumber ? "border-red-500" : "border-gray-200"
+              } bg-white px-4 py-3 text-gray-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`}
+              placeholder="9876543210"
             />
           </div>
           {errors.contactNumber && (

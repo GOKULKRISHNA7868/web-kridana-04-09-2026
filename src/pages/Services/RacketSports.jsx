@@ -57,7 +57,7 @@ const Racket = () => {
 
   return (
     <div
-      className="bg-[#FFF9F5] min-h-screen px-4 py-5"
+      className="bg-[#FFF9F5] min-h-screen px-4 sm:px-6 lg:px-10 py-5 md:py-10 max-w-7xl mx-auto"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -97,7 +97,7 @@ const Racket = () => {
       </p>
 
       {/* Grid */}
-      <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 gap-4 pb-8">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-4 pb-8">
         {filteredCategories.map((item) => (
           <div
             key={item.name}

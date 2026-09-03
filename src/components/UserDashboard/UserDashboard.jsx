@@ -12,14 +12,14 @@ import { useNavigate } from "react-router-dom";
 export default function JoinAcademyScreen() {
   const navigate = useNavigate();
   return (
-    <div className="min-h-screen bg-[#fafafa] px-4 py-6 flex flex-col items-center">
+    <div className="min-h-screen bg-[#fafafa] px-4 py-6 md:py-12 flex flex-col items-center">
       {/* Top Illustration */}
       <div className="relative mb-6">
         <img src="/image_land.png" alt="Sports" className="w-52 mx-auto" />
       </div>
 
       {/* Heading */}
-      <div className="text-center max-w-sm">
+      <div className="text-center max-w-sm md:max-w-lg">
         <h1 className="text-3xl font-bold text-gray-900">
           You're almost there!
         </h1>
@@ -31,7 +31,7 @@ export default function JoinAcademyScreen() {
       </div>
 
       {/* Cards */}
-      <div className="w-full max-w-md mt-8 space-y-4">
+      <div className="w-full max-w-md md:max-w-xl mt-8 space-y-4">
         {/* Academy Card */}
         <div className="bg-[#FFF4EC] rounded-3xl p-6 shadow-sm border border-orange-100">
           <div className="flex justify-center">
@@ -84,7 +84,7 @@ export default function JoinAcademyScreen() {
       </div>
 
       {/* Why Join */}
-      <div className="w-full max-w-md mt-10">
+      <div className="w-full max-w-md md:max-w-xl mt-10">
         <h3 className="text-center font-bold text-2xl text-gray-900 mb-6">
           Why join?
         </h3>
@@ -123,7 +123,7 @@ export default function JoinAcademyScreen() {
       </div>
 
       {/* Bottom Notice */}
-      <div className="w-full max-w-md mt-10">
+      <div className="w-full max-w-md md:max-w-xl mt-10">
         <div className="bg-[#FFF8F4] border border-orange-100 rounded-2xl p-4 flex gap-4 items-start shadow-sm">
           <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shrink-0">
             <ShieldCheck size={26} className="text-orange-500" />

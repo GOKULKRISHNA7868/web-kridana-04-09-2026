@@ -114,7 +114,7 @@ const TrendingReelsPage = () => {
     return num;
   };
   return (
-    <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8 bg-gray-50 min-h-screen">
+    <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8 bg-gray-50 min-h-screen max-w-7xl mx-auto">
       {/* HEADER */}
 
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 sm:mb-8">

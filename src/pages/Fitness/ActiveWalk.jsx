@@ -22,7 +22,14 @@ import {
   Play,
   ShieldCheck,
   WifiOff,
+  AlertCircle,
+  Settings,
+  Loader2,
 } from "lucide-react";
+import {
+  activityPermissionUI,
+  requestWalkPermissions,
+} from "./walkingPermissions";
 import {
   CALORIES_PER_STEP,
   DEFAULT_GOAL,
@@ -72,6 +79,7 @@ export default function ActiveWalk() {
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [sensorError, setSensorError] = useState("");
   const [sensorName, setSensorName] = useState("");
+  const [permissionRetrying, setPermissionRetrying] = useState(false);
 
   const distance = useMemo(() => stepsToDistanceKm(steps), [steps]);
   const calories = useMemo(() => stepsToCalories(steps), [steps]);
@@ -349,11 +357,37 @@ export default function ActiveWalk() {
   }
 
   async function retryPermissions() {
+    setPermissionRetrying(true);
     setPermissionDenied(false);
     setSensorError("");
-    setLoading(true);
-    window.location.reload();
+    try {
+      const result = await requestWalkPermissions();
+      if (result.activity === "granted") {
+        window.location.reload();
+        return;
+      }
+      if (result.activity === "denied") {
+        setPermissionDenied(true);
+        setSensorError(
+          result.message ||
+            "Physical activity is still blocked. Open phone Settings → Apps → Kridana → Permissions and allow Physical activity.",
+        );
+      } else {
+        setSensorError(
+          result.message ||
+            "Please tap Allow when your phone asks for Physical activity access.",
+        );
+      }
+    } catch {
+      setSensorError("Could not update permissions. Please try again.");
+    } finally {
+      setPermissionRetrying(false);
+    }
   }
+
+  const permissionUI = activityPermissionUI(
+    permissionDenied ? "denied" : "prompt",
+  );
 
   if (loading) {
     return (
@@ -380,6 +414,7 @@ export default function ActiveWalk() {
 
   return (
     <div className="min-h-screen bg-[#F4F6FB] flex flex-col">
+      <div className="max-w-5xl mx-auto w-full flex flex-col flex-1">
       <div className="sticky top-0 z-20 bg-white/95 backdrop-blur px-5 pt-6 pb-4 shadow-sm">
         <div className="flex items-center justify-between">
           <button
@@ -402,24 +437,47 @@ export default function ActiveWalk() {
       </div>
 
       {(permissionDenied || sensorError) && (
-        <div className="mx-5 mt-4 rounded-2xl bg-white border border-orange-100 p-4">
+        <div className="mx-4 sm:mx-5 mt-4 rounded-2xl bg-white border border-orange-100 p-4 sm:p-5 shadow-sm">
           <div className="flex items-start gap-3">
-            <WifiOff className="text-orange-500 mt-0.5" size={20} />
-            <div className="flex-1">
-              <p className="font-semibold text-gray-900">
-                {permissionDenied ? "Physical activity permission needed" : "Walking could not start"}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
+            {permissionDenied ? (
+              <AlertCircle className="text-red-500 mt-0.5 shrink-0" size={22} />
+            ) : (
+              <WifiOff className="text-orange-500 mt-0.5 shrink-0" size={22} />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 text-sm sm:text-base">
                 {permissionDenied
-                  ? "Allow Physical activity if your phone asks for it. Motion tracking can still run without a dedicated step sensor."
-                  : sensorError}
+                  ? permissionUI.title
+                  : "Walking could not start"}
               </p>
+              <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">
+                {permissionDenied ? permissionUI.description : sensorError}
+              </p>
+              {permissionDenied ? (
+                <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2.5 flex items-start gap-2">
+                  <Settings size={16} className="text-gray-500 shrink-0 mt-0.5" />
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    After changing settings, return to Kridana and tap{" "}
+                    <span className="font-semibold">Try again</span> below.
+                  </p>
+                </div>
+              ) : null}
               <button
                 type="button"
                 onClick={retryPermissions}
-                className="mt-3 text-sm font-semibold text-orange-600"
+                disabled={permissionRetrying}
+                className="mt-4 w-full sm:w-auto min-h-[48px] px-5 rounded-xl bg-[#FF6A00] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                Try again
+                {permissionRetrying ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Checking permission…
+                  </>
+                ) : permissionDenied ? (
+                  "Try again"
+                ) : (
+                  "Try again"
+                )}
               </button>
             </div>
           </div>
@@ -516,6 +574,7 @@ export default function ActiveWalk() {
         >
           Stop & save
         </button>
+      </div>
       </div>
     </div>
   );

@@ -195,8 +195,6 @@ export default function PaymentSelection() {
 
         image: "https://kridana.net/logo192.png",
 
-        order_id: order.id,
-
         prefill: {
           name: studentName || "",
           email: student?.email || "",

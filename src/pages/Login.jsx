@@ -345,14 +345,14 @@ export default function Login() {
           <span className="text-sm font-medium">Back</span>
         </motion.button>
 
-        <div className="relative z-10 flex-1 flex items-center justify-center px-4 py-6 sm:py-10">
+        <div className="relative z-10 flex-1 flex items-center justify-center px-4 py-6 sm:py-10 lg:py-16">
           {/* LOGIN CARD */}
           <motion.div
             initial={reduceMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }}
             className="
-              w-full max-w-md
+              w-full max-w-md lg:max-w-lg
               bg-white
               rounded-[28px]
               shadow-[0_20px_60px_rgba(0,0,0,0.35)]

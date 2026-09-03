@@ -12,11 +12,12 @@ import { useNavigate } from "react-router-dom";
 import { db, secondaryAuth } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
 import { User, ChevronDown } from "lucide-react";
+import { DEFAULT_TRAINER_ACCESS } from "../../utils/trainerAccess";
 
 /* -------------------- STYLES -------------------- */
 
 const inputClass =
-  "h-11 w-full px-3 border border-orange-400 rounded-md bg-white outline-none focus:border-2 focus:border-orange-500";
+  "h-12 w-full min-h-[48px] px-3.5 border border-orange-300 rounded-xl bg-white text-[16px] outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100";
 
 const DEFAULT_PASSWORD = "123456";
 
@@ -527,9 +528,6 @@ export default function AddTrainerDetailsPage() {
 
       if (!formData.phone) newErrors.phone = "Phone number is required";
 
-      if (formData.certificates.length === 0)
-        newErrors.certificates = "At least 1 certificate required";
-
       // Format validations
       if (formData.firstName && !nameRegex.test(formData.firstName))
         newErrors.firstName = "Only letters allowed";
@@ -662,6 +660,7 @@ export default function AddTrainerDetailsPage() {
           trainerUid,
           instituteId: user?.uid || "",
           role: "trainer",
+          access: { ...DEFAULT_TRAINER_ACCESS },
           createdAt: serverTimestamp(),
         }).filter(([_, value]) => value !== undefined),
       );
@@ -700,10 +699,10 @@ export default function AddTrainerDetailsPage() {
   }, []);
   /* -------------------- UI -------------------- */
   return (
-    <div className="min-h-screen flex justify-center bg-white pt-2 pb-24 sm:pb-10 px-3 sm:px-6 lg:px-8 overflow-x-hidden">
+    <div className="min-h-screen flex justify-center bg-[#F7F8FB] pt-2 pb-[calc(var(--bottom-navbar-height,64px)+88px)] px-3 sm:px-6 lg:px-8 overflow-x-hidden">
       <div className="w-full max-w-6xl">
         {/* HEADER */}
-        <div className="flex flex-col lg:flex-row items-center justify-between gap-6 mb-10 text-center lg:text-left">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-5 mb-8 text-center lg:text-left">
           {/* PROFILE */}
           {/* LEFT : Upload Profile */}
           <div className="flex flex-col items-center mt-6 w-full lg:w-auto">
@@ -738,10 +737,10 @@ export default function AddTrainerDetailsPage() {
 
           {/* TITLE */}
           <div className="flex-1 flex flex-col items-center">
-            <h2 className="text-3xl font-bold text-orange-500">
+            <h2 className="text-2xl sm:text-3xl font-bold text-orange-500">
               Employee Registration
             </h2>
-            <p className="mt-4">Step {step} to 2</p>
+            <p className="mt-2 text-sm text-gray-500">Step {step} of 2</p>
 
             <div className="flex gap-4 mt-4 w-full max-w-xl">
               {[1, 2].map((s) => (
@@ -758,9 +757,8 @@ export default function AddTrainerDetailsPage() {
         </div>
 
         {/* STEP 1 */}
-        {/* STEP 1 */}
         {step === 1 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
+          <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-5">
             {/* Full Name */}
             <div className="flex flex-col">
               <label className="text-sm font-semibold mb-2">
@@ -1064,12 +1062,11 @@ export default function AddTrainerDetailsPage() {
               )}
             </div>
 
-            {/* Upload Certification */}
-            {/* Upload Certification */}
-            <div className="flex flex-col">
+            {/* Upload Certification (optional) */}
+            <div className="flex flex-col md:col-span-2">
               <label className="text-sm font-semibold mb-2">
-                Upload Certification<span className="text-red-500">*</span> /
-                License Number
+                Upload Certification{" "}
+                <span className="text-gray-400 font-medium">(Optional)</span>
               </label>
 
               <div className="relative w-full">
@@ -1080,24 +1077,21 @@ export default function AddTrainerDetailsPage() {
                       ? `${formData.certificates.length}/3 file(s) selected`
                       : ""
                   }
-                  placeholder="Upload certification images"
+                  placeholder="Add certificate or license images (optional)"
                   className={`${inputClass} pr-12`}
                 />
 
                 <button
                   type="button"
                   onClick={() => certificateInputRef.current.click()}
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center"
                 >
-                  <img src="/upload.png" alt="upload" className="w-6 h-6" />
+                  <img src="/upload.png" alt="upload" className="w-5 h-5" />
                 </button>
               </div>
-
-              {errors.certificates && (
-                <p className="text-red-500 text-xs mt-1">
-                  {errors.certificates}
-                </p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                You can skip this and add certificates later. Max 3 images.
+              </p>
 
               <input
                 type="file"
@@ -1140,7 +1134,7 @@ export default function AddTrainerDetailsPage() {
         )}
 
         {step === 2 && (
-          <div className="mt-6">
+          <div className="mt-2 bg-white rounded-2xl border border-orange-100 shadow-sm p-4 sm:p-6">
             {/* AADHAR */}
             {/* Aadhaar Upload */}
             <div className="col-span-2 flex flex-col">
@@ -1188,43 +1182,35 @@ export default function AddTrainerDetailsPage() {
               </p>
             </div>
 
-            {/* ACTION BUTTONS */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-6 mt-48">
-              <button
-                type="button"
-                onClick={handleBack}
-                className="text-orange-500 font-medium"
-              >
-                Back
-              </button>
-
-              <div className="flex gap-6">
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={saving}
-                  className={`px-10 py-3 rounded-md font-semibold text-white transition
-    ${
-      saving
-        ? "bg-orange-300 cursor-not-allowed"
-        : "bg-orange-500 hover:bg-orange-600"
-    }`}
-                >
-                  {saving ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </div>
           </div>
         )}
+      </div>
 
-        {/* BUTTONS */}
-        {step === 1 && (
-          <div className="flex justify-end mt-12">
+      <div
+        className="fixed left-0 right-0 z-[40] bg-white/95 backdrop-blur-md border-t border-orange-100"
+        style={{
+          bottom: "var(--bottom-navbar-height, 64px)",
+        }}
+      >
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+          {step === 2 ? (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="min-h-[48px] px-4 text-orange-500 font-semibold"
+            >
+              Back
+            </button>
+          ) : (
+            <div className="hidden sm:block flex-1" />
+          )}
+
+          {step === 1 ? (
             <button
               type="button"
               onClick={handleNext}
               disabled={nextLoading}
-              className={`px-5 py-2 rounded-md font-semibold text-white ${
+              className={`ml-auto w-full sm:w-auto min-h-[48px] px-8 rounded-xl font-semibold text-white ${
                 nextLoading
                   ? "bg-orange-300 cursor-not-allowed"
                   : "bg-orange-500"
@@ -1232,8 +1218,21 @@ export default function AddTrainerDetailsPage() {
             >
               {nextLoading ? "Loading..." : "Next"}
             </button>
-          </div>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={saving}
+              className={`ml-auto w-full sm:w-auto min-h-[48px] px-8 rounded-xl font-semibold text-white ${
+                saving
+                  ? "bg-orange-300 cursor-not-allowed"
+                  : "bg-orange-500"
+              }`}
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

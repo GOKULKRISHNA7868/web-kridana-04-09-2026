@@ -8,7 +8,15 @@ import { Geolocation } from "@capacitor/geolocation";
 import { MapPin } from "lucide-react";
 import StepHeader from "../StepHeader";
 
-const LocationAccessibility = ({ setStep }) => {
+const normalizePhone = (value) => {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length > 10) {
+    digits = digits.slice(2);
+  }
+  return digits.slice(0, 10);
+};
+
+const LocationAccessibility = ({ setStep, onSaved }) => {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -50,7 +58,7 @@ const LocationAccessibility = ({ setStep }) => {
               "",
             landmark: data?.locationAccessibility?.landmark || "",
             distance: data?.locationAccessibility?.distance || "",
-            phoneNumber: data?.phoneNumber || "",
+            phoneNumber: normalizePhone(data?.phoneNumber),
             email: data?.email || "",
             website: data?.locationAccessibility?.website || "",
             latitude: data?.latitude || "",
@@ -70,10 +78,11 @@ const LocationAccessibility = ({ setStep }) => {
   /* ================= INPUT CHANGE ================= */
   const handleChange = (e) => {
     const { name, value } = e.target;
+    const nextValue = name === "phoneNumber" ? normalizePhone(value) : value;
 
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: nextValue,
     }));
 
     setErrors((prev) => ({
@@ -199,7 +208,7 @@ const LocationAccessibility = ({ setStep }) => {
         { merge: true },
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Location & Accessibility");
     } catch (error) {
       console.error(error);
       alert("Save failed");
@@ -265,7 +274,57 @@ const LocationAccessibility = ({ setStep }) => {
         {[
           { label: "Landmark", name: "landmark" },
           { label: "Distance From User", name: "distance" },
-          { label: "Phone Number", name: "phoneNumber" },
+        ].map((field) => (
+          <div key={field.name}>
+            <label className="text-sm font-medium mb-1.5 block">
+              {field.label}
+              <span className="text-red-500"> *</span>
+            </label>
+            <input
+              name={field.name}
+              value={formData[field.name]}
+              onChange={handleChange}
+              className={fieldClass(field.name)}
+            />
+            {errors[field.name] && (
+              <span className="text-red-500 text-xs mt-1">
+                {errors[field.name]}
+              </span>
+            )}
+          </div>
+        ))}
+
+        <div>
+          <label className="text-sm font-medium mb-1.5 block">
+            Mobile number <span className="text-red-500">*</span>
+          </label>
+          <div className="flex items-stretch gap-2">
+            <div className="h-12 w-[92px] shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-3 flex items-center justify-center text-sm font-semibold text-gray-800">
+              +91
+            </div>
+            <input
+              type="tel"
+              name="phoneNumber"
+              value={formData.phoneNumber}
+              onChange={handleChange}
+              inputMode="numeric"
+              autoComplete="tel-national"
+              maxLength={10}
+              className="flex-1 min-w-0 min-h-[48px] text-base rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              placeholder="9876543210"
+            />
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {formData.phoneNumber.length}/10 digits
+          </p>
+          {errors.phoneNumber && (
+            <span className="text-red-500 text-xs mt-1">
+              {errors.phoneNumber}
+            </span>
+          )}
+        </div>
+
+        {[
           { label: "Email", name: "email", type: "email" },
           { label: "Latitude", name: "latitude" },
           { label: "Longitude", name: "longitude" },

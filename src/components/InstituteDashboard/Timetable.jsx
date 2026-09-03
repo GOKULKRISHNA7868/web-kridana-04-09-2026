@@ -1,10 +1,4 @@
-import React, { useEffect, useState } from "react";
-import FullCalendar from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
-import interactionPlugin from "@fullcalendar/interaction";
-import listPlugin from "@fullcalendar/list";
-
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   getDocs,
@@ -14,11 +8,23 @@ import {
   query,
   where,
   serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { getDoc } from "firebase/firestore";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
+import { CalendarDays, Sparkles } from "lucide-react";
+import AdminCalendarShell from "../shared/AdminCalendarShell";
+import {
+  formatCalendarTime,
+  parseFirestoreDate,
+  uniqueValues,
+} from "../../utils/calendarHelpers";
+import {
+  buildScheduleInsights,
+  classAccent,
+  detectConflicts,
+  suggestFreeSlots,
+} from "../../utils/calendarAiHelpers";
 export default function ClassTime() {
   const [instituteId, setInstituteId] = useState("");
   const [trainers, setTrainers] = useState([]);
@@ -26,14 +32,15 @@ export default function ClassTime() {
   const [schedule, setSchedule] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [categoriesMap, setCategoriesMap] = useState({});
-  const calendarRef = React.useRef(null);
-  const [is24Hour, setIs24Hour] = useState(false);
+  const calendarApiRef = useRef(null);
   const [branches, setBranches] = useState([]);
-  const [search, setSearch] = useState("");
-  const [calendarView, setCalendarView] = useState("timeGridDay");
+  const [filters, setFilters] = useState({
+    branch: "all",
+    trainerName: "all",
+    category: "all",
+  });
   const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [calendarTitle, setCalendarTitle] = useState("");
+  const [pageLoading, setPageLoading] = useState(true);
   const categories = [
     "Martial Arts",
     "Team Ball Sports",
@@ -338,6 +345,7 @@ export default function ClassTime() {
 
     const loadData = async () => {
       try {
+        setPageLoading(true);
         /* ---------------- TRAINERS ---------------- */
         const trainerSnap = await getDocs(
           query(
@@ -395,6 +403,8 @@ export default function ClassTime() {
         );
       } catch (err) {
         console.error("Error loading data:", err);
+      } finally {
+        setPageLoading(false);
       }
     };
 
@@ -512,89 +522,105 @@ export default function ClassTime() {
       }));
     }
   }, [form.branch, students, editId]);
-  /* ---------------- FORMAT EVENTS ---------------- */
-  const events = schedule.map((s) => ({
-    id: s.id,
-    title: s.cancelled ? `❌ Cancelled - ${s.subCategory}` : s.subCategory,
-    start: s.start?.toDate ? s.start.toDate() : s.start,
-    end: s.end?.toDate ? s.end.toDate() : s.end,
-
-    extendedProps: {
-      trainer: s.trainerName,
-      count: s.students?.length || 0,
-      cancelled: s.cancelled || false,
-      cancelReason: s.cancelReason || "",
-    },
-  }));
-  const filteredEvents = events.filter((e) =>
-    e.title?.toLowerCase().includes(search.toLowerCase()),
+  const events = useMemo(
+    () =>
+      schedule.map((s) => {
+        const accent = classAccent(s.category, s.cancelled);
+        return {
+          id: s.id,
+          title: s.cancelled ? `Cancelled · ${s.subCategory}` : s.subCategory,
+          start: parseFirestoreDate(s.start),
+          end: parseFirestoreDate(s.end),
+          extendedProps: {
+            trainer: s.trainerName,
+            count: s.students?.length || 0,
+            cancelled: s.cancelled || false,
+            cancelReason: s.cancelReason || "",
+            category: s.category || "",
+            branch: s.branch || "",
+            trainerName: s.trainerName || "",
+            chipClass: accent.chip,
+            raw: s,
+          },
+        };
+      }),
+    [schedule],
   );
 
-  const toJsDate = (value) => {
-    if (!value) return null;
-    if (value?.toDate) return value.toDate();
-    if (value instanceof Date) return value;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  const scheduleInsights = useMemo(
+    () => buildScheduleInsights(schedule),
+    [schedule],
+  );
+
+  const filterOptions = useMemo(
+    () => [
+      {
+        key: "branch",
+        label: "Branch",
+        options: uniqueValues(schedule, (s) => s.branch),
+      },
+      {
+        key: "trainerName",
+        label: "Trainer",
+        options: uniqueValues(schedule, (s) => s.trainerName),
+      },
+      {
+        key: "category",
+        label: "Category",
+        options: uniqueValues(schedule, (s) => s.category),
+      },
+    ],
+    [schedule],
+  );
+
+  const smartSlots = useMemo(
+    () =>
+      suggestFreeSlots(schedule, form.date || selectedDate, {
+        trainerId: form.trainerId || undefined,
+      }),
+    [schedule, form.date, form.trainerId, selectedDate],
+  );
+
+  const formConflicts = useMemo(() => {
+    if (!form.date || !form.startTime || !form.endTime) return [];
+    const start = new Date(`${form.date}T${form.startTime}`);
+    const end = new Date(`${form.date}T${form.endTime}`);
+    return detectConflicts(
+      schedule,
+      { start, end, trainerId: form.trainerId },
+      editId,
+    );
+  }, [schedule, form, editId]);
+
+  const toJsDate = (value) => parseFirestoreDate(value);
+
+  const isSameDayLocal = (a, b) => {
+    if (!a || !b) return false;
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
   };
 
-  const isSameDay = (a, b) =>
-    a &&
-    b &&
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
-
-  const padTime = (n) => String(n).padStart(2, "0");
-
-  const localDateParts = (value) => {
-    const d = toJsDate(value);
-    if (!d) return { date: "", time: "" };
-    return {
-      date: `${d.getFullYear()}-${padTime(d.getMonth() + 1)}-${padTime(d.getDate())}`,
-      time: `${padTime(d.getHours())}:${padTime(d.getMinutes())}`,
-    };
-  };
-
-  const formatClock = (value) => {
-    const d = toJsDate(value);
-    if (!d) return "";
-    return d.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: !is24Hour,
-    });
-  };
-
-  const classAccent = (category, cancelled) => {
-    if (cancelled) {
-      return { bar: "bg-red-500", tag: "bg-red-50 text-red-700" };
-    }
-    const map = {
-      "Martial Arts": { bar: "bg-sky-500", tag: "bg-sky-50 text-sky-700" },
-      Fitness: { bar: "bg-violet-500", tag: "bg-violet-50 text-violet-700" },
-      "Racket Sports": { bar: "bg-emerald-500", tag: "bg-emerald-50 text-emerald-700" },
-      Dance: { bar: "bg-pink-500", tag: "bg-pink-50 text-pink-700" },
-      Wellness: { bar: "bg-teal-500", tag: "bg-teal-50 text-teal-700" },
-      "Team Ball Sports": { bar: "bg-indigo-500", tag: "bg-indigo-50 text-indigo-700" },
-      "Aquatic Sports": { bar: "bg-cyan-500", tag: "bg-cyan-50 text-cyan-700" },
-    };
-    return map[category] || { bar: "bg-[#ff6a00]", tag: "bg-orange-50 text-[#ff6a00]" };
-  };
-
-  const matchesSearch = (item) => {
-    const title = item.cancelled
-      ? `❌ Cancelled - ${item.subCategory}`
-      : item.subCategory;
-    return title?.toLowerCase().includes(search.toLowerCase());
-  };
+  const formatClock = (value) => formatCalendarTime(parseFirestoreDate(value), false);
 
   const selectedDayClasses = schedule
-    .filter((s) => isSameDay(toJsDate(s.start), selectedDate) && matchesSearch(s))
-    .sort((a, b) => (toJsDate(a.start)?.getTime() || 0) - (toJsDate(b.start)?.getTime() || 0));
+    .filter((s) => isSameDayLocal(parseFirestoreDate(s.start), selectedDate))
+    .sort(
+      (a, b) =>
+        (parseFirestoreDate(a.start)?.getTime() || 0) -
+        (parseFirestoreDate(b.start)?.getTime() || 0),
+    );
+
+  const selectedDayLabel = selectedDate.toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 
   const monthClassCount = schedule.filter((s) => {
-    const start = toJsDate(s.start);
+    const start = parseFirestoreDate(s.start);
     return (
       start &&
       start.getMonth() === selectedDate.getMonth() &&
@@ -602,36 +628,30 @@ export default function ClassTime() {
     );
   }).length;
 
-  const todayClassCount = schedule.filter((s) =>
-    isSameDay(toJsDate(s.start), new Date()),
-  ).length;
-
-  const selectedDayLabel = selectedDate.toLocaleDateString("en-US", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
-
-  const getCalApi = () => calendarRef.current?.getApi();
-
-  const changeCalendarView = (view) => {
-    setCalendarView(view);
-    getCalApi()?.changeView(view);
-  };
-
-  const goToday = () => {
-    getCalApi()?.today();
-    setSelectedDate(new Date());
+  const openNewClass = (prefill = {}) => {
+    setEditId(null);
+    setForm({
+      date: prefill.date || new Date().toISOString().slice(0, 10),
+      startTime: prefill.startTime || "",
+      endTime: prefill.endTime || "",
+      category: "",
+      subCategory: "",
+      branch: "",
+      trainerId: "",
+      students: [],
+    });
+    setShowModal(true);
   };
 
   const openScheduledClass = (event) => {
-    const start = localDateParts(event.start);
-    const end = localDateParts(event.end);
+    const start = parseFirestoreDate(event.start);
+    const end = parseFirestoreDate(event.end);
+    if (!start || !end) return;
     setEditId(event.id);
     setForm({
-      date: start.date,
-      startTime: start.time,
-      endTime: end.time,
+      date: start.toISOString().slice(0, 10),
+      startTime: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`,
+      endTime: `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`,
       category: event.category || "",
       subCategory: event.subCategory || "",
       branch: event.branch || "",
@@ -639,6 +659,34 @@ export default function ClassTime() {
       students: event.students || [],
     });
     setShowModal(true);
+  };
+
+  const handleRangeSelect = (info) => {
+    const date = info.startStr.split("T")[0];
+    const start = info.startStr.split("T")[1]?.slice(0, 5);
+    const end = info.endStr.split("T")[1]?.slice(0, 5);
+    setSelectedDate(info.start);
+    openNewClass({ date, startTime: start, endTime: end });
+  };
+
+  const handleEventClick = (info) => {
+    const event = schedule.find((s) => s.id === info.event.id);
+    if (!event) return;
+    if (info.event.start) setSelectedDate(info.event.start);
+    openScheduledClass(event);
+  };
+
+  const applySmartSlot = (slot) => {
+    setForm((prev) => ({
+      ...prev,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+    }));
+  };
+
+  const goToSelectedDay = () => {
+    calendarApiRef.current?.changeView("timeGridDay");
+    calendarApiRef.current?.gotoDate(selectedDate);
   };
 
   const cancelClass = async () => {
@@ -677,383 +725,155 @@ export default function ClassTime() {
       console.error(err);
     }
   };
-  const views = [
-    { id: "dayGridMonth", label: "Month" },
-    { id: "timeGridWeek", label: "Week" },
-    { id: "timeGridDay", label: "Day" },
-    { id: "listWeek", label: "List" },
-  ];
-
   return (
-    <div className="h-full min-h-0 flex flex-col overflow-hidden bg-transparent">
-      <div className="shrink-0 pb-2 sm:pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="text-[22px] sm:text-2xl font-bold text-gray-900 leading-tight">
-              Calendar
-            </h1>
-            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-              View and manage all your classes.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="hidden sm:inline-flex items-center gap-1.5 bg-[#ff6a00] hover:bg-[#e85f00] text-white px-3.5 py-2 rounded-xl text-sm font-semibold shadow-sm"
-          >
-            <Plus size={16} />
-            Add New
-          </button>
-        </div>
-
-        <div className="mt-3 flex flex-col gap-2">
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
-            <button
-              onClick={goToday}
-              className="shrink-0 h-9 px-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700"
-            >
-              Today
-            </button>
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                type="button"
-                onClick={() => getCalApi()?.prev()}
-                className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
-                aria-label="Previous"
-              >
-                <ChevronLeft size={18} />
-              </button>
-              <button
-                type="button"
-                onClick={() => getCalApi()?.next()}
-                className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
-                aria-label="Next"
-              >
-                <ChevronRight size={18} />
-              </button>
-            </div>
-            <div className="flex shrink-0 border border-gray-200 rounded-xl overflow-hidden bg-white text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setIs24Hour(false)}
-                className={`h-9 px-2.5 ${
-                  !is24Hour ? "bg-[#ff6a00] text-white" : "text-gray-600"
-                }`}
-              >
-                12 hrs
-              </button>
-              <button
-                type="button"
-                onClick={() => setIs24Hour(true)}
-                className={`h-9 px-2.5 ${
-                  is24Hour ? "bg-[#ff6a00] text-white" : "text-gray-600"
-                }`}
-              >
-                24 hrs
-              </button>
-            </div>
-            <div className="relative min-w-[140px] flex-1 max-w-xs">
-              <Search
-                size={15}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-              <input
-                type="text"
-                placeholder="Search here..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-9 w-full rounded-xl border border-gray-200 bg-white pl-8 pr-3 text-sm text-gray-800 placeholder:text-gray-400"
-              />
-            </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="sm:hidden shrink-0 inline-flex items-center gap-1 bg-[#ff6a00] text-white h-9 px-3 rounded-xl text-sm font-semibold"
-            >
-              <Plus size={16} />
-              Add
-            </button>
-          </div>
-
-          <div className="flex rounded-xl bg-gray-100 p-1 w-full sm:w-auto self-start">
-            {views.map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                onClick={() => changeCalendarView(view.id)}
-                className={`h-8 px-3.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
-                  calendarView === view.id
-                    ? "bg-[#ff6a00] text-white shadow-sm"
-                    : "text-gray-600"
-                }`}
-              >
-                {view.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3 overflow-hidden">
-        <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="shrink-0 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 border-b border-gray-100">
-            <h2 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-              {calendarTitle || "Calendar"}
-            </h2>
-          </div>
-
-          <div className="flex-1 min-h-0 kridana-cal px-1 sm:px-2">
-            <FullCalendar
-              ref={calendarRef}
-              plugins={[
-                dayGridPlugin,
-                timeGridPlugin,
-                interactionPlugin,
-                listPlugin,
-              ]}
-              headerToolbar={false}
-              initialView="timeGridDay"
-              height="100%"
-              contentHeight="auto"
-              allDaySlot={false}
-              slotMinTime="00:00:00"
-              slotMaxTime="24:00:00"
-              slotDuration="00:30:00"
-              slotLabelInterval="01:00:00"
-              scrollTime="06:00:00"
-              scrollTimeReset={false}
-              nowIndicator={true}
-              stickyHeaderDates={true}
-              expandRows={true}
-              handleWindowResize={true}
-              windowResizeDelay={100}
-              longPressDelay={100}
-              selectLongPressDelay={100}
-              eventLongPressDelay={100}
-              dayMaxEvents={true}
-              dayMaxEventRows={2}
-              slotMinWidth={36}
-              dayHeaderFormat={{
-                weekday: "short",
-                month: "numeric",
-                day: "numeric",
-              }}
-              slotLabelFormat={{
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: !is24Hour,
-              }}
-              eventTimeFormat={{
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: !is24Hour,
-              }}
-              events={filteredEvents}
-              selectable={true}
-              dayCellClassNames={(arg) =>
-                isSameDay(arg.date, selectedDate) ? ["kridana-cal-selected"] : []
-              }
-              datesSet={(info) => {
-                setCalendarTitle(info.view.title);
-                setCalendarView(info.view.type);
-                const current = info.view.calendar.getDate();
-                setSelectedDate((prev) => {
-                  if (
-                    info.view.type === "dayGridMonth" &&
-                    prev.getMonth() === current.getMonth() &&
-                    prev.getFullYear() === current.getFullYear()
-                  ) {
-                    return prev;
-                  }
-                  return current;
-                });
-              }}
-              dateClick={(info) => setSelectedDate(info.date)}
-              select={(info) => {
-                const date = info.startStr.split("T")[0];
-                const start = info.startStr.split("T")[1]?.slice(0, 5);
-                const end = info.endStr.split("T")[1]?.slice(0, 5);
-
-                setEditId(null);
-
-                setForm({
-                  date,
-                  startTime: start,
-                  endTime: end,
-                  category: "",
-                  subCategory: "",
-                  branch: "",
-                  trainerId: "",
-                  students: [],
-                });
-
-                setShowModal(true);
-              }}
-              eventClick={(info) => {
-                const event = schedule.find((s) => s.id === info.event.id);
-                if (!event) return;
-                if (info.event.start) setSelectedDate(info.event.start);
-
-                setEditId(event.id);
-
-                setForm({
-                  date: info.event.startStr.split("T")[0],
-                  startTime: info.event.startStr.split("T")[1]?.slice(0, 5),
-                  endTime: info.event.endStr.split("T")[1]?.slice(0, 5),
-                  category: event.category || "",
-                  subCategory: event.subCategory || "",
-                  branch: event.branch || "",
-                  trainerId: event.trainerId || "",
-                  students: event.students || [],
-                });
-
-                setShowModal(true);
-              }}
-              eventContent={(info) =>
-                info.view.type === "dayGridMonth" ? (
-                  <div
-                    className={`truncate rounded-full px-1.5 py-[1px] text-[9px] sm:text-[10px] font-semibold ${
-                      info.event.extendedProps.cancelled
-                        ? "bg-red-100 text-red-700"
-                        : "bg-orange-50 text-[#ff6a00]"
-                    }`}
-                  >
-                    • {info.event.title}
-                  </div>
-                ) : (
-                  <div
-                    className={`rounded-md px-2 py-1 text-xs
-      ${
-        info.event.extendedProps.cancelled
-          ? "bg-red-200 text-red-800"
-          : "bg-orange-200"
-      }
-    `}
-                  >
-                    <div className="font-semibold">{info.event.title}</div>
-
-                    <div>👤 {info.event.extendedProps.trainer}</div>
-
-                    <div>👥 {info.event.extendedProps.count}</div>
-
-                    {info.event.extendedProps.cancelled && (
-                      <div className="mt-1 text-[10px] font-medium">
-                        Reason: {info.event.extendedProps.cancelReason}
-                      </div>
-                    )}
-                  </div>
-                )
-              }
-            />
-          </div>
-
-          <div className="shrink-0 px-3 sm:px-4 py-2.5 bg-[#f6f7fb] border-t border-gray-100 flex items-center justify-between gap-2">
+    <div className="h-full min-h-0 flex flex-col overflow-hidden">
+      <AdminCalendarShell
+        title="Class Calendar"
+        subtitle="Plan, edit and manage institute sessions"
+        loading={pageLoading}
+        events={events}
+        filterOptions={filterOptions}
+        activeFilters={filters}
+        onFilterChange={(key, value) =>
+          setFilters((prev) => ({ ...prev, [key]: value }))
+        }
+        aiInsights={scheduleInsights.insights}
+        alert="Use Week or Agenda on mobile for the clearest view. Drag on the calendar to schedule a class."
+        emptyTitle="No classes on calendar"
+        emptyHint="Add your first class or drag a time range on the calendar."
+        onAddClick={() => openNewClass()}
+        addLabel="Add class"
+        onCalendarReady={(api) => {
+          calendarApiRef.current = api;
+        }}
+        onDateClick={(info) => setSelectedDate(info.date)}
+        onRangeSelect={handleRangeSelect}
+        onEventClick={handleEventClick}
+        initialView="timeGridWeek"
+        footerStats={
+          <>
             <p className="text-[11px] sm:text-xs text-gray-600">
-              Total classes this month{" "}
+              This month:{" "}
               <span className="font-semibold text-gray-800">
-                ({monthClassCount} {monthClassCount === 1 ? "Class" : "Classes"})
+                {monthClassCount} class{monthClassCount === 1 ? "" : "es"}
               </span>
               <span className="hidden sm:inline text-gray-400"> · </span>
               <span className="hidden sm:inline">
-                Upcoming today ({todayClassCount})
+                Today: {scheduleInsights.todayCount}
               </span>
             </p>
-            <button
-              type="button"
-              onClick={goToday}
-              className="shrink-0 h-8 px-3 rounded-lg bg-white border border-gray-200 text-[11px] sm:text-xs font-semibold text-gray-700"
-            >
-              View Today
-            </button>
-          </div>
-        </div>
-
-        <aside className="h-[36%] min-h-[200px] lg:h-auto lg:w-[320px] xl:w-[360px] shrink-0 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="shrink-0 px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-gray-900 truncate">
-              Classes on {selectedDayLabel}
-            </h3>
-            <span className="h-6 min-w-[24px] px-1.5 rounded-full bg-[#ff6a00] text-white text-xs font-bold flex items-center justify-center">
-              {selectedDayClasses.length}
-            </span>
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2.5">
-            {selectedDayClasses.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-8">
-                No classes on this day.
-              </p>
-            ) : (
-              selectedDayClasses.map((cls) => {
-                const accent = classAccent(cls.category, cls.cancelled);
-                return (
-                  <button
-                    key={cls.id}
-                    type="button"
-                    onClick={() => openScheduledClass(cls)}
-                    className="w-full text-left rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden"
-                  >
-                    <div className="flex">
-                      <span className={`w-1.5 shrink-0 ${accent.bar}`} />
-                      <div className="flex-1 min-w-0 p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-semibold text-gray-900 truncate">
-                            {cls.cancelled
-                              ? `Cancelled - ${cls.subCategory}`
-                              : cls.subCategory}
+          </>
+        }
+        sidePanel={
+          <>
+            <div className="shrink-0 px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-gray-900 truncate">
+                {selectedDayLabel}
+              </h3>
+              <span className="h-6 min-w-[24px] px-1.5 rounded-full bg-[#FF6A00] text-white text-xs font-bold flex items-center justify-center">
+                {selectedDayClasses.length}
+              </span>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2.5">
+              {selectedDayClasses.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">
+                  No classes on this day.
+                </p>
+              ) : (
+                selectedDayClasses.map((cls) => {
+                  const accent = classAccent(cls.category, cls.cancelled);
+                  return (
+                    <button
+                      key={cls.id}
+                      type="button"
+                      onClick={() => openScheduledClass(cls)}
+                      className="w-full text-left rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden active:scale-[0.99] transition"
+                    >
+                      <div className="flex">
+                        <span className={`w-1.5 shrink-0 ${accent.bar}`} />
+                        <div className="flex-1 min-w-0 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {cls.cancelled
+                                ? `Cancelled · ${cls.subCategory}`
+                                : cls.subCategory}
+                            </p>
+                            {cls.category ? (
+                              <span
+                                className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${accent.tag}`}
+                              >
+                                {cls.category}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">
+                            {cls.trainerName || "Trainer"}
+                            {cls.branch ? ` · ${cls.branch}` : ""}
                           </p>
-                          {cls.category ? (
-                            <span
-                              className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${accent.tag}`}
-                            >
-                              {cls.category}
-                            </span>
-                          ) : null}
+                          <p className="text-xs font-medium text-gray-700 mt-1.5">
+                            {formatClock(cls.start)} – {formatClock(cls.end)}
+                          </p>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            {cls.students?.length || 0} students
+                          </p>
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5 truncate">
-                          {cls.trainerName || "Trainer"}
-                          {cls.branch ? ` · ${cls.branch}` : ""}
-                        </p>
-                        <p className="text-xs font-medium text-gray-700 mt-1.5">
-                          {formatClock(cls.start)} – {formatClock(cls.end)}
-                        </p>
-                        <p className="text-[11px] text-gray-400 mt-0.5">
-                          {cls.students?.length || 0} students
-                        </p>
-                        {cls.cancelled && cls.cancelReason ? (
-                          <p className="text-[11px] text-red-600 mt-1">
-                            Reason: {cls.cancelReason}
-                          </p>
-                        ) : null}
                       </div>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          <div className="shrink-0 p-3 border-t border-gray-100">
-            <button
-              type="button"
-              onClick={() => {
-                changeCalendarView("timeGridDay");
-                getCalApi()?.gotoDate(selectedDate);
-              }}
-              className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 inline-flex items-center justify-center gap-2"
-            >
-              <CalendarDays size={16} className="text-[#ff6a00]" />
-              View Day ({selectedDate.getDate()}{" "}
-              {selectedDate.toLocaleDateString("en-US", { month: "short" })})
-            </button>
-          </div>
-        </aside>
-      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div className="shrink-0 p-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={goToSelectedDay}
+                className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 inline-flex items-center justify-center gap-2"
+              >
+                <CalendarDays size={16} className="text-[#FF6A00]" />
+                Open day view
+              </button>
+            </div>
+          </>
+        }
+      />
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4">
           <div className="bg-white p-4 sm:p-6 rounded-t-3xl sm:rounded-2xl w-full max-w-md shadow-xl space-y-4 max-h-[88dvh] overflow-y-auto">
             <h3 className="text-lg sm:text-xl font-semibold text-center">
               {isEdit ? "Edit Class" : "Schedule Class"}
             </h3>
+
+            {formConflicts.length > 0 ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                <p className="font-semibold">Schedule conflict</p>
+                <p className="mt-0.5 text-xs">
+                  This trainer already has {formConflicts.length} overlapping
+                  class{formConflicts.length === 1 ? "" : "es"} at this time.
+                </p>
+              </div>
+            ) : null}
+
+            {smartSlots.length > 0 && !isEdit ? (
+              <div className="rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2.5">
+                <p className="text-xs font-semibold text-violet-900 flex items-center gap-1.5">
+                  <Sparkles size={14} />
+                  Suggested free slots
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {smartSlots.map((slot) => (
+                    <button
+                      key={slot.label}
+                      type="button"
+                      onClick={() => applySmartSlot(slot)}
+                      className="text-xs font-semibold rounded-lg bg-white border border-violet-200 text-violet-800 px-2.5 py-1.5"
+                    >
+                      {slot.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div>
               <label className="text-sm text-gray-500">Date</label>
@@ -1169,14 +989,14 @@ export default function ClassTime() {
                 onClick={() => setShowModal(false)}
                 className="flex-1 bg-gray-200 py-2.5 rounded-lg font-medium"
               >
-                Cancel
+                Close
               </button>
             </div>
           </div>
         </div>
       )}
       {showCancelModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4">
           <div className="bg-white p-5 rounded-t-3xl sm:rounded-2xl w-full max-w-md">
             <h3 className="font-semibold mb-3">Cancel Class</h3>
 

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { db } from "../../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -12,14 +13,28 @@ import {
   Smartphone,
   CheckCircle2,
   Pencil,
+  Search,
+  Check,
+  AlertCircle,
+  ArrowLeft,
 } from "lucide-react";
 
 const inputClass =
-  "w-full h-12 px-4 border border-gray-300 rounded-xl outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 text-sm bg-white";
+  "w-full min-h-[48px] h-12 px-4 border border-gray-200 rounded-xl outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 text-[16px] bg-white";
 
-const RazorpayKYC = () => {
+const fadeUp = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.28, ease: "easeOut" } },
+};
+
+const EDGE_SWIPE_PX = 32;
+const EDGE_SWIPE_MIN_DX = 72;
+
+const RazorpayKYC = ({ setActiveMenu }) => {
   const auth = getAuth();
   const uid = auth.currentUser?.uid;
+  const touchRef = useRef({ x: 0, y: 0, fromEdge: false });
+  const backLockRef = useRef(false);
 
   const [form, setForm] = useState({
     accountName: "",
@@ -27,6 +42,7 @@ const RazorpayKYC = () => {
     businessName: "",
     businessType: "",
 
+    bankName: "",
     ifsc: "",
     accountNumber: "",
     confirmAccountNumber: "",
@@ -42,6 +58,9 @@ const RazorpayKYC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showChargesModal, setShowChargesModal] = useState(false);
+  const [ifscInfo, setIfscInfo] = useState(null);
+  const [ifscLoading, setIfscLoading] = useState(false);
+  const [ifscError, setIfscError] = useState("");
   /* =====================================================
      FETCH KYC
   ===================================================== */
@@ -63,9 +82,11 @@ const RazorpayKYC = () => {
             businessName: data.businessName || "",
             businessType: data.businessType || "",
 
+            bankName: data.bankName || "",
             ifsc: data.ifsc || "",
             accountNumber: data.accountNumber || "",
-            confirmAccountNumber: data.confirmAccountNumber || "",
+            confirmAccountNumber:
+              data.confirmAccountNumber || data.accountNumber || "",
             beneficiaryName: data.beneficiaryName || "",
 
             // ✅ UPI
@@ -86,6 +107,112 @@ const RazorpayKYC = () => {
   }, [uid]);
 
   /* =====================================================
+     BACK NAVIGATION (button + edge swipe + browser/app back)
+  ===================================================== */
+  const leaveKyc = useCallback(() => {
+    if (typeof setActiveMenu === "function") {
+      setActiveMenu("Dashboard");
+      return;
+    }
+    if (window.history.length > 1) {
+      window.history.back();
+    }
+  }, [setActiveMenu]);
+
+  const handleBack = useCallback(() => {
+    if (backLockRef.current) return;
+    backLockRef.current = true;
+    window.setTimeout(() => {
+      backLockRef.current = false;
+    }, 350);
+
+    if (showChargesModal) {
+      setShowChargesModal(false);
+      return;
+    }
+
+    if (editing) {
+      setEditing(false);
+      return;
+    }
+
+    leaveKyc();
+  }, [showChargesModal, editing, leaveKyc]);
+
+  const showChargesModalRef = useRef(showChargesModal);
+  const editingRef = useRef(editing);
+  const leaveKycRef = useRef(leaveKyc);
+
+  useEffect(() => {
+    showChargesModalRef.current = showChargesModal;
+  }, [showChargesModal]);
+
+  useEffect(() => {
+    editingRef.current = editing;
+  }, [editing]);
+
+  useEffect(() => {
+    leaveKycRef.current = leaveKyc;
+  }, [leaveKyc]);
+
+  // Keep a history entry so Android / browser back stays inside the dashboard
+  useEffect(() => {
+    window.history.pushState({ kridanaKyc: true }, "");
+
+    const onPopState = () => {
+      if (showChargesModalRef.current) {
+        setShowChargesModal(false);
+        window.history.pushState({ kridanaKyc: true }, "");
+        return;
+      }
+      if (editingRef.current) {
+        setEditing(false);
+        window.history.pushState({ kridanaKyc: true }, "");
+        return;
+      }
+      leaveKycRef.current();
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, []);
+
+  // Left-edge swipe → back (corners only, not mid-screen scroll)
+  useEffect(() => {
+    const onTouchStart = (e) => {
+      const touch = e.touches?.[0];
+      if (!touch) return;
+      touchRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        fromEdge: touch.clientX <= EDGE_SWIPE_PX,
+      };
+    };
+
+    const onTouchEnd = (e) => {
+      const touch = e.changedTouches?.[0];
+      if (!touch || !touchRef.current.fromEdge) return;
+
+      const dx = touch.clientX - touchRef.current.x;
+      const dy = Math.abs(touch.clientY - touchRef.current.y);
+
+      if (dx >= EDGE_SWIPE_MIN_DX && dy < 70) {
+        handleBack();
+      }
+    };
+
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [handleBack]);
+
+  /* =====================================================
      HANDLE INPUT
   ===================================================== */
   const handleChange = (e) => {
@@ -96,7 +223,7 @@ const RazorpayKYC = () => {
       "accountName",
       "businessName",
       "businessType",
-
+      "bankName",
       "beneficiaryName",
       "upiName",
     ];
@@ -107,9 +234,14 @@ const RazorpayKYC = () => {
       value = value.replace(/\b\w/g, (char) => char.toUpperCase());
     }
 
-    // ✅ ACCOUNT NUMBER
     if (name === "accountNumber" || name === "confirmAccountNumber") {
       value = value.replace(/[^0-9]/g, "");
+    }
+
+    if (name === "ifsc") {
+      value = value.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 11);
+      setIfscInfo(null);
+      setIfscError("");
     }
 
     // ✅ UPI ID
@@ -142,18 +274,38 @@ const RazorpayKYC = () => {
       return false;
     }
 
-    if (!form.ifsc.trim()) {
-      alert("IFSC required");
+    if (!form.bankName.trim()) {
+      alert("Bank name is required");
+      return false;
+    }
+
+    if (!form.beneficiaryName.trim()) {
+      alert("Beneficiary name is required");
       return false;
     }
 
     if (!form.accountNumber.trim()) {
-      alert("Account Number required");
+      alert("Account number is required");
+      return false;
+    }
+
+    if (!form.confirmAccountNumber.trim()) {
+      alert("Please re-enter the account number");
       return false;
     }
 
     if (form.accountNumber !== form.confirmAccountNumber) {
       alert("Account numbers do not match");
+      return false;
+    }
+
+    if (!form.ifsc.trim()) {
+      alert("IFSC code is required");
+      return false;
+    }
+
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifsc)) {
+      alert("Enter a valid 11-character IFSC code");
       return false;
     }
 
@@ -164,6 +316,42 @@ const RazorpayKYC = () => {
     }
 
     return true;
+  };
+
+  const lookupIfsc = async () => {
+    const code = form.ifsc.trim().toUpperCase();
+    if (code.length !== 11) {
+      setIfscError("IFSC must be 11 characters");
+      setIfscInfo(null);
+      return;
+    }
+
+    setIfscLoading(true);
+    setIfscError("");
+    try {
+      const res = await fetch(`https://ifsc.razorpay.com/${code}`);
+      if (!res.ok) {
+        setIfscInfo(null);
+        setIfscError("IFSC not found. Please check the code.");
+        return;
+      }
+      const data = await res.json();
+      setIfscInfo({
+        bank: data.BANK || "",
+        branch: data.BRANCH || "",
+        city: data.CITY || "",
+      });
+      setForm((prev) => ({
+        ...prev,
+        ifsc: code,
+        bankName: prev.bankName || data.BANK || "",
+      }));
+    } catch {
+      setIfscInfo(null);
+      setIfscError("Could not verify IFSC. Try again.");
+    } finally {
+      setIfscLoading(false);
+    }
   };
 
   /* =====================================================
@@ -212,10 +400,23 @@ const RazorpayKYC = () => {
   ===================================================== */
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center bg-gray-50 px-4">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-600 text-sm">Loading KYC Details...</p>
+      <div className="h-full min-h-[320px] flex flex-col bg-[#F4F6FB] rounded-2xl">
+        <div className="px-3 sm:px-6 h-12 flex items-center gap-2.5 border-b border-gray-100">
+          <button
+            type="button"
+            onClick={leaveKyc}
+            className="h-10 w-10 rounded-full bg-white border border-gray-200 flex items-center justify-center"
+            aria-label="Go back"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <p className="font-semibold text-gray-900">Complete KYC</p>
+        </div>
+        <div className="flex-1 flex justify-center items-center px-4">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-gray-600 text-sm">Loading KYC details...</p>
+          </div>
         </div>
       </div>
     );
@@ -225,16 +426,61 @@ const RazorpayKYC = () => {
      UI
   ===================================================== */
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 px-3 sm:px-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+    <div className="h-full min-h-0 overflow-y-auto bg-[#F4F6FB] pb-[calc(var(--bottom-navbar-height,64px)+16px)] md:pb-6 relative">
+      {/* Left-edge swipe hint zone (visual only) */}
+      <div
+        className="pointer-events-none absolute inset-y-0 left-0 w-1.5 z-20 sm:hidden"
+        aria-hidden
+      >
+        <div className="h-16 w-1 rounded-full bg-orange-300/50 absolute top-1/2 -translate-y-1/2 left-0.5" />
+      </div>
+
+      {/* Sticky back header */}
+      <div
+        className="sticky top-0 z-30 bg-[#F4F6FB]/95 backdrop-blur border-b border-gray-100/80"
+        style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
+      >
+        <div className="max-w-5xl mx-auto px-3 sm:px-6 h-12 sm:h-14 flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="h-10 w-10 shrink-0 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center active:scale-95 transition"
+            aria-label="Go back"
+          >
+            <ArrowLeft size={20} className="text-gray-900" strokeWidth={2.2} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-base sm:text-lg font-bold text-gray-900 truncate">
+              {editing ? "Edit KYC" : "Complete KYC"}
+            </h1>
+            <p className="text-[11px] sm:text-xs text-gray-500 truncate">
+              {showChargesModal
+                ? "Review payment charges"
+                : editing
+                  ? "Update bank & UPI details"
+                  : "Bank & UPI for receiving payments"}
+            </p>
+          </div>
+          {editing ? (
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="shrink-0 text-sm font-semibold text-gray-600 px-2 py-2"
+            >
+              Cancel
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-3 sm:px-6 pt-4 sm:pt-5">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
           {/* HEADER */}
-          <div className="bg-gradient-to-r from-orange-500 to-orange-400 px-5 sm:px-8 py-6">
-            <h2 className="text-2xl sm:text-3xl font-bold text-white text-center">
+          <div className="bg-gradient-to-r from-orange-500 to-orange-400 px-5 sm:px-8 py-5 sm:py-6">
+            <h2 className="text-xl sm:text-2xl font-bold text-white text-center">
               Razorpay KYC Details
             </h2>
-
-            <p className="text-orange-100 text-center mt-2 text-sm sm:text-base">
+            <p className="text-orange-100 text-center mt-1.5 text-sm">
               Complete your bank & UPI details for receiving payments
             </p>
           </div>
@@ -278,18 +524,21 @@ const RazorpayKYC = () => {
                       label: "Business Type",
                       value: form.businessType,
                     },
-
                     {
-                      label: "IFSC Code",
-                      value: form.ifsc,
+                      label: "Bank Name",
+                      value: form.bankName,
+                    },
+                    {
+                      label: "Beneficiary Name",
+                      value: form.beneficiaryName,
                     },
                     {
                       label: "Account Number",
                       value: form.accountNumber,
                     },
                     {
-                      label: "Beneficiary Name",
-                      value: form.beneficiaryName,
+                      label: "IFSC Code",
+                      value: form.ifsc,
                     },
                     {
                       label: "UPI ID",
@@ -383,21 +632,6 @@ const RazorpayKYC = () => {
                       </div>
                     </div>
 
-                    {/* BENEFICIARY NAME */}
-                    <div className="md:col-span-2">
-                      <label className="block mb-2 text-sm font-medium">
-                        Bank Beneficiary Name
-                      </label>
-
-                      <input
-                        type="text"
-                        name="beneficiaryName"
-                        value={form.beneficiaryName}
-                        onChange={handleChange}
-                        className={inputClass}
-                        placeholder="Enter beneficiary name"
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -464,25 +698,70 @@ const RazorpayKYC = () => {
                 {/* =====================================================
    BANK ACCOUNT DETAILS
 ===================================================== */}
-                <div className="mb-8 border-t pt-8">
-                  <h3 className="text-lg sm:text-xl font-bold mb-5 flex items-center gap-2">
+                <motion.div
+                  variants={fadeUp}
+                  initial="hidden"
+                  animate="show"
+                  className="mb-8 border-t pt-8"
+                >
+                  <h3 className="text-lg sm:text-xl font-bold mb-2 flex items-center gap-2">
                     <Landmark className="text-orange-500" />
                     Bank Account Details
                   </h3>
+                  <p className="text-xs sm:text-sm text-gray-500 mb-5">
+                    Enter details in this order: bank → beneficiary → account → IFSC
+                  </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* ACCOUNT NUMBER */}
+                  <div className="grid grid-cols-1 gap-4">
                     <div>
                       <label className="block mb-2 text-sm font-medium">
-                        Bank Account Number
+                        1. Bank Name
                       </label>
+                      <div className="relative">
+                        <Landmark
+                          size={18}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                        <input
+                          type="text"
+                          name="bankName"
+                          value={form.bankName}
+                          onChange={handleChange}
+                          className={`${inputClass} pl-10`}
+                          placeholder="e.g. State Bank of India"
+                        />
+                      </div>
+                    </div>
 
+                    <div>
+                      <label className="block mb-2 text-sm font-medium">
+                        2. Beneficiary Name
+                      </label>
+                      <div className="relative">
+                        <User
+                          size={18}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                        <input
+                          type="text"
+                          name="beneficiaryName"
+                          value={form.beneficiaryName}
+                          onChange={handleChange}
+                          className={`${inputClass} pl-10`}
+                          placeholder="Name as per bank account"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block mb-2 text-sm font-medium">
+                        3. Account Number
+                      </label>
                       <div className="relative">
                         <CreditCard
                           size={18}
                           className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                         />
-
                         <input
                           type="text"
                           inputMode="numeric"
@@ -495,52 +774,96 @@ const RazorpayKYC = () => {
                       </div>
                     </div>
 
-                    {/* CONFIRM ACCOUNT NUMBER */}
                     <div>
                       <label className="block mb-2 text-sm font-medium">
-                        Confirm Account Number
+                        4. Re-enter Bank Account Number
                       </label>
-
                       <div className="relative">
                         <CreditCard
                           size={18}
                           className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
                         />
-
                         <input
                           type="text"
                           inputMode="numeric"
                           name="confirmAccountNumber"
                           value={form.confirmAccountNumber}
                           onChange={handleChange}
-                          className={`${inputClass} pl-10`}
+                          className={`${inputClass} pl-10 ${
+                            form.confirmAccountNumber &&
+                            form.accountNumber !== form.confirmAccountNumber
+                              ? "border-red-400"
+                              : form.confirmAccountNumber &&
+                                  form.accountNumber === form.confirmAccountNumber
+                                ? "border-green-400"
+                                : ""
+                          }`}
                           placeholder="Re-enter account number"
                         />
                       </div>
+                      {form.confirmAccountNumber ? (
+                        <p
+                          className={`mt-1.5 text-xs font-medium ${
+                            form.accountNumber === form.confirmAccountNumber
+                              ? "text-green-600"
+                              : "text-red-500"
+                          }`}
+                        >
+                          {form.accountNumber === form.confirmAccountNumber
+                            ? "Account numbers match"
+                            : "Account numbers do not match"}
+                        </p>
+                      ) : null}
                     </div>
 
-                    {/* IFSC */}
-                    <div className="md:col-span-2">
+                    <div>
                       <label className="block mb-2 text-sm font-medium">
-                        IFSC Code
+                        5. IFSC Code
                       </label>
-
-                      <input
-                        type="text"
-                        name="ifsc"
-                        value={form.ifsc}
-                        onChange={(e) =>
-                          setForm({
-                            ...form,
-                            ifsc: e.target.value.toUpperCase(),
-                          })
-                        }
-                        className={inputClass}
-                        placeholder="Enter IFSC code"
-                      />
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          name="ifsc"
+                          value={form.ifsc}
+                          onChange={handleChange}
+                          className={`${inputClass} uppercase tracking-wide`}
+                          placeholder="e.g. SBIN0001234"
+                          maxLength={11}
+                        />
+                        <button
+                          type="button"
+                          onClick={lookupIfsc}
+                          disabled={ifscLoading || form.ifsc.length !== 11}
+                          className="min-h-[48px] sm:w-40 shrink-0 rounded-xl bg-orange-500 text-white font-semibold text-sm disabled:bg-gray-300 inline-flex items-center justify-center gap-1.5"
+                        >
+                          <Search size={15} />
+                          {ifscLoading ? "Checking..." : "Verify IFSC"}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        11 characters. Added last so we can confirm your bank.
+                      </p>
+                      {ifscError ? (
+                        <p className="mt-1.5 text-xs text-red-500 flex items-center gap-1">
+                          <AlertCircle size={12} />
+                          {ifscError}
+                        </p>
+                      ) : null}
+                      {ifscInfo ? (
+                        <div className="mt-2 rounded-xl bg-green-50 border border-green-200 px-3 py-2.5 text-sm text-green-800">
+                          <p className="font-semibold flex items-center gap-1">
+                            <Check size={14} />
+                            {ifscInfo.bank}
+                          </p>
+                          <p className="text-xs mt-0.5">
+                            {ifscInfo.branch}
+                            {ifscInfo.city ? ` · ${ifscInfo.city}` : ""}
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-                </div>
+                </motion.div>
 
                 {/* =====================================================
                    UPI SECTION
@@ -644,22 +967,34 @@ const RazorpayKYC = () => {
       </div>
       {/* PAYMENT CHARGES MODAL */}
       {showChargesModal && (
-        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl max-h-[90vh] overflow-hidden">
+        <div
+          className="fixed inset-0 z-[10050] bg-black/55 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setShowChargesModal(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="bg-white w-full max-w-2xl rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[min(90dvh,880px)] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mt-3 sm:hidden shrink-0" />
             {/* Header */}
-            <div className="bg-red-600 text-white px-5 py-4 flex justify-between items-center">
-              <h3 className="font-bold text-lg">Payment Charges Information</h3>
-
+            <div className="bg-red-600 text-white px-5 py-4 flex justify-between items-center shrink-0">
+              <h3 className="font-bold text-base sm:text-lg">
+                Payment charges
+              </h3>
               <button
+                type="button"
                 onClick={() => setShowChargesModal(false)}
-                className="text-2xl leading-none"
+                className="h-9 w-9 rounded-full bg-white/15 flex items-center justify-center text-xl leading-none"
+                aria-label="Close"
               >
                 ×
               </button>
             </div>
 
             {/* Content */}
-            <div className="overflow-y-auto max-h-[70vh] p-5 space-y-5 text-sm">
+            <div className="overflow-y-auto overscroll-contain flex-1 min-h-0 p-5 space-y-5 text-sm">
               <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                 <h4 className="font-bold text-green-700 mb-2">
                   1. Pay Using Your Business UPI QR Code
@@ -743,10 +1078,11 @@ const RazorpayKYC = () => {
             </div>
 
             {/* Footer */}
-            <div className="border-t p-4 bg-gray-50">
+            <div className="border-t p-4 bg-gray-50 shrink-0 pb-[max(12px,env(safe-area-inset-bottom))]">
               <button
+                type="button"
                 onClick={() => setShowChargesModal(false)}
-                className="w-full h-11 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
+                className="w-full min-h-[48px] rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold"
               >
                 I Understand
               </button>

@@ -10,7 +10,12 @@ import {
   ArrowLeft,
   Loader2,
   CheckCircle2,
+  MapPin,
+  Shield,
+  Upload,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { getCurrentUserLocation } from "../utils/location";
 export default function TrainerSignup() {
   const navigate = useNavigate();
   const categories = [
@@ -375,9 +380,15 @@ export default function TrainerSignup() {
       updatedValue = value.replace(/\D/g, "");
     }
 
-    // Phone → only 10 digits
+    // Phone → Indian 10-digit mobile (strip +91 / 0)
     if (name === "phoneNumber") {
-      updatedValue = value.replace(/\D/g, "").slice(0, 10);
+      let digits = String(value).replace(/\D/g, "");
+      if (digits.startsWith("91") && digits.length >= 12) {
+        digits = digits.slice(2);
+      } else if (digits.startsWith("0") && digits.length === 11) {
+        digits = digits.slice(1);
+      }
+      updatedValue = digits.slice(0, 10);
     }
 
     // Account Number → only numbers
@@ -560,7 +571,9 @@ export default function TrainerSignup() {
       if (!formData.phoneNumber)
         newErrors.phoneNumber = "Phone number is required";
       else if (formData.phoneNumber.length !== 10)
-        newErrors.phoneNumber = "Enter valid 10 digit number";
+        newErrors.phoneNumber = "Enter a 10-digit mobile number";
+      else if (!/^[6-9]\d{9}$/.test(formData.phoneNumber))
+        newErrors.phoneNumber = "Enter a valid Indian mobile number";
 
       if (!formData.email) newErrors.email = "Email is required";
       else if (!/\S+@\S+\.\S+/.test(formData.email))
@@ -695,7 +708,72 @@ export default function TrainerSignup() {
   };
 
   const inputClass =
-    "h-11 px-3 border border-orange-400 rounded-md bg-white focus:bg-white outline-none focus:border-2 focus:border-orange-500";
+    "h-12 px-4 border border-orange-300 rounded-xl bg-white outline-none focus:border-2 focus:border-orange-500 transition-all";
+
+  const LOCATION_WAIT_MESSAGES = [
+    "Please wait, fetching your location…",
+    "Asking for GPS permission…",
+    "Finding you on the map…",
+    "Filling city and state…",
+  ];
+
+  const [fetchingLocation, setFetchingLocation] = useState(false);
+  const [locationWaitText, setLocationWaitText] = useState(
+    LOCATION_WAIT_MESSAGES[0],
+  );
+  const [locationError, setLocationError] = useState("");
+
+  useEffect(() => {
+    if (!fetchingLocation) return;
+    setLocationWaitText(LOCATION_WAIT_MESSAGES[0]);
+    let i = 0;
+    const interval = setInterval(() => {
+      i = (i + 1) % LOCATION_WAIT_MESSAGES.length;
+      setLocationWaitText(LOCATION_WAIT_MESSAGES[i]);
+    }, 1600);
+    return () => clearInterval(interval);
+  }, [fetchingLocation]);
+
+  const handleFetchLocation = async () => {
+    setLocationError("");
+    setFetchingLocation(true);
+    try {
+      const coords = await getCurrentUserLocation();
+      if (!coords?.lat || !coords?.lng) {
+        setLocationError(
+          "We couldn’t access your location. Allow location access, or type city and state.",
+        );
+        return;
+      }
+      const { lat, lng } = coords;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`,
+        { headers: { "Accept-Language": "en" } },
+      );
+      const data = await response.json();
+      const address = data.address || {};
+      setFormData((prev) => ({
+        ...prev,
+        city:
+          address.city ||
+          address.town ||
+          address.village ||
+          address.county ||
+          prev.city,
+        state: address.state || prev.state,
+        locationName: data.display_name || prev.locationName,
+        latitude: String(lat),
+        longitude: String(lng),
+      }));
+    } catch (error) {
+      console.error(error);
+      setLocationError(
+        "Could not fetch location. Please enter city and state manually.",
+      );
+    } finally {
+      setFetchingLocation(false);
+    }
+  };
 
   // ⬇️ return ( … UI continues here )
 
@@ -759,8 +837,8 @@ export default function TrainerSignup() {
         </div>
       )}
 
-      <div className="min-h-screen flex justify-center bg-white py-4 sm:py-6 md:py-10 overflow-x-hidden">
-        <div className="w-full max-w-6xl mx-auto px-3 sm:px-6 md:px-8 lg:px-12 rounded-md mt-2 sm:mt-4 mb-6 sm:mb-10 overflow-hidden">
+      <div className="min-h-screen flex justify-center bg-[#FAFAFA] py-4 sm:py-6 md:py-10 overflow-x-hidden">
+        <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 md:px-8 rounded-md mt-1 sm:mt-4 mb-8 sm:mb-10">
           {/* HEADER */}
           <button
             onClick={() => navigate(-1)}
@@ -771,14 +849,14 @@ export default function TrainerSignup() {
           </button>
 
           {/* HEADER SECTION */}
-          <div className="flex flex-col md:flex-row items-center justify-between mb-6 sm:mb-10 gap-4 sm:gap-6">
+          <div className="bg-white border border-orange-100 rounded-3xl p-4 sm:p-6 shadow-sm mb-6 sm:mb-8 flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6">
             {/* LEFT : Upload Profile */}
             <div className="flex flex-col items-center mt-2 sm:mt-6">
               <div className="flex flex-col items-center mt-2 sm:mt-6">
                 <div className="relative">
                   <div
                     onClick={() => profileInputRef.current.click()}
-                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-orange-200 flex items-center justify-center cursor-pointer overflow-hidden"
+                    className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-orange-200 flex items-center justify-center cursor-pointer overflow-hidden ring-4 ring-orange-50"
                   >
                     {profilePreview ? (
                       <img
@@ -838,11 +916,16 @@ export default function TrainerSignup() {
             {/* CENTER */}
             <div className="flex-1 flex flex-col items-center w-full">
               <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-500 text-center break-words px-2">
-                Trainer’s Registration
+                Trainer Registration
               </h2>
+              <p className="text-xs sm:text-sm text-gray-500 text-center mt-1">
+                {step === 1
+                  ? "Tell us about you and your coaching"
+                  : "Contact details and login"}
+              </p>
 
-              <p className="text-sm sm:text-md text-center mt-4 sm:mt-6">
-                Step {step} to 2
+              <p className="text-sm sm:text-md text-center mt-3 sm:mt-4 font-medium text-gray-700">
+                Step {step} of 2
               </p>
 
               {/* PROGRESS BARS */}
@@ -864,7 +947,12 @@ export default function TrainerSignup() {
 
           {/* STEP 1 */}
           {step === 1 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-2">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28 }}
+              className="bg-white border border-orange-100 rounded-3xl p-4 sm:p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-2"
+            >
               {[
                 ["First Name*", "firstName"],
                 ["Last Name*", "lastName"],
@@ -970,7 +1058,7 @@ export default function TrainerSignup() {
                   </button>
 
                   {showCategory && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-md max-h-48 overflow-y-auto">
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                       {categories.map((cat) => (
                         <div
                           key={cat}
@@ -1034,7 +1122,7 @@ export default function TrainerSignup() {
                   </button>
 
                   {showSubCategory && formData.category && (
-                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-md max-h-48 overflow-y-auto">
+                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                       {availableSubCategories.map((sub) => (
                         <div
                           key={sub}
@@ -1072,6 +1160,8 @@ export default function TrainerSignup() {
                   name="experience"
                   value={formData.experience}
                   onChange={handleChange}
+                  inputMode="numeric"
+                  placeholder="Years of experience"
                   className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
                     errors.experience ? "border-red-500" : ""
                   }`}
@@ -1104,13 +1194,10 @@ export default function TrainerSignup() {
                 <button
                   type="button"
                   onClick={() => certificateInputRef.current.click()}
-                  className="absolute right-3 top-[38px] sm:top-[36px]"
+                  className="absolute right-3 top-[38px] sm:top-[36px] w-9 h-9 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center"
+                  aria-label="Upload certification"
                 >
-                  <img
-                    src="/upload.png"
-                    alt="upload"
-                    className="w-5 h-5 sm:w-6 sm:h-6 cursor-pointer"
-                  />
+                  <Upload size={16} />
                 </button>
 
                 <input
@@ -1126,7 +1213,7 @@ export default function TrainerSignup() {
                   Upload certification or licence images (1–3 only)
                 </p>
                 {certifications.length > 0 && (
-                  <div className="grid grid-cols-3 gap-3 mt-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
                     {certifications.map((file, index) => (
                       <div key={index} className="relative">
                         <img
@@ -1153,33 +1240,75 @@ export default function TrainerSignup() {
                   </p>
                 )}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* STEP 2 */}
           {step === 2 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-6 sm:mt-8">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28 }}
+              className="bg-white border border-orange-100 rounded-3xl p-4 sm:p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-2"
+            >
               {/* PHONE */}
               <div className="flex flex-col">
                 <label className="text-sm font-semibold mb-2 break-words">
-                  Add Phone Number*
+                  Phone Number*
                 </label>
-
-                <input
-                  name="phoneNumber"
-                  value={formData.phoneNumber}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  onChange={handleChange}
-                  maxLength={10}
-                  className={`${inputClass} w-full min-w-0 text-sm sm:text-base ${
-                    errors.phoneNumber ? "border-red-500" : ""
+                <div
+                  className={`flex items-center h-12 rounded-xl border bg-white overflow-hidden ${
+                    errors.phoneNumber
+                      ? "border-red-500"
+                      : "border-orange-300 focus-within:border-2 focus-within:border-orange-500"
                   }`}
-                />
-
+                >
+                  <span className="shrink-0 pl-3 pr-2 text-sm font-semibold text-gray-600 border-r border-orange-200">
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    name="phoneNumber"
+                    value={formData.phoneNumber}
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    maxLength={10}
+                    placeholder="9876543210"
+                    onChange={handleChange}
+                    className="flex-1 min-w-0 h-full px-3 outline-none bg-transparent text-base"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  {formData.phoneNumber.length}/10 digits
+                </p>
                 {errors.phoneNumber && (
                   <p className="text-red-500 text-xs mt-1 break-words">
                     {errors.phoneNumber}
+                  </p>
+                )}
+              </div>
+
+              <div className="md:col-span-2 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={handleFetchLocation}
+                  disabled={fetchingLocation}
+                  className="inline-flex items-center justify-center gap-2 min-h-[44px] bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-70 w-full sm:w-auto sm:self-start"
+                >
+                  <MapPin size={16} />
+                  {fetchingLocation
+                    ? "Fetching location…"
+                    : "Use current location"}
+                </button>
+                {locationError && (
+                  <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                    {locationError}
+                  </p>
+                )}
+                {formData.latitude && (
+                  <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                    Location saved · {formData.city || "City"}
+                    {formData.state ? `, ${formData.state}` : ""}
                   </p>
                 )}
               </div>
@@ -1237,6 +1366,8 @@ export default function TrainerSignup() {
                 <input
                   type="email"
                   name="email"
+                  value={formData.email}
+                  autoComplete="email"
                   onChange={handleChange}
                   className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
                 />
@@ -1257,6 +1388,8 @@ export default function TrainerSignup() {
                 <input
                   type="password"
                   name="password"
+                  value={formData.password}
+                  autoComplete="new-password"
                   onChange={handleChange}
                   className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
                 />
@@ -1277,6 +1410,8 @@ export default function TrainerSignup() {
                 <input
                   type="password"
                   name="confirmPassword"
+                  value={formData.confirmPassword}
+                  autoComplete="new-password"
                   onChange={handleChange}
                   className={`${inputClass} w-full min-w-0 text-sm sm:text-base`}
                 />
@@ -1290,7 +1425,7 @@ export default function TrainerSignup() {
 
               {/* LOGIN */}
               <div className="col-span-1 md:col-span-2 text-sm mt-2 break-words">
-                Already Have an Account ?{" "}
+                Already have an account?{" "}
                 <span
                   className="text-orange-500 cursor-pointer font-medium"
                   onClick={() => navigate("/login")}
@@ -1298,18 +1433,16 @@ export default function TrainerSignup() {
                   Login
                 </span>
               </div>
-            </div>
+            </motion.div>
           )}
 
-          <div className="h-14 sm:h-24"></div>
-
           {/* AGREEMENT */}
-          <div className="flex items-start gap-2 text-xs sm:text-sm text-gray-700 mt-4 leading-relaxed">
+          <div className="flex items-start gap-3 text-xs sm:text-sm text-gray-700 mt-5 leading-relaxed bg-white border border-orange-100 rounded-2xl p-4">
             <input
               type="checkbox"
               checked={agreed}
               onChange={(e) => setAgreed(e.target.checked)}
-              className="mt-1 flex-shrink-0"
+              className="mt-1 flex-shrink-0 w-4 h-4 accent-orange-500"
             />
 
             <p className="break-words">
@@ -1346,10 +1479,10 @@ export default function TrainerSignup() {
           )}
 
           {/* BUTTONS */}
-          <div className="flex flex-wrap justify-end gap-3 sm:gap-6 mt-6">
+          <div className="sticky bottom-0 z-20 -mx-4 sm:mx-0 mt-6 bg-white/95 backdrop-blur border-t border-orange-100 px-4 py-3 sm:static sm:bg-transparent sm:border-0 sm:p-0 flex flex-col-reverse sm:flex-row sm:justify-end gap-3 sm:gap-4 pb-[max(12px,env(safe-area-inset-bottom))] sm:pb-0">
             <button
               onClick={handleBack}
-              className="text-orange-500 font-medium text-sm sm:text-base whitespace-nowrap"
+              className="min-h-[44px] text-orange-500 font-semibold text-sm sm:text-base"
             >
               Back
             </button>
@@ -1357,7 +1490,7 @@ export default function TrainerSignup() {
             {step < 2 && (
               <button
                 onClick={handleNext}
-                className="bg-orange-500 text-white px-6 sm:px-8 py-2 rounded-md font-semibold text-sm sm:text-base whitespace-nowrap"
+                className="min-h-[44px] bg-orange-500 text-white px-8 py-2.5 rounded-xl font-semibold text-sm sm:text-base hover:bg-orange-600"
               >
                 Next
               </button>
@@ -1368,7 +1501,7 @@ export default function TrainerSignup() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={!agreed || loading}
-                className={`bg-orange-500 text-white px-6 sm:px-8 py-2 rounded-md font-semibold text-sm sm:text-base whitespace-nowrap
+                className={`min-h-[44px] bg-orange-500 text-white px-8 py-2.5 rounded-xl font-semibold text-sm sm:text-base
               ${
                 loading
                   ? "opacity-50 cursor-not-allowed"
@@ -1376,7 +1509,7 @@ export default function TrainerSignup() {
               }`}
               >
                 {loading ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center gap-2">
                     <Loader2 size={18} className="animate-spin" />
                     Creating...
                   </div>
@@ -1388,6 +1521,51 @@ export default function TrainerSignup() {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {fetchingLocation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-[#1a1208]/55 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 280, damping: 24 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 flex flex-col items-center text-center"
+            >
+              <div className="relative w-20 h-20">
+                <div className="absolute inset-0 rounded-full border-4 border-orange-100" />
+                <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-orange-500 animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <MapPin className="text-orange-500" size={28} />
+                </div>
+              </div>
+              <h2 className="mt-6 text-xl font-bold text-gray-800">
+                Please wait
+              </h2>
+              <p className="text-sm text-gray-500 mt-2 min-h-[40px]">
+                {locationWaitText}
+              </p>
+              <div className="w-full h-2 bg-gray-100 rounded-full mt-5 overflow-hidden">
+                <motion.div
+                  className="h-full bg-orange-500 rounded-full"
+                  initial={{ width: "18%" }}
+                  animate={{ width: ["18%", "78%", "42%", "88%"] }}
+                  transition={{ duration: 4.5, repeat: Infinity }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-4 flex items-center gap-1.5">
+                <Shield size={12} />
+                Used only to fill your city and state
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

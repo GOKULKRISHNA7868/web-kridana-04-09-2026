@@ -41,6 +41,19 @@ import { useSelectedStudent } from "../../context/SelectedStudentContext";
 import UserDashboardPage from "../UserDashboard/UserDashboard";
 import FitnessDashboard from "../../pages/Fitness/FitnessDashboard";
 import { FaChevronLeft } from "react-icons/fa";
+import InstituteTrainerHome from "./InstituteTrainerHome";
+import InstituteTrainerAttendance from "./InstituteTrainerAttendance";
+import InstituteStaffStudentAttendance from "./InstituteStaffStudentAttendance";
+import InstituteStaffAddStudent from "./InstituteStaffAddStudent";
+import InstituteStaffTimetable from "./InstituteStaffTimetable";
+import InstituteStaffProfile from "./InstituteStaffProfile";
+import DailyBill from "../InstituteDashboard/DailyBill";
+import InstituteFeesDetailsPage from "../InstituteDashboard/FeesDetailsPage";
+import {
+  normalizeTrainerAccess,
+  trainerDisplayName,
+  actorFromStaff,
+} from "../../utils/trainerAccess";
 /* ============================= 
    SIDEBAR ITEMS
 ============================= */
@@ -52,14 +65,7 @@ const studentSidebarItems = [
   "Fees Details",
 ];
 
-const trainerSidebarItems = [
-  "CheckinCheckout",
-  "Trainer's Timetables",
-  "My Attendance",
-  "Payslips",
-  "Take Attendance",
-  "Log Out",
-];
+const trainerSidebarItems = ["StaffHome", "StaffMyAttendance"];
 
 const trainerStudentSidebarItems = [
   "TrainerDashboard",
@@ -118,6 +124,8 @@ const UserDashboard = () => {
   const [showDeletedSuccess, setShowDeletedSuccess] = useState(false);
   const [familyStudentDetails, setFamilyStudentDetails] = useState([]);
   const [selectedStudentRole, setSelectedStudentRole] = useState(null);
+  const [staffProfile, setStaffProfile] = useState(null);
+  const [staffAccess, setStaffAccess] = useState(normalizeTrainerAccess());
   /* ============================= 
      AUTO LOGOUT (5 MIN)
   ============================= */
@@ -234,6 +242,9 @@ const UserDashboard = () => {
 
       const trainerSnap = await getDoc(doc(db, "InstituteTrainers", user.uid));
       if (trainerSnap.exists()) {
+        const data = { trainerUid: user.uid, ...trainerSnap.data() };
+        setStaffProfile(data);
+        setStaffAccess(normalizeTrainerAccess(data.access));
         setRole("trainer");
         setRoleLoading(false);
         return;
@@ -282,6 +293,16 @@ const UserDashboard = () => {
 
     detectRole();
   }, [user]);
+
+  useEffect(() => {
+    if (role !== "trainer" || !user?.uid) return undefined;
+    return onSnapshot(doc(db, "InstituteTrainers", user.uid), (snap) => {
+      if (!snap.exists()) return;
+      const data = { trainerUid: user.uid, ...snap.data() };
+      setStaffProfile(data);
+      setStaffAccess(normalizeTrainerAccess(data.access));
+    });
+  }, [role, user]);
 
   /* ============================= 
      FETCH DATA
@@ -362,7 +383,8 @@ const UserDashboard = () => {
 
     if (role === "student" || role === "family") setActiveMenu("Dashboard");
     else if (role === "trainerstudent") setActiveMenu("TrainerDashboard");
-    else setActiveMenu("UserDashboard"); // or whatever default for trainer/other
+    else if (role === "trainer") setActiveMenu("StaffHome");
+    else setActiveMenu("UserDashboard");
   }, [role]);
   /* ============================= 
      MAIN CONTENT RENDER
@@ -380,11 +402,75 @@ const UserDashboard = () => {
       case "Trainer's Timetables":
         return <TrainersTimetables />;
       case "Fees Details":
-        return <FeesDetailsPage />;
+        return (
+          <FeesDetailsPage
+            onBack={() => {
+              if (role === "student" || role === "family") {
+                setActiveMenu("Dashboard");
+              } else if (role === "trainerstudent") {
+                setActiveMenu("TrainerDashboard");
+              } else {
+                setActiveMenu("UserDashboard");
+              }
+            }}
+          />
+        );
       case "Take Attendance":
         return <TakeAttendance />;
       case "My Attendance":
         return <Myattendance />;
+      case "StaffHome":
+        return (
+          <InstituteTrainerHome
+            staffProfile={staffProfile}
+            access={staffAccess}
+            onOpen={setActiveMenu}
+          />
+        );
+      case "StaffMyAttendance":
+        return <InstituteTrainerAttendance staffProfile={staffProfile} />;
+      case "StaffStudentAttendance":
+        return staffAccess.studentAttendance ? (
+          <InstituteStaffStudentAttendance staffProfile={staffProfile} />
+        ) : (
+          <p className="text-sm text-gray-500">Access not granted.</p>
+        );
+      case "StaffAddStudent":
+        return staffAccess.addStudents ? (
+          <InstituteStaffAddStudent staffProfile={staffProfile} />
+        ) : (
+          <p className="text-sm text-gray-500">Access not granted.</p>
+        );
+      case "StaffTimetable":
+        return staffAccess.timetable ? (
+          <InstituteStaffTimetable staffProfile={staffProfile} />
+        ) : (
+          <p className="text-sm text-gray-500">Access not granted.</p>
+        );
+      case "StaffInstituteProfile":
+        return staffAccess.instituteProfile ? (
+          <InstituteStaffProfile staffProfile={staffProfile} />
+        ) : (
+          <p className="text-sm text-gray-500">Access not granted.</p>
+        );
+      case "StaffDailyBill":
+        return staffAccess.dailyBill ? (
+          <DailyBill
+            instituteId={staffProfile?.instituteId}
+            actor={actorFromStaff(staffProfile)}
+          />
+        ) : (
+          <p className="text-sm text-gray-500">Access not granted.</p>
+        );
+      case "StaffFees":
+        return staffAccess.fees ? (
+          <InstituteFeesDetailsPage
+            instituteId={staffProfile?.instituteId}
+            actor={actorFromStaff(staffProfile)}
+          />
+        ) : (
+          <p className="text-sm text-gray-500">Access not granted.</p>
+        );
       case "TrainerStudentAttendance":
         return <TrainerStudentAttendance studentUid={selectedStudentUid} />;
       case "Fee Details":
@@ -469,13 +555,21 @@ const UserDashboard = () => {
    SIDEBAR ITEMS BASED ON EFFECTIVE ROLE
 ============================= */
   const sidebarItems = React.useMemo(() => {
+    if (role === "trainer") {
+      const items = ["StaffHome", "StaffMyAttendance"];
+      if (staffAccess.studentAttendance) items.push("StaffStudentAttendance");
+      if (staffAccess.addStudents) items.push("StaffAddStudent");
+      if (staffAccess.timetable) items.push("StaffTimetable");
+      if (staffAccess.instituteProfile) items.push("StaffInstituteProfile");
+      if (staffAccess.dailyBill) items.push("StaffDailyBill");
+      if (staffAccess.fees) items.push("StaffFees");
+      return items;
+    }
     if (selectedStudentRole === "student") return studentSidebarItems;
     if (selectedStudentRole === "trainerstudent")
       return trainerStudentSidebarItems;
-    // fallback: logged-in user role
-    if (role === "trainer") return trainerSidebarItems;
     return otherUserSidebarItems;
-  }, [selectedStudentRole, role]);
+  }, [selectedStudentRole, role, staffAccess]);
   /* ============================= 
      LOADING SCREEN
   ============================= */
@@ -541,6 +635,14 @@ const UserDashboard = () => {
       CheckinCheckout: "Check In / Out",
       TrainerDashboard: "Dashboard",
       UserDashboard: "Dashboard",
+      StaffHome: "Dashboard",
+      StaffMyAttendance: "My Attendance",
+      StaffStudentAttendance: "Students Attendance",
+      StaffAddStudent: "Add Students",
+      StaffTimetable: "Time Table",
+      StaffInstituteProfile: "Academy Profile",
+      StaffDailyBill: "Daily Bill",
+      StaffFees: "Fee Details",
       "Trainer's Timetables": "Timetables",
       "Time Tables": "Timetables",
       "Time Table": "Timetable",
@@ -556,8 +658,14 @@ const UserDashboard = () => {
     "Dashboard",
     "UserDashboard",
     "TrainerDashboard",
+    "StaffHome",
+    "StaffStudentAttendance",
+    "StaffDailyBill",
+    "StaffFees",
+    "StaffInstituteProfile",
     "FitnessDashboard",
     "My Account",
+    "Fees Details",
   ];
   const isLockedMenu = lockedMenus.includes(activeMenu);
 
@@ -667,6 +775,16 @@ const UserDashboard = () => {
               </div>
             </div>
 
+            {role === "trainer" && staffProfile && (
+              <div className="bg-black rounded-2xl p-3 mb-4 text-white/80 text-xs">
+                <p className="text-orange-400 font-semibold">
+                  Academy trainer
+                </p>
+                <p className="truncate mt-1">
+                  {trainerDisplayName(staffProfile)}
+                </p>
+              </div>
+            )}
             {(role === "family" ||
               role === "trainerstudent" ||
               role === "student") &&

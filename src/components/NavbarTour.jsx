@@ -16,8 +16,21 @@ function isMobileViewport() {
 
 function shouldOfferTour() {
   if (hasCompletedNavbarTour()) return false;
-  // First install on device, or mobile browser first visit
   return Capacitor.isNativePlatform() || isMobileViewport();
+}
+
+function getNavbarBox() {
+  const navbar = document.getElementById("bottom-navbar");
+  if (!navbar) return null;
+  const rect = navbar.getBoundingClientRect();
+  if (rect.height < 40) return null;
+  return {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+    bottom: rect.bottom,
+  };
 }
 
 export default function NavbarTour({ enabled = true }) {
@@ -25,6 +38,7 @@ export default function NavbarTour({ enabled = true }) {
   const [active, setActive] = useState(false);
   const [step, setStep] = useState(0);
   const [spot, setSpot] = useState(null);
+  const [cardBottom, setCardBottom] = useState(72);
 
   const current = NAVBAR_TOUR_STEPS[step];
   const isLast = step >= NAVBAR_TOUR_STEPS.length - 1;
@@ -35,23 +49,42 @@ export default function NavbarTour({ enabled = true }) {
     setSpot(null);
   }, []);
 
-  const measureTarget = useCallback((targetId) => {
+  const layout = useCallback((targetId) => {
+    const nav = getNavbarBox();
+    const viewportH = window.innerHeight;
+    const navGap = nav ? Math.max(8, viewportH - nav.top + 8) : 12;
+    setCardBottom(navGap);
+
     if (!targetId) {
-      setSpot(null);
+      if (nav) {
+        setSpot({
+          top: nav.top + 4,
+          left: 8,
+          width: Math.max(40, nav.width - 16),
+          height: Math.max(48, nav.height - 8),
+          radius: 18,
+        });
+      } else {
+        setSpot(null);
+      }
       return;
     }
+
     const el = document.querySelector(`[data-tour-id="${targetId}"]`);
     if (!el) {
       setSpot(null);
       return;
     }
+
     const rect = el.getBoundingClientRect();
-    const pad = 8;
+    const padX = 4;
+    const padY = 3;
     setSpot({
-      top: Math.max(8, rect.top - pad),
-      left: Math.max(8, rect.left - pad),
-      width: rect.width + pad * 2,
-      height: rect.height + pad * 2,
+      top: Math.max(4, rect.top - padY),
+      left: Math.max(4, rect.left - padX),
+      width: rect.width + padX * 2,
+      height: rect.height + padY * 2,
+      radius: 14,
     });
   }, []);
 
@@ -65,20 +98,9 @@ export default function NavbarTour({ enabled = true }) {
       if (cancelled || hasCompletedNavbarTour()) return;
       if (!isMobileViewport()) return;
 
-      const navbar = document.getElementById("bottom-navbar");
-      if (!navbar) {
-        if (attempts++ < 8) setTimeout(tryStart, 250);
-        return;
-      }
-
-      const rect = navbar.getBoundingClientRect();
-      const visible =
-        rect.height > 40 &&
-        rect.bottom <= window.innerHeight + 2 &&
-        rect.top < window.innerHeight;
-
-      if (!visible) {
-        if (attempts++ < 8) setTimeout(tryStart, 300);
+      const nav = getNavbarBox();
+      if (!nav) {
+        if (attempts++ < 10) setTimeout(tryStart, 220);
         return;
       }
 
@@ -86,7 +108,7 @@ export default function NavbarTour({ enabled = true }) {
       setStep(0);
     };
 
-    const timer = setTimeout(tryStart, 650);
+    const timer = setTimeout(tryStart, 550);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -95,15 +117,15 @@ export default function NavbarTour({ enabled = true }) {
 
   useEffect(() => {
     if (!active) return undefined;
-    measureTarget(current?.target);
-    const onResize = () => measureTarget(current?.target);
+    layout(current?.target);
+    const onResize = () => layout(current?.target);
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
     };
-  }, [active, current?.target, measureTarget, step]);
+  }, [active, current?.target, layout, step]);
 
   useEffect(() => {
     if (!active) return undefined;
@@ -133,9 +155,8 @@ export default function NavbarTour({ enabled = true }) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: reduceMotion ? 0 : 0.2 }}
+          transition={{ duration: reduceMotion ? 0 : 0.18 }}
         >
-          {/* Dim layer with spotlight hole */}
           <svg className="absolute inset-0 w-full h-full" aria-hidden>
             <defs>
               <mask id="kridana-tour-mask">
@@ -146,8 +167,8 @@ export default function NavbarTour({ enabled = true }) {
                     y={spot.top}
                     width={spot.width}
                     height={spot.height}
-                    rx={16}
-                    ry={16}
+                    rx={spot.radius || 14}
+                    ry={spot.radius || 14}
                     fill="black"
                   />
                 )}
@@ -156,72 +177,68 @@ export default function NavbarTour({ enabled = true }) {
             <rect
               width="100%"
               height="100%"
-              fill="rgba(15, 8, 4, 0.72)"
+              fill="rgba(12, 8, 5, 0.62)"
               mask="url(#kridana-tour-mask)"
             />
           </svg>
 
-          {/* Spotlight ring */}
           {spot && (
             <motion.div
-              key={current.id}
-              initial={reduceMotion ? false : { opacity: 0, scale: 0.92 }}
+              key={`spot-${current.id}`}
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: reduceMotion ? 0 : 0.22, ease: "easeOut" }}
-              className="absolute pointer-events-none rounded-2xl ring-2 ring-[#FF6A00] shadow-[0_0_0_4px_rgba(255,106,0,0.25)]"
+              transition={{ duration: reduceMotion ? 0 : 0.18 }}
+              className="absolute pointer-events-none ring-2 ring-[#FF6A00] shadow-[0_0_0_3px_rgba(255,106,0,0.22)]"
               style={{
                 top: spot.top,
                 left: spot.left,
                 width: spot.width,
                 height: spot.height,
+                borderRadius: spot.radius || 14,
               }}
             />
           )}
 
-          {/* Tip card */}
           <motion.div
             key={`card-${current.id}`}
-            initial={reduceMotion ? false : { opacity: 0, y: 18 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.22, ease: "easeOut" }}
-            className="
-              absolute left-4 right-4
-              bottom-[calc(72px+env(safe-area-inset-bottom,0px))]
-              sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-full sm:max-w-sm
-            "
+            transition={{ duration: reduceMotion ? 0 : 0.18, ease: "easeOut" }}
+            className="absolute left-3 right-3"
+            style={{
+              bottom: cardBottom,
+              maxWidth: 380,
+              marginLeft: "auto",
+              marginRight: "auto",
+            }}
             role="dialog"
             aria-modal="true"
             aria-labelledby="navbar-tour-title"
           >
-            <div className="rounded-2xl bg-white shadow-[0_16px_48px_rgba(0,0,0,0.28)] border border-orange-100 overflow-hidden">
-              <div className="h-1 bg-gradient-to-r from-[#FF6A00] via-[#FF8F3C] to-[#FFB347]" />
-              <div className="p-4 sm:p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#FF6A00] mb-1.5">
-                      <Sparkles size={12} />
-                      Quick guide · {step + 1}/{NAVBAR_TOUR_STEPS.length}
-                    </div>
-                    <h2
-                      id="navbar-tour-title"
-                      className="text-lg font-bold text-gray-900 tracking-tight"
-                    >
-                      {current.title}
-                    </h2>
-                    <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">
-                      {current.body}
-                    </p>
-                  </div>
+            <div className="rounded-2xl bg-white border border-orange-100 shadow-[0_12px_32px_rgba(0,0,0,0.22)] overflow-hidden">
+              <div className="h-1 bg-gradient-to-r from-[#FF6A00] to-[#FFB347]" />
+              <div className="px-3.5 pt-3 pb-3">
+                <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-[#FF6A00] mb-1">
+                  <Sparkles size={11} />
+                  Kridana guide · {step + 1}/{NAVBAR_TOUR_STEPS.length}
                 </div>
+                <h2
+                  id="navbar-tour-title"
+                  className="text-[16px] font-bold text-gray-900 tracking-tight"
+                >
+                  {current.title}
+                </h2>
+                <p className="text-[13px] text-gray-600 mt-1 leading-snug">
+                  {current.body}
+                </p>
 
-                {/* Progress dots */}
-                <div className="flex items-center gap-1.5 mt-4 mb-4">
+                <div className="flex items-center gap-1 mt-3 mb-3">
                   {NAVBAR_TOUR_STEPS.map((s, i) => (
                     <span
                       key={s.id}
-                      className={`h-1.5 rounded-full transition-all duration-200 ${
+                      className={`h-1 rounded-full transition-all duration-200 ${
                         i === step
-                          ? "w-6 bg-[#FF6A00]"
+                          ? "w-5 bg-[#FF6A00]"
                           : i < step
                             ? "w-1.5 bg-orange-300"
                             : "w-1.5 bg-gray-200"
@@ -234,23 +251,17 @@ export default function NavbarTour({ enabled = true }) {
                   <button
                     type="button"
                     onClick={finish}
-                    className="px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:text-gray-700 active:scale-[0.98] transition"
+                    className="px-3 py-2 rounded-xl text-[13px] font-medium text-gray-500 active:scale-[0.98]"
                   >
                     Skip
                   </button>
                   <button
                     type="button"
                     onClick={goNext}
-                    className="
-                      flex-1 inline-flex items-center justify-center gap-1.5
-                      bg-[#FF6A00] hover:bg-[#e85f00] text-white
-                      py-2.5 rounded-xl text-sm font-bold
-                      shadow-[0_8px_20px_rgba(255,106,0,0.35)]
-                      active:scale-[0.98] transition
-                    "
+                    className="flex-1 inline-flex items-center justify-center gap-1 bg-[#FF6A00] text-white py-2.5 rounded-xl text-[13px] font-bold shadow-[0_6px_16px_rgba(255,106,0,0.32)] active:scale-[0.98]"
                   >
                     {isLast ? "Finish" : "Next"}
-                    {!isLast && <ChevronRight size={16} />}
+                    {!isLast && <ChevronRight size={15} />}
                   </button>
                 </div>
               </div>

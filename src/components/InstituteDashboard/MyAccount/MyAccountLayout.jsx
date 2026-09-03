@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../firebase";
 import { useAuth } from "../../../context/AuthContext";
+import { AccountScopeProvider } from "./AccountScopeContext";
+import { logStaffAction } from "../../../utils/trainerAccess";
 import {
   User,
   MapPin,
@@ -179,24 +181,58 @@ const getSectionMeta = (data = {}) => {
   };
 };
 
-const MyAccountLayout = () => {
+const MyAccountLayout = ({ instituteId: overrideId, actor = null } = {}) => {
   const { user } = useAuth();
+  const instituteId = overrideId || user?.uid;
   const [step, setStep] = useState(0);
   const [institute, setInstitute] = useState(null);
   const [kycDone, setKycDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [hubNotice, setHubNotice] = useState("");
+
+  const handleSectionSaved = async (label) => {
+    if (actor?.trainerUid && instituteId) {
+      try {
+        await updateDoc(doc(db, "institutes", instituteId), {
+          lastEditedBy: actor.trainerUid,
+          lastEditedByName: actor.name || "Trainer",
+          lastEditedByRole: "trainer",
+          lastEditedSection: label,
+          lastEditedAt: serverTimestamp(),
+        });
+        await logStaffAction({
+          instituteId,
+          trainerUid: actor.trainerUid,
+          trainerName: actor.name,
+          action: "profile_edit",
+          page: "Academy profile",
+          details: `Updated ${label}`,
+        });
+      } catch (error) {
+        console.error("Profile audit error:", error);
+      }
+      setHubNotice(
+        `${label} saved. The academy can see this was last updated by ${actor.name}.`,
+      );
+    } else {
+      setHubNotice(
+        `${label} saved. Open another section below to complete your profile.`,
+      );
+    }
+    setStep(0);
+  };
 
   useEffect(() => {
     const fetchInstitute = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
 
       try {
         const [instSnap, kycSnap] = await Promise.all([
-          getDoc(doc(db, "institutes", user.uid)),
-          getDoc(doc(db, "institutes", user.uid, "Kyc", "details")),
+          getDoc(doc(db, "institutes", instituteId)),
+          getDoc(doc(db, "institutes", instituteId, "Kyc", "details")),
         ]);
 
         setInstitute(instSnap.exists() ? instSnap.data() : {});
@@ -210,26 +246,41 @@ const MyAccountLayout = () => {
     };
 
     if (step === 0) fetchInstitute();
-  }, [user, step]);
+  }, [instituteId, step]);
 
   const meta = useMemo(() => getSectionMeta(institute || {}), [institute]);
 
   const renderStep = () => {
     switch (step) {
       case 1:
-        return <BasicInformation setStep={setStep} />;
+        return (
+          <BasicInformation setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 2:
-        return <LocationAccessibility setStep={setStep} />;
+        return (
+          <LocationAccessibility setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 3:
-        return <AchievementsTrack setStep={setStep} />;
+        return (
+          <AchievementsTrack setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 4:
-        return <TrainingProgram setStep={setStep} />;
+        return (
+          <TrainingProgram setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 5:
-        return <PricingTransparency setStep={setStep} />;
+        return (
+          <PricingTransparency setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 6:
-        return <FacilitiesInfrastructure setStep={setStep} />;
+        return (
+          <FacilitiesInfrastructure
+            setStep={setStep}
+            onSaved={handleSectionSaved}
+          />
+        );
       case 7:
-        return <MediaGallery setStep={setStep} />;
+        return <MediaGallery setStep={setStep} onSaved={handleSectionSaved} />;
       case 8:
         return <ProfilePreview setStep={setStep} />;
       default:
@@ -239,11 +290,13 @@ const MyAccountLayout = () => {
 
   if (step !== 0) {
     return (
-      <AccountPageShell fill>
-        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
-          {renderStep()}
-        </div>
-      </AccountPageShell>
+      <AccountScopeProvider instituteId={instituteId} actor={actor}>
+        <AccountPageShell fill>
+          <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+            {renderStep()}
+          </div>
+        </AccountPageShell>
+      </AccountScopeProvider>
     );
   }
 
@@ -254,11 +307,50 @@ const MyAccountLayout = () => {
     "Add your location";
 
   return (
+    <AccountScopeProvider instituteId={instituteId} actor={actor}>
     <AccountPageShell fill>
       {loading ? (
         <p className="text-gray-500 text-sm py-10 text-center">Loading account...</p>
       ) : (
         <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pb-2">
+          {hubNotice && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <CheckCircle2
+                  size={18}
+                  className="text-emerald-600 mt-0.5 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-emerald-800 text-sm">
+                    {hubNotice}
+                  </p>
+                  {(() => {
+                    const nextItem = meta.items.find(
+                      (item) =>
+                        item.id !== 8 && item.statusType !== "complete",
+                    );
+                    return nextItem ? (
+                      <button
+                        type="button"
+                        onClick={() => setStep(nextItem.id)}
+                        className="mt-2 min-h-[40px] px-3 rounded-xl bg-orange-500 text-white text-sm font-semibold"
+                      >
+                        Continue with {nextItem.title}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setStep(8)}
+                        className="mt-2 min-h-[40px] px-3 rounded-xl bg-orange-500 text-white text-sm font-semibold"
+                      >
+                        Preview public profile
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="bg-orange-500 rounded-2xl p-4 sm:p-5 text-white shadow-sm">
             <div className="flex items-start gap-3">
               {institute?.profileImageUrl ? (
@@ -289,6 +381,19 @@ const MyAccountLayout = () => {
                   <MapPin size={13} />
                   <span className="truncate">{locationLabel}</span>
                 </p>
+                {actor && (
+                  <p className="text-[11px] text-white/80 mt-2">
+                    Editing as {actor.name}. The academy can see your last save.
+                  </p>
+                )}
+                {institute?.lastEditedByName && (
+                  <p className="text-[11px] text-white/80 mt-1">
+                    Last saved by {institute.lastEditedByName}
+                    {institute.lastEditedSection
+                      ? ` · ${institute.lastEditedSection}`
+                      : ""}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -357,6 +462,7 @@ const MyAccountLayout = () => {
         </div>
       )}
     </AccountPageShell>
+    </AccountScopeProvider>
   );
 };
 

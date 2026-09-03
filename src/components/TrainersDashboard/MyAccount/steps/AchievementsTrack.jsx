@@ -6,7 +6,7 @@ import { useAuth } from "../../../../context/AuthContext";
 import { Trophy } from "lucide-react";
 import StepHeader from "../StepHeader";
 
-const AchievementsTrack = ({ setStep }) => {
+const AchievementsTrack = ({ setStep, onSaved }) => {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -179,7 +179,7 @@ const AchievementsTrack = ({ setStep }) => {
         { merge: true }, // ✅ safe
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Achievements & Trust");
     } catch (error) {
       console.error("Save Error:", error);
       alert("Error saving data");

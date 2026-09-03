@@ -459,7 +459,8 @@ const TrainersDashboard = () => {
     if (view === "Uploadimages") return <Uploadimages />;
     if (view === "myAccount") return <TrainerMyAccountLayout />;
     if (view === "KYC") return <KYC />;
-    if (view === "Dashboard") return <Dashboard />;
+    if (view === "Dashboard")
+      return <Dashboard setView={setView} />;
     if (view === "chatBox") return <ChatBox />;
     if (view === "timetable") return <Timetable />;
     if (view === "events")

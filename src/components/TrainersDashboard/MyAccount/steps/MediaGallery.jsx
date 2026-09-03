@@ -5,7 +5,7 @@ import { useAuth } from "../../../../context/AuthContext";
 import { Image as ImageIcon } from "lucide-react";
 import StepHeader from "../StepHeader";
 
-const MediaGallery = ({ setStep }) => {
+const MediaGallery = ({ setStep, onSaved }) => {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -136,7 +136,7 @@ const MediaGallery = ({ setStep }) => {
         { merge: true },
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Photos & Videos");
     } catch (error) {
       console.error("Error saving media gallery:", error);
       alert("Error saving data");

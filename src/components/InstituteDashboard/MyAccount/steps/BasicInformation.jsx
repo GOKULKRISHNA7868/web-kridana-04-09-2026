@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
-import { useAuth } from "../../../../context/AuthContext";
+import { useAccountScope } from "../AccountScopeContext";
 import { User, Camera } from "lucide-react";
 import StepHeader from "../StepHeader";
 import { CATEGORIES, SUB_CATEGORY_MAP } from "../sportCategories";
@@ -25,7 +25,7 @@ const fieldClass = (hasError) =>
   } bg-white px-4 py-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`;
 
 const INSTITUTE_SHORT_MAX = 200;
-const SPORT_DESC_MAX = 120;
+const SPORT_DESC_MAX = 2000;
 
 const emptyCategoryBlock = () => ({
   category: "",
@@ -59,8 +59,16 @@ const normalizeCategoryBlocks = (categories = {}, sportDetails = {}) => {
   });
 };
 
-const BasicInformation = ({ setStep }) => {
-  const { user } = useAuth();
+const normalizePhone = (value) => {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length > 10) {
+    digits = digits.slice(2);
+  }
+  return digits.slice(0, 10);
+};
+
+const BasicInformation = ({ setStep, onSaved }) => {
+  const { instituteId } = useAccountScope();
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -88,14 +96,14 @@ const BasicInformation = ({ setStep }) => {
   // LOAD EXISTING DATA
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
 
       try {
         // Dynamic instituteId
-        const instituteId = user.uid;
+        
 
         const docRef = doc(db, "institutes", instituteId);
         const docSnap = await getDoc(docRef);
@@ -114,7 +122,7 @@ const BasicInformation = ({ setStep }) => {
             tagline: data.designation || "",
             about: data.description || "",
             email: data.email || "",
-            phone: data.phoneNumber || "",
+            phone: normalizePhone(data.phoneNumber),
             website: data.websiteLink || "",
             countryCode: data.countryCode || "+91",
           });
@@ -149,7 +157,7 @@ const BasicInformation = ({ setStep }) => {
     };
 
     fetchData();
-  }, [user]);
+  }, [instituteId]);
   // HANDLE CHANGE
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -162,7 +170,13 @@ const BasicInformation = ({ setStep }) => {
     }
 
     if (name === "phone") {
-      newValue = newValue.replace(/[^0-9]/g, "").slice(0, 10);
+      newValue = normalizePhone(newValue);
+    }
+
+    if (name === "countryCode") {
+      setFormData((prev) => ({ ...prev, countryCode: value }));
+      setErrors((prev) => ({ ...prev, phone: "" }));
+      return;
     }
 
     if (name === "tagline") {
@@ -281,7 +295,7 @@ const BasicInformation = ({ setStep }) => {
   };
   // SAVE
   const handleSave = async () => {
-    if (!user?.uid) {
+    if (!instituteId) {
       alert("User not logged in");
       return;
     }
@@ -297,7 +311,7 @@ const BasicInformation = ({ setStep }) => {
       setSaving(true);
 
       // Dynamic instituteId
-      const instituteId = user.uid;
+      
       const docRef = doc(db, "institutes", instituteId);
 
       // Format categories for Firebase
@@ -344,7 +358,7 @@ const BasicInformation = ({ setStep }) => {
         { merge: true }, // keeps existing fields safe
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Basic Information");
     } catch (error) {
       console.error("Error saving:", error);
       alert("Error saving data");
@@ -539,12 +553,12 @@ const BasicInformation = ({ setStep }) => {
           <label className="text-sm font-medium text-gray-800 mb-1.5 block">
             Contact Number
           </label>
-          <div className="flex gap-2">
+          <div className="flex items-stretch gap-2">
             <select
               name="countryCode"
-              value={formData.countryCode}
+              value={formData.countryCode || "+91"}
               onChange={handleChange}
-              className={`${fieldClass(false)} w-[88px] shrink-0 px-2`}
+              className="h-12 w-[92px] shrink-0 rounded-xl border border-gray-200 bg-white px-2 text-sm font-semibold text-gray-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             >
               <option value="+91">+91</option>
               <option value="+1">+1</option>
@@ -552,15 +566,22 @@ const BasicInformation = ({ setStep }) => {
               <option value="+971">+971</option>
             </select>
             <input
+              type="tel"
               name="phone"
               value={formData.phone}
               onChange={handleChange}
               inputMode="numeric"
+              autoComplete="tel-national"
               maxLength={10}
-              className={fieldClass(errors.phone)}
-              placeholder="10-digit number"
+              className={`flex-1 min-w-0 min-h-[48px] text-base rounded-xl border ${
+                errors.phone ? "border-red-500" : "border-gray-200"
+              } bg-white px-4 py-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`}
+              placeholder="9876543210"
             />
           </div>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {formData.phone.length}/10 digits
+          </p>
         </div>
 
         <div>
@@ -735,7 +756,7 @@ const BasicInformation = ({ setStep }) => {
                           )
                         }
                         placeholder={`What students learn in ${sport.name}`}
-                        className={`${fieldClass(false)} min-h-[72px] resize-none bg-white`}
+                        className={`${fieldClass(false)} min-h-[140px] resize-y bg-white`}
                       />
                       <p className="text-[11px] text-gray-400 text-right mt-1">
                         {(sport.shortDescription || "").length}/{SPORT_DESC_MAX}

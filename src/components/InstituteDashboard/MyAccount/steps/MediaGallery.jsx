@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
-import { useAuth } from "../../../../context/AuthContext";
+import { useAccountScope } from "../AccountScopeContext";
 import { Image as ImageIcon } from "lucide-react";
 import StepHeader from "../StepHeader";
 
-const MediaGallery = ({ setStep }) => {
-  const { user } = useAuth();
+const MediaGallery = ({ setStep, onSaved }) => {
+  const { instituteId } = useAccountScope();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,7 +42,7 @@ const MediaGallery = ({ setStep }) => {
 
       if (uploadedUrls.length > 0) {
         // Save to Firestore in "reels" array (outside mediaGallery)
-        const docRef = doc(db, "institutes", user.uid);
+        const docRef = doc(db, "institutes", instituteId);
         const docSnap = await getDoc(docRef);
 
         const existingReels =
@@ -75,13 +75,13 @@ const MediaGallery = ({ setStep }) => {
   /* ================= LOAD DATA ================= */
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
 
       try {
-        const docRef = doc(db, "institutes", user.uid); // 🔥 dynamic institute
+        const docRef = doc(db, "institutes", instituteId); // 🔥 dynamic institute
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists() && docSnap.data()?.mediaGallery) {
@@ -102,7 +102,7 @@ const MediaGallery = ({ setStep }) => {
     };
 
     fetchData();
-  }, [user]);
+  }, [instituteId]);
 
   /* ================= CLOUDINARY UPLOAD ================= */
   const uploadToCloudinary = async (file, type, fieldName) => {
@@ -169,13 +169,13 @@ const MediaGallery = ({ setStep }) => {
 
   /* ================= SAVE ================= */
   const handleSave = async () => {
-    if (!user?.uid) return;
+    if (!instituteId) return;
 
     try {
       setSaving(true);
 
       await setDoc(
-        doc(db, "institutes", user.uid), // 🔥 dynamic institute
+        doc(db, "institutes", instituteId), // 🔥 dynamic institute
         {
           mediaGallery: {
             trainingImages: formData.trainingImages,
@@ -188,7 +188,7 @@ const MediaGallery = ({ setStep }) => {
         { merge: true },
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Photos & Videos");
     } catch (error) {
       console.error("Error saving:", error);
       alert("Error saving data");

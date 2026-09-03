@@ -180,6 +180,14 @@ const MyAccountLayout = () => {
   const [activity, setActivity] = useState({});
   const [kycDone, setKycDone] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [hubNotice, setHubNotice] = useState("");
+
+  const handleSectionSaved = (label) => {
+    setHubNotice(
+      `${label} saved. Open another section below to complete your profile.`,
+    );
+    setStep(0);
+  };
 
   useEffect(() => {
     const fetchTrainer = async () => {
@@ -217,19 +225,37 @@ const MyAccountLayout = () => {
   const renderStep = () => {
     switch (step) {
       case 1:
-        return <BasicInformation setStep={setStep} />;
+        return (
+          <BasicInformation setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 2:
-        return <LocationAccessibility setStep={setStep} />;
+        return (
+          <LocationAccessibility
+            setStep={setStep}
+            onSaved={handleSectionSaved}
+          />
+        );
       case 3:
-        return <AchievementsTrack setStep={setStep} />;
+        return (
+          <AchievementsTrack setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 4:
-        return <TrainingProgram setStep={setStep} />;
+        return (
+          <TrainingProgram setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 5:
-        return <PricingTransparency setStep={setStep} />;
+        return (
+          <PricingTransparency setStep={setStep} onSaved={handleSectionSaved} />
+        );
       case 6:
-        return <FacilitiesInfrastructure setStep={setStep} />;
+        return (
+          <FacilitiesInfrastructure
+            setStep={setStep}
+            onSaved={handleSectionSaved}
+          />
+        );
       case 7:
-        return <MediaGallery setStep={setStep} />;
+        return <MediaGallery setStep={setStep} onSaved={handleSectionSaved} />;
       case 8:
         return <ProfilePreview setStep={setStep} />;
       default:
@@ -238,7 +264,13 @@ const MyAccountLayout = () => {
   };
 
   if (step !== 0) {
-    return <AccountPageShell>{renderStep()}</AccountPageShell>;
+    return (
+      <AccountPageShell fill>
+        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+          {renderStep()}
+        </div>
+      </AccountPageShell>
+    );
   }
 
   const locationLabel =
@@ -253,13 +285,51 @@ const MyAccountLayout = () => {
     "Your Profile";
 
   return (
-    <AccountPageShell>
+    <AccountPageShell fill>
       {loading ? (
         <p className="text-gray-500 text-sm py-10 text-center">
           Loading account...
         </p>
       ) : (
-        <>
+        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pb-2">
+          {hubNotice && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <CheckCircle2
+                  size={18}
+                  className="text-emerald-600 mt-0.5 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-emerald-800 text-sm">
+                    {hubNotice}
+                  </p>
+                  {(() => {
+                    const nextItem = meta.items.find(
+                      (item) =>
+                        item.id !== 8 && item.statusType !== "complete",
+                    );
+                    return nextItem ? (
+                      <button
+                        type="button"
+                        onClick={() => setStep(nextItem.id)}
+                        className="mt-2 min-h-[40px] px-3 rounded-xl bg-orange-500 text-white text-sm font-semibold"
+                      >
+                        Continue with {nextItem.title}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setStep(8)}
+                        className="mt-2 min-h-[40px] px-3 rounded-xl bg-orange-500 text-white text-sm font-semibold"
+                      >
+                        Preview public profile
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="bg-orange-500 rounded-2xl p-4 sm:p-5 text-white shadow-sm">
             <div className="flex items-start gap-3">
               {trainer?.profileImageUrl ? (
@@ -357,7 +427,7 @@ const MyAccountLayout = () => {
               );
             })}
           </div>
-        </>
+        </div>
       )}
     </AccountPageShell>
   );

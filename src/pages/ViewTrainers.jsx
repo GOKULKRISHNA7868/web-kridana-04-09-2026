@@ -418,7 +418,7 @@ export default function ViewTrainers() {
   }
 
   return (
-    <div className="min-h-screen bg-white px-6 md:px-16 py-12">
+    <div className="min-h-screen bg-white px-4 sm:px-6 md:px-16 py-8 md:py-12 max-w-[1600px] mx-auto">
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-2 text-[#FF6A00] font-semibold mb-6"

@@ -12,7 +12,7 @@ const handleBack = () => navigate(-1);
   /* ================= EMPTY CART ================= */
   if (!cartItems || cartItems.length === 0) {
     return (
-      <div className="min-h-screen bg-white flex flex-col px-6 pt-3 pb-6">
+    <div className="min-h-screen bg-white flex flex-col px-6 pt-3 pb-6 max-w-5xl mx-auto w-full">
 
         {/* BACK (RIGHT) */}
         <div className="flex justify-start mb-6">
@@ -47,7 +47,7 @@ const handleBack = () => navigate(-1);
 
   /* ================= CART ================= */
   return (
-    <div className="min-h-screen bg-white flex flex-col px-6 pt-3 pb-6">
+    <div className="min-h-screen bg-white flex flex-col px-6 pt-3 pb-6 max-w-5xl mx-auto w-full">
 
       {/* BACK (RIGHT) */}
       <div className="flex justify-start mb-6">

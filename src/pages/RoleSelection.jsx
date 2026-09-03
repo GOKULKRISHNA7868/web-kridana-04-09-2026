@@ -129,7 +129,7 @@ export default function RoleSelection() {
       </motion.button>
 
       <div className="relative z-10 flex-1 flex items-center justify-center px-4 py-8 sm:py-10">
-        <div className="w-full max-w-md mx-auto">
+        <div className="w-full max-w-md md:max-w-5xl mx-auto">
           {/* Brand header */}
           <motion.div {...fadeUp(0)} className="text-center mb-7 sm:mb-8">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-orange-100 text-[11px] font-semibold tracking-wide mb-3">
@@ -149,7 +149,7 @@ export default function RoleSelection() {
           </motion.div>
 
           {/* Role cards */}
-          <div className="space-y-3">
+          <div className="space-y-3 md:grid md:grid-cols-3 md:gap-4 md:space-y-0 md:items-start">
             {roles.map((role, index) => {
               const Icon = role.icon;
               const isOpen = activeRole === role.id;

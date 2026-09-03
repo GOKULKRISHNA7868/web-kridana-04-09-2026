@@ -88,8 +88,8 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white p-8">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] p-4 sm:p-8">
+      <div className="w-full max-w-md lg:max-w-lg bg-white rounded-3xl shadow-sm border border-orange-100 p-5 sm:p-8">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-[#FF6A00] font-semibold mb-4 sm:mb-6 text-sm sm:text-base"

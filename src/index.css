@@ -353,11 +353,136 @@ body {
   justify-content: center;
   margin: 4px;
 }
+.kridana-cal .fc-timegrid-event-harness {
+  margin-right: 1px;
+}
+.kridana-cal .fc-list-event-title,
+.kridana-cal .fc-list-event-time {
+  font-size: 12px;
+}
 @media (max-width: 640px) {
   .kridana-cal .fc-col-header-cell {
     font-size: 10px;
   }
   .kridana-cal .fc-daygrid-day-number {
     font-size: 11px;
+  }
+  .kridana-cal .fc-timegrid-slot-label {
+    font-size: 10px;
+  }
+  .kridana-cal .fc-timegrid-axis-cushion {
+    padding: 0 2px;
+  }
+}
+
+@media (min-width: 768px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  .app-content {
+    width: 100%;
+    max-width: none;
+  }
+
+  img,
+  video {
+    max-width: 100%;
+  }
+
+  .web-page {
+    width: 100%;
+    max-width: 80rem;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  .dash-card:hover {
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+    border-color: rgba(255, 106, 0, 0.18);
+  }
+
+  .dash-card:active {
+    transform: none;
+  }
+
+  .landing-shell {
+    max-width: 80rem !important;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    color: #171717;
+  }
+
+  .landing-shell .text-gray-400,
+  .landing-shell .text-gray-500 {
+    color: #4b5563 !important;
+  }
+
+  .landing-shell .text-\[6px\],
+  .landing-shell .text-\[6\.5px\],
+  .landing-shell .text-\[7px\],
+  .landing-shell .text-\[7\.5px\],
+  .landing-shell .text-\[8px\],
+  .landing-shell .text-\[8\.5px\],
+  .landing-shell .text-\[9px\] {
+    font-size: 0.8125rem !important;
+    line-height: 1.35 !important;
+    color: #374151 !important;
+  }
+
+  .landing-shell .text-\[11px\] {
+    font-size: 1.25rem !important;
+    line-height: 1.35 !important;
+    color: #111827 !important;
+  }
+
+  .landing-shell .text-\[13px\] {
+    font-size: 1.125rem !important;
+    line-height: 1.6 !important;
+    color: #4b5563 !important;
+  }
+
+  .landing-shell .text-\[22px\] {
+    font-size: 3rem !important;
+    line-height: 1.12 !important;
+    color: #111827 !important;
+  }
+
+  .landing-shell .text-\[\#FF6A00\],
+  .landing-shell .text-\[\#FF6A00\] * {
+    color: #ff6a00 !important;
+  }
+
+  .landing-shell button .text-\[\#222\],
+  .landing-shell .text-\[\#222\],
+  .landing-shell .text-\[\#171717\] {
+    color: #171717 !important;
+  }
+
+  .landing-shell .max-w-\[320px\] {
+    max-width: 36rem !important;
+  }
+
+  .landing-shell .h-\[86px\] {
+    height: 8.5rem !important;
+  }
+
+  .landing-shell .h-\[22px\] {
+    height: 2.25rem !important;
+  }
+
+  .landing-shell .min-h-\[44px\] {
+    min-height: 3.25rem !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .landing-shell {
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
   }
 }

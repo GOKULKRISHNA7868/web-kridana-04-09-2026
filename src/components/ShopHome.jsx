@@ -140,7 +140,7 @@ const ShopHome = () => {
       </div>
 
       {/* categories */}
-      <section className="w-full px-4 mt-6">
+      <section className="w-full max-w-7xl mx-auto px-4 sm:px-6 mt-6">
         <div className="flex items-center gap-2">
           <button onClick={() => scrollCategories("left")} className="hidden sm:flex w-8 h-8 rounded-full bg-gray-100">
             ‹
@@ -152,7 +152,7 @@ const ShopHome = () => {
                 key={cat.id}
                 ref={idx === 0 ? firstCardRef : null}
                 onClick={() => handleCategoryClick(cat.category)}
-                className="relative w-52 h-20 rounded-xl overflow-hidden shadow-md bg-black flex-shrink-0 group cursor-pointer"
+                className="relative h-20 w-52 md:h-24 md:w-56 rounded-xl overflow-hidden shadow-md bg-black flex-shrink-0 group cursor-pointer"
               >
                 <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
                 <span className="absolute inset-0 flex items-center justify-center text-white font-semibold text-lg group-hover:text-orange-400">

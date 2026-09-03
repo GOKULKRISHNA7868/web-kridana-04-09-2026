@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../../firebase";
-import { useAuth } from "../../../../context/AuthContext";
+import { useAccountScope } from "../AccountScopeContext";
 import {
   MapPin,
   Star,
@@ -13,7 +13,7 @@ import StepHeader from "../StepHeader";
 import { formatRupee } from "../sportCategories";
 
 const ProfilePreview = ({ setStep }) => {
-  const { user } = useAuth();
+  const { instituteId } = useAccountScope();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -21,12 +21,12 @@ const ProfilePreview = ({ setStep }) => {
 
   useEffect(() => {
     const load = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
       try {
-        const snap = await getDoc(doc(db, "institutes", user.uid));
+        const snap = await getDoc(doc(db, "institutes", instituteId));
         setData(snap.exists() ? snap.data() : {});
       } catch (err) {
         console.error(err);
@@ -35,7 +35,7 @@ const ProfilePreview = ({ setStep }) => {
       setLoading(false);
     };
     load();
-  }, [user]);
+  }, [instituteId]);
 
   if (loading) {
     return <p className="text-gray-500 text-sm py-8 text-center">Loading preview...</p>;

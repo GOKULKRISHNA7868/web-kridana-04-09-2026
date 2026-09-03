@@ -46,16 +46,16 @@ export default function Contact() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F1EC] px-6 py-24">
+    <div className="min-h-screen bg-[#F7F1EC] px-4 sm:px-6 py-12 md:py-20">
       <h1 className="text-4xl font-bold text-center mb-12 text-[#ea580c]">
         Contact Us
       </h1>
 
       <form
         onSubmit={handleSubmit}
-        className="max-w-xl mx-auto bg-white p-8 rounded-2xl shadow-xl space-y-5"
+        className="max-w-xl md:max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-xl space-y-5"
       >
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-4">
           <input
             type="text"
             placeholder="First Name"

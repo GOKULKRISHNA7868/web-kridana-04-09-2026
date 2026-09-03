@@ -183,7 +183,7 @@ export default function PaymentMethodPage() {
   return (
     <div className="min-h-screen flex justify-center py-4 md:py-6 bg-white">
       {/* 🔥 OUTER GREY CARD */}
-      <div className="w-full max-w-[95%] md:max-w-[560px] bg-[#FBF9F7] px-3 md:px-5 py-4 md:py-5">
+      <div className="w-full max-w-[95%] md:max-w-3xl bg-[#FBF9F7] px-3 md:px-5 py-4 md:py-5 rounded-2xl">
         {/* CENTER CONTAINER */}
         <div className="w-full max-w-full md:max-w-lg lg:max-w-xl mx-auto relative px-2 md:px-3">
           {/* HEADER */}

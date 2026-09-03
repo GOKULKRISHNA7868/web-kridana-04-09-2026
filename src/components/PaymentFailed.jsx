@@ -8,8 +8,9 @@ export default function PaymentFailed() {
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4 }}
-      className="max-w-md mx-auto mt-20 p-6 bg-white shadow-lg rounded-lg text-center"
+      className="min-h-screen flex items-center justify-center px-4"
     >
+    <div className="max-w-md w-full p-6 bg-white shadow-lg rounded-lg text-center">
       <h1 className="text-2xl font-bold text-red-600 mb-4">
         Payment Failed ❌
       </h1>
@@ -23,6 +24,7 @@ export default function PaymentFailed() {
       >
         Go to Home
       </button>
+    </div>
     </motion.div>
   );
 }

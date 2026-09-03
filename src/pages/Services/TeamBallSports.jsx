@@ -63,7 +63,7 @@ const TeamBallPage = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-[#FFF9F5] px-4 py-6">
+    <div className="min-h-screen bg-[#FFF9F5] px-4 sm:px-6 lg:px-10 py-6 md:py-10 max-w-7xl mx-auto">
       {/* HEADER */}
       <div className="flex items-center gap-3 mb-5">
         <button
@@ -97,7 +97,7 @@ const TeamBallPage = () => {
       </p>
 
       {/* GRID */}
-      <div className="grid grid-cols-3 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-4">
         {filteredCategories.map((item) => (
           <div
             key={item.name}

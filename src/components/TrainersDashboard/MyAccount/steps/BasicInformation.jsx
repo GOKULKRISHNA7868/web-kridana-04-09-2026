@@ -28,7 +28,15 @@ const fieldClass = (hasError) =>
   } bg-white px-4 py-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`;
 
 const SHORT_MAX = 200;
-const SPORT_DESC_MAX = 120;
+const SPORT_DESC_MAX = 2000;
+
+const normalizePhone = (value) => {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("91") && digits.length > 10) {
+    digits = digits.slice(2);
+  }
+  return digits.slice(0, 10);
+};
 
 const emptyCategoryBlock = () => ({
   category: "",
@@ -58,7 +66,7 @@ const normalizeCategoryBlocks = (categories = {}, sportDetails = {}) => {
   });
 };
 
-const BasicInformation = ({ setStep }) => {
+const BasicInformation = ({ setStep, onSaved }) => {
   const { user } = useAuth();
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -73,6 +81,9 @@ const BasicInformation = ({ setStep }) => {
     headCoach: "",
     tagline: "",
     about: "",
+    phone: "",
+    countryCode: "+91",
+    email: "",
   });
 
   const [errors, setErrors] = useState({});
@@ -120,6 +131,9 @@ const BasicInformation = ({ setStep }) => {
                 : data.founderName || "",
             tagline: data.tagline || data.designation || "",
             about: data.about || data.description || "",
+            phone: normalizePhone(data.phoneNumber),
+            countryCode: data.countryCode || "+91",
+            email: data.email || "",
           });
 
           setCategoryData(
@@ -144,6 +158,15 @@ const BasicInformation = ({ setStep }) => {
 
     if (name === "establishedYear") {
       newValue = newValue.replace(/[^0-9]/g, "").slice(0, 4);
+    }
+
+    if (name === "phone") {
+      newValue = normalizePhone(newValue);
+    }
+
+    if (name === "countryCode") {
+      setFormData((prev) => ({ ...prev, countryCode: value }));
+      return;
     }
 
     if (name === "tagline") {
@@ -295,12 +318,15 @@ const BasicInformation = ({ setStep }) => {
           founderName: formData.headCoach,
           designation: formData.tagline,
           description: formData.about,
+          phoneNumber: formData.phone,
+          countryCode: formData.countryCode || "+91",
+          email: formData.email,
           updatedAt: serverTimestamp(),
         },
         { merge: true },
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Basic Information");
     } catch (error) {
       console.error("Error saving:", error);
       alert("Error saving data");
@@ -319,6 +345,9 @@ const BasicInformation = ({ setStep }) => {
       headCoach: "",
       tagline: "",
       about: "",
+      phone: "",
+      countryCode: "+91",
+      email: "",
     });
     setErrors({});
     setCategoryData([emptyCategoryBlock()]);
@@ -500,6 +529,53 @@ const BasicInformation = ({ setStep }) => {
           )}
         </div>
 
+        <div>
+          <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+            Mobile number
+          </label>
+          <div className="flex items-stretch gap-2">
+            <select
+              name="countryCode"
+              value={formData.countryCode || "+91"}
+              onChange={handleChange}
+              className="h-12 w-[92px] shrink-0 rounded-xl border border-gray-200 bg-white px-2 text-sm font-semibold text-gray-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+            >
+              <option value="+91">+91</option>
+              <option value="+1">+1</option>
+              <option value="+44">+44</option>
+              <option value="+971">+971</option>
+            </select>
+            <input
+              type="tel"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              inputMode="numeric"
+              autoComplete="tel-national"
+              maxLength={10}
+              className="flex-1 min-w-0 min-h-[48px] text-base rounded-xl border border-gray-200 bg-white px-4 py-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+              placeholder="9876543210"
+            />
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {formData.phone.length}/10 digits
+          </p>
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-gray-800 mb-1.5 block">
+            Email
+          </label>
+          <input
+            type="email"
+            name="email"
+            value={formData.email}
+            onChange={handleChange}
+            className={fieldClass(false)}
+            placeholder="trainer@email.com"
+          />
+        </div>
+
         <section className="bg-white rounded-2xl border border-gray-100 p-4">
           <p className="font-semibold text-gray-900">About you</p>
           <p className="text-xs text-gray-500 mt-1 mb-4">
@@ -641,7 +717,7 @@ const BasicInformation = ({ setStep }) => {
                           )
                         }
                         placeholder={`What students learn in ${sport.name}`}
-                        className={`${fieldClass(false)} min-h-[72px] resize-none bg-white`}
+                        className={`${fieldClass(false)} min-h-[140px] resize-y bg-white`}
                       />
                       <p className="text-[11px] text-gray-400 text-right mt-1">
                         {(sport.shortDescription || "").length}/{SPORT_DESC_MAX}

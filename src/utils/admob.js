@@ -1,17 +1,14 @@
-// src/utils/admob.js
-
 import { AdMob } from "@capacitor-community/admob";
+import { ADMOB_TESTING } from "../constants/admobConfig";
 
 export const initializeAdMob = async () => {
   try {
     await AdMob.initialize({
       requestTrackingAuthorization: true,
       testingDevices: [],
-      initializeForTesting: true,
+      initializeForTesting: ADMOB_TESTING,
     });
-
-    console.log("AdMob Initialized");
   } catch (err) {
-    console.error(err);
+    console.error("AdMob init error:", err);
   }
 };

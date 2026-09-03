@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { db } from "../../../../firebase";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
-import { useAuth } from "../../../../context/AuthContext";
+import { useAccountScope } from "../AccountScopeContext";
 import { Building2 } from "lucide-react";
 import StepHeader from "../StepHeader";
 
@@ -18,8 +18,8 @@ const COMMON_FACILITIES = [
   "Equipment Provided",
 ];
 
-const FacilitiesInfrastructure = ({ setStep }) => {
-  const { user } = useAuth();
+const FacilitiesInfrastructure = ({ setStep, onSaved }) => {
+  const { instituteId } = useAccountScope();
   const [facility, setFacility] = useState("");
   const [facilityTags, setFacilityTags] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,13 +27,13 @@ const FacilitiesInfrastructure = ({ setStep }) => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
 
       try {
-        const docRef = doc(db, "institutes", user.uid);
+        const docRef = doc(db, "institutes", instituteId);
         const snap = await getDoc(docRef);
 
         if (snap.exists()) {
@@ -48,7 +48,7 @@ const FacilitiesInfrastructure = ({ setStep }) => {
     };
 
     fetchData();
-  }, [user]);
+  }, [instituteId]);
 
   const toggleTag = (tag) => {
     setFacilityTags((prev) =>
@@ -57,11 +57,11 @@ const FacilitiesInfrastructure = ({ setStep }) => {
   };
 
   const handleSave = async () => {
-    if (!user?.uid) return;
+    if (!instituteId) return;
 
     try {
       setSaving(true);
-      const docRef = doc(db, "institutes", user.uid);
+      const docRef = doc(db, "institutes", instituteId);
 
       await setDoc(
         docRef,
@@ -73,7 +73,7 @@ const FacilitiesInfrastructure = ({ setStep }) => {
         { merge: true },
       );
 
-      alert("Saved Successfully ✅");
+      onSaved?.("Facilities");
     } catch (error) {
       console.error("Save Error:", error);
       alert("Save Failed ❌");

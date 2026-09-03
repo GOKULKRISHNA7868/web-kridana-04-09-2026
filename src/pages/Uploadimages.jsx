@@ -26,6 +26,8 @@ import {
   Search,
   Share2,
   Sparkles,
+  Trash2,
+  RefreshCw,
   Trophy,
   X,
 } from "lucide-react";
@@ -57,6 +59,59 @@ const emptyForm = {
   location: "",
   caption: "",
 };
+
+const inputClass =
+  "w-full min-h-[48px] rounded-xl border border-gray-200 bg-white px-4 text-[16px] text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#FF6B00] focus:ring-2 focus:ring-orange-100";
+
+function Field({ label, children, required = false }) {
+  return (
+    <div className="mb-4">
+      <label className="mb-1.5 block text-sm font-semibold text-gray-800">
+        {label} {required ? <span className="text-red-500">*</span> : null}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  className = "",
+  maxLength,
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      autoComplete="off"
+      autoCorrect="on"
+      autoCapitalize="sentences"
+      enterKeyHint="next"
+      className={`${inputClass} ${className}`}
+    />
+  );
+}
+
+function TextArea({ value, onChange, placeholder, maxLength, className = "" }) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      autoComplete="off"
+      autoCorrect="on"
+      enterKeyHint="enter"
+      className={`w-full resize-none rounded-xl border border-gray-200 bg-white p-3 text-[16px] text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#FF6B00] focus:ring-2 focus:ring-orange-100 ${className}`}
+    />
+  );
+}
 
 const makeId = () => `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
@@ -143,6 +198,7 @@ export default function AcademyPosts() {
   const [searchText, setSearchText] = useState("");
   const [error, setError] = useState("");
   const [owner, setOwner] = useState(null);
+  const [videoMeta, setVideoMeta] = useState(null);
 
   const currentMedia = media[selectedIndex] || media[0];
   const canUploadVideos =
@@ -376,6 +432,7 @@ export default function AcademyPosts() {
     setMedia([]);
     setCover(null);
     setSelectedIndex(0);
+    setVideoMeta(null);
     setForm({
       ...emptyForm,
       date: new Date().toISOString().slice(0, 10),
@@ -399,6 +456,7 @@ export default function AcademyPosts() {
     setMedia([]);
     setCover(null);
     setSelectedIndex(0);
+    setVideoMeta(null);
     loadPosts();
   };
 
@@ -406,10 +464,48 @@ export default function AcademyPosts() {
     if (isStandaloneRoute) navigate(-1);
   };
 
-  const updateForm = (key, value) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const updateForm = (key, value) => {
+    setForm((prev) => {
+      if (prev[key] === value) return prev;
+      return { ...prev, [key]: value };
+    });
+  };
 
-  const pickMedia = (event) => {
+  const removeCover = () => {
+    if (cover?.url?.startsWith("blob:")) URL.revokeObjectURL(cover.url);
+    setCover(null);
+    setError("");
+  };
+
+  const removeCurrentVideo = () => {
+    revokeMediaUrls(media);
+    setMedia([]);
+    setSelectedIndex(0);
+    setVideoMeta(null);
+    setError("");
+    if (screen === "preview" && (postType === "reel" || postType === "video")) {
+      setScreen(postType);
+    }
+  };
+
+  const replaceVideo = () => {
+    fileInputRef.current?.click();
+  };
+
+  const formatFileSize = (bytes = 0) => {
+    if (!bytes) return "";
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDuration = (seconds = 0) => {
+    if (!seconds) return "";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const pickMedia = async (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (!files.length) return;
@@ -454,9 +550,22 @@ export default function AcademyPosts() {
       return;
     }
 
+    if (!isAchievement && media.length) {
+      revokeMediaUrls(media);
+    }
+
     setError("");
     setMedia((prev) => (isAchievement ? [...prev, ...accepted] : accepted));
     setSelectedIndex(0);
+
+    if (!isAchievement && accepted[0]?.file) {
+      const duration = await getVideoDuration(accepted[0].file);
+      setVideoMeta({
+        name: accepted[0].file.name,
+        size: accepted[0].file.size,
+        duration,
+      });
+    }
   };
 
   const pickCover = (event) => {
@@ -539,14 +648,10 @@ export default function AcademyPosts() {
   const continueToGalleryOrPreview = async () => {
     if (!validateForm()) return;
 
-    if (postType === "reel" || postType === "video") {
+    if (postType === "video") {
       const duration = await getVideoDuration(media[0].file);
-      if (postType === "reel" && duration > 180) {
-        setError("Reels can be up to 3 minutes.");
-        return;
-      }
-      if (postType === "video" && duration > 0 && duration <= 180) {
-        setError("Training videos should be more than 3 minutes.");
+      if (duration > 0 && duration < 120) {
+        setError("Training videos should be at least 2 minutes.");
         return;
       }
     }
@@ -661,6 +766,7 @@ export default function AcademyPosts() {
     setMedia([]);
     setCover(null);
     setSelectedIndex(0);
+    setVideoMeta(null);
     setForm(emptyForm);
     setPostType(null);
     setProgress(0);
@@ -675,10 +781,8 @@ export default function AcademyPosts() {
   }, [screen, loading, progress]);
 
   const shellClass =
-    "page-content min-h-[100dvh] bg-[#F4F5F7] flex justify-center";
-  const panelClass = "w-full max-w-lg bg-[#F4F5F7]";
-  const inputClass =
-    "w-full min-h-[48px] rounded-xl border border-gray-200 bg-white px-4 text-base text-gray-800 outline-none placeholder:text-gray-400 focus:border-[#FF6B00] focus:ring-2 focus:ring-orange-100";
+    "min-h-[100dvh] bg-[#F4F5F7] flex justify-center";
+  const panelClass = "w-full max-w-lg md:max-w-4xl lg:max-w-5xl bg-[#F4F5F7]";
 
   const renderTopBar = (title, backAction) => (
     <div className="sticky top-0 z-30 flex h-14 items-center justify-between bg-white/95 px-3 backdrop-blur border-b border-gray-100">
@@ -692,15 +796,6 @@ export default function AcademyPosts() {
       </button>
       <h1 className="text-base font-bold text-gray-900">{title}</h1>
       <div className="w-10" />
-    </div>
-  );
-
-  const Field = ({ label, children, required = false }) => (
-    <div className="mb-4">
-      <label className="mb-1.5 block text-sm font-semibold text-gray-800">
-        {label} {required ? <span className="text-red-500">*</span> : null}
-      </label>
-      {children}
     </div>
   );
 
@@ -813,7 +908,7 @@ export default function AcademyPosts() {
                     iconBg="#F6E8F8"
                     iconColor={PURPLE}
                     title="Reels"
-                    description="Short highlights up to 3 minutes."
+                    description="Short clips for your profile feed."
                     button="Upload"
                     onClick={() => openCreator("reel")}
                     buttonColor={PURPLE}
@@ -824,7 +919,7 @@ export default function AcademyPosts() {
                       iconBg="#FFE9DE"
                       iconColor={ORANGE}
                       title="Videos"
-                      description="Full sessions longer than 3 minutes."
+                      description="Full sessions of 2 minutes or longer."
                       button="Upload"
                       onClick={() => openCreator("video")}
                       buttonColor={ORANGE}
@@ -925,19 +1020,17 @@ export default function AcademyPosts() {
             title="Achievement details"
           />
           <Field label="Achievement title" required>
-            <input
-              className={inputClass}
+            <TextInput
               placeholder="Enter achievement title"
               value={form.title}
-              onChange={(e) => updateForm("title", e.target.value)}
+              onChange={(value) => updateForm("title", value)}
             />
           </Field>
           <Field label="Description">
-            <input
-              className={inputClass}
+            <TextInput
               placeholder="Describe the achievement"
               value={form.description}
-              onChange={(e) => updateForm("description", e.target.value)}
+              onChange={(value) => updateForm("description", value)}
             />
           </Field>
           <Field label="Sports category">{renderCategorySelect()}</Field>
@@ -966,15 +1059,15 @@ export default function AcademyPosts() {
           </Field>
           <Field label="Location">
             <div className="relative">
-              <input
-                className={`${inputClass} pl-11`}
+              <TextInput
+                className="pl-11"
                 placeholder="Enter location"
                 value={form.location}
-                onChange={(e) => updateForm("location", e.target.value)}
+                onChange={(value) => updateForm("location", value)}
               />
               <MapPin
                 size={16}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500"
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500"
               />
             </div>
           </Field>
@@ -1047,34 +1140,45 @@ export default function AcademyPosts() {
               title={isReel ? "Create reel" : "Training video"}
             />
             <Field label={isReel ? "Caption" : "Video title"} required>
-              <input
-                className={inputClass}
+              <TextInput
                 placeholder={
                   isReel ? "Write a caption for your reel" : "Enter video title"
                 }
                 value={form.title}
-                onChange={(e) => updateForm("title", e.target.value)}
+                onChange={(value) => updateForm("title", value)}
               />
             </Field>
             {!isReel && (
               <Field label="Description">
-                <input
-                  className={inputClass}
+                <TextInput
                   placeholder="Write a short description"
                   value={form.description}
-                  onChange={(e) => updateForm("description", e.target.value)}
+                  onChange={(value) => updateForm("description", value)}
                 />
               </Field>
             )}
             <Field label="Sports category">{renderCategorySelect()}</Field>
             <Field label={`Select ${isReel ? "reel" : "video"}`}>
-              <UploadBox
-                icon={isReel ? <Film size={24} /> : <Clapperboard size={24} />}
-                iconColor={accent}
-                text={`Tap to select ${isReel ? "reel" : "video"}`}
-                subtext="From gallery"
-                onClick={() => fileInputRef.current?.click()}
-              />
+              {media.length > 0 ? (
+                <VideoPreviewPanel
+                  media={media[0]}
+                  videoMeta={videoMeta}
+                  isReel={isReel}
+                  accent={accent}
+                  onRemove={removeCurrentVideo}
+                  onReplace={replaceVideo}
+                  formatDuration={formatDuration}
+                  formatFileSize={formatFileSize}
+                />
+              ) : (
+                <UploadBox
+                  icon={isReel ? <Film size={24} /> : <Clapperboard size={24} />}
+                  iconColor={accent}
+                  text={`Tap to select ${isReel ? "reel" : "video"}`}
+                  subtext="From gallery"
+                  onClick={() => fileInputRef.current?.click()}
+                />
+              )}
             </Field>
             <input
               ref={fileInputRef}
@@ -1091,32 +1195,51 @@ export default function AcademyPosts() {
                 <Info size={16} className="text-gray-400" />
               </div>
               <p className="text-sm text-gray-500 mt-1">
-                {isReel ? "Up to 3 minutes" : "More than 3 minutes"}
+                {isReel
+                  ? "Any short clip is fine"
+                  : "2 minutes or longer"}
               </p>
             </div>
             <Field label={isReel ? "Cover image" : "Thumbnail"}>
-              <button
-                type="button"
-                onClick={() => coverInputRef.current?.click()}
-                className="flex min-h-[48px] w-full items-center gap-3 text-left"
-              >
-                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-dashed border-gray-300 bg-white">
-                  {cover ? (
-                    <img
-                      src={cover.url}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <Plus size={18} className="text-gray-500" />
-                  )}
-                </div>
-                <span className="text-sm font-medium text-gray-600">
-                  {cover
-                    ? "Change cover"
-                    : `Upload ${isReel ? "cover" : "thumbnail"}`}
-                </span>
-              </button>
+              <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                <button
+                  type="button"
+                  onClick={() => coverInputRef.current?.click()}
+                  className="flex min-h-[48px] w-full items-center gap-3 text-left"
+                >
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-gray-300 bg-gray-50">
+                    {cover ? (
+                      <img
+                        src={cover.url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <Plus size={18} className="text-gray-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm font-semibold text-gray-800 block">
+                      {cover
+                        ? "Change cover"
+                        : `Upload ${isReel ? "cover" : "thumbnail"}`}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      Optional image for preview
+                    </span>
+                  </div>
+                </button>
+                {cover && (
+                  <button
+                    type="button"
+                    onClick={removeCover}
+                    className="mt-3 w-full min-h-[40px] rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600 flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 size={15} />
+                    Remove cover
+                  </button>
+                )}
+              </div>
             </Field>
             <input
               ref={coverInputRef}
@@ -1125,21 +1248,11 @@ export default function AcademyPosts() {
               onChange={pickCover}
               className="hidden"
             />
-            {media.length > 0 && (
-              <div className="mb-4 overflow-hidden rounded-2xl bg-black">
-                <video
-                  src={media[0].url}
-                  controls
-                  playsInline
-                  className="max-h-56 w-full object-contain"
-                />
-              </div>
-            )}
             {renderError()}
             {renderBottomButton(
               isReel ? "Continue" : "Continue",
               continueToGalleryOrPreview,
-              false,
+              !media.length,
               accent,
             )}
           </div>
@@ -1198,7 +1311,7 @@ export default function AcademyPosts() {
           onChange={pickMedia}
           className="hidden"
         />
-        <div className="fixed left-0 right-0 mx-auto flex max-w-lg items-center justify-between border-t bg-white px-4 py-3"
+        <div className="fixed left-0 right-0 mx-auto flex max-w-lg md:max-w-4xl lg:max-w-5xl items-center justify-between border-t bg-white px-4 py-3"
           style={{
             bottom:
               "calc(var(--bottom-navbar-height, 64px) + env(safe-area-inset-bottom, 0px))",
@@ -1226,16 +1339,43 @@ export default function AcademyPosts() {
           "Preview",
           () => setScreen(postType === "achievement" ? "gallery" : postType),
         )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/*"
+          onChange={pickMedia}
+          className="hidden"
+        />
         <div className="px-3 pt-3 pb-8">
           <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
             <div className="relative aspect-square bg-black">
               {currentMedia?.type?.startsWith("video") ? (
-                <video
-                  src={currentMedia.url}
-                  controls
-                  playsInline
-                  className="h-full w-full object-contain"
-                />
+                <>
+                  <video
+                    src={currentMedia.url}
+                    controls
+                    playsInline
+                    className="h-full w-full object-contain"
+                  />
+                  <div className="absolute left-0 right-0 top-0 flex gap-2 p-2 bg-gradient-to-b from-black/60 to-transparent">
+                    <button
+                      type="button"
+                      onClick={replaceVideo}
+                      className="flex-1 min-h-[40px] rounded-xl bg-white/95 text-xs sm:text-sm font-semibold text-gray-900 flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw size={15} />
+                      Change video
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeCurrentVideo}
+                      className="min-h-[40px] px-3 rounded-xl bg-red-500/95 text-xs sm:text-sm font-semibold text-white flex items-center justify-center gap-1.5"
+                    >
+                      <Trash2 size={15} />
+                      Remove
+                    </button>
+                  </div>
+                </>
               ) : (
                 <img
                   src={currentMedia?.url}
@@ -1267,12 +1407,12 @@ export default function AcademyPosts() {
               </div>
             )}
             <div className="border-t border-gray-100 px-3 py-3">
-              <textarea
+              <TextArea
                 maxLength={220}
                 value={form.caption}
-                onChange={(e) => updateForm("caption", e.target.value)}
+                onChange={(value) => updateForm("caption", value)}
                 placeholder="Add a caption students will see..."
-                className="h-20 w-full resize-none rounded-xl border border-gray-200 p-3 text-sm outline-none focus:border-[#FF6B00]"
+                className="h-20"
               />
               <div className="mt-1 text-right text-xs text-gray-400">
                 {form.caption.length}/220
@@ -1409,10 +1549,16 @@ export default function AcademyPosts() {
           <div className="mb-3 flex min-h-[48px] items-center gap-2 rounded-xl border border-gray-200 bg-white px-3">
             <Search size={16} className="text-gray-400" />
             <input
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+              autoComplete="off"
+              autoCorrect="off"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
+              onFocus={(e) => e.stopPropagation()}
               placeholder="Search posts"
-              className="w-full bg-transparent text-base outline-none"
+              className="w-full bg-transparent text-[16px] outline-none"
             />
           </div>
           {filteredPosts.length ? (
@@ -1522,6 +1668,72 @@ function UploadBox({ icon, iconColor, text, subtext, onClick }) {
       <span className="mt-1 text-sm font-semibold text-gray-800">{text}</span>
       <span className="text-xs text-gray-500">{subtext}</span>
     </button>
+  );
+}
+
+function VideoPreviewPanel({
+  media,
+  videoMeta,
+  isReel,
+  accent,
+  onRemove,
+  onReplace,
+  formatDuration,
+  formatFileSize,
+}) {
+  const label = isReel ? "Reel" : "Video";
+  return (
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+      <div className="relative bg-black">
+        <video
+          src={media.url}
+          controls
+          playsInline
+          className="max-h-52 w-full object-contain"
+        />
+      </div>
+      <div className="p-3">
+        <div className="flex items-start gap-2">
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+            style={{ backgroundColor: `${accent}18`, color: accent }}
+          >
+            {isReel ? <Film size={16} /> : <Clapperboard size={16} />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-gray-900">
+              {videoMeta?.name || `${label} selected`}
+            </p>
+            <p className="text-xs text-gray-500">
+              {[
+                videoMeta?.duration ? formatDuration(videoMeta.duration) : null,
+                videoMeta?.size ? formatFileSize(videoMeta.size) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "Ready to upload"}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onReplace}
+            className="min-h-[44px] rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-800 flex items-center justify-center gap-1.5 active:scale-[0.99] transition"
+          >
+            <RefreshCw size={15} />
+            Change {isReel ? "reel" : "video"}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="min-h-[44px] rounded-xl border border-red-200 bg-red-50 text-sm font-semibold text-red-600 flex items-center justify-center gap-1.5 active:scale-[0.99] transition"
+          >
+            <Trash2 size={15} />
+            Remove
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

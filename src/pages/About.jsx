@@ -11,7 +11,7 @@ const AboutUsSection = () => {
 
   return (
     <section
-      className={`pt-12 md:pt-16 pb-16 transition-colors duration-500 ${sectionBg} min-h-screen`}
+      className={`pt-12 md:pt-16 pb-16 transition-colors duration-500 ${sectionBg} min-h-screen px-4 sm:px-6`}
     >
       <button
         onClick={() => navigate("/")}

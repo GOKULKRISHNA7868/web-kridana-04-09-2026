@@ -1,21 +1,20 @@
-// components/AdCard.jsx
-
 import React, { useEffect } from "react";
 import {
   AdMob,
   BannerAdSize,
   BannerAdPosition,
 } from "@capacitor-community/admob";
+import { ADMOB_BANNER_ID, ADMOB_TESTING } from "../constants/admobConfig";
 
 export default function AdCard() {
   useEffect(() => {
     const loadBanner = async () => {
       try {
         await AdMob.showBanner({
-          adId: "ca-app-pub-3940256099942544/6300978111",
+          adId: ADMOB_BANNER_ID,
           adSize: BannerAdSize.ADAPTIVE_BANNER,
           position: BannerAdPosition.BOTTOM_CENTER,
-          isTesting: true,
+          isTesting: ADMOB_TESTING,
         });
       } catch (e) {
         console.log(e);

@@ -4,4 +4,6 @@
     <string name="title_activity_main">kridana</string>
     <string name="package_name">kridana.net</string>
     <string name="custom_url_scheme">kridana.net</string>
+    <!-- Replace with your production AdMob App ID before Play Store upload -->
+    <string name="admob_app_id" translatable="false">ca-app-pub-3940256099942544~3347511713</string>
 </resources>

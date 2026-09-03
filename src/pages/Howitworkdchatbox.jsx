@@ -136,7 +136,7 @@ export default function HowItWorks() {
   return (
     <section className="bg-white py-10 px-4 md:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="lg:hidden mb-4">
+        <div className="mb-4">
           <button
             onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-slate-700 font-medium"

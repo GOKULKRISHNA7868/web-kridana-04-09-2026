@@ -143,23 +143,10 @@ import PaymentMethodPage from "./pages/PaymentMethodPage.jsx";
 import Paymentselection from "./components/UserDashboard/paymentselection.jsx";
 
 import TrainerPaymentSelection from "./components/UserDashboard/TrainerPaymentSelection.jsx";
-import { AdMob } from "@capacitor-community/admob";
 
 function App() {
   useEffect(() => {
-    const initAdmob = async () => {
-      try {
-        await AdMob.initialize({
-          initializeForTesting: true,
-        });
-
-        console.log("AdMob initialized");
-      } catch (e) {
-        console.log("AdMob init error", e);
-      }
-    };
-
-    initAdmob();
+    initializeAdMob();
   }, []);
 
   usePageTracking();
@@ -418,7 +405,7 @@ function App() {
 
               <ScrollToTop />
               <main
-                className="app-content pb-[90px] md:pb-0"
+                className="app-content w-full max-w-none pb-[90px] md:pb-0"
                 style={{
                   paddingBottom:
                     window.innerWidth < 768

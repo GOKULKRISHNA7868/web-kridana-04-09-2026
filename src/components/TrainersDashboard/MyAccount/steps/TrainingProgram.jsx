@@ -2,15 +2,37 @@ import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
 import { useAuth } from "../../../../context/AuthContext";
-import { CalendarDays, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { CalendarDays, Trash2, ChevronDown, ChevronUp, Check } from "lucide-react";
 import StepHeader from "../StepHeader";
 import CategoryFields from "../CategoryFields";
 import { formatRupee } from "../../../InstituteDashboard/MyAccount/sportCategories";
+import ClassSchedulePicker, {
+  parseSchedule,
+} from "../../../shared/ClassSchedulePicker";
 
 const fieldClass = (hasError) =>
   `w-full min-h-[48px] text-base rounded-xl border ${
     hasError ? "border-red-500" : "border-gray-200"
   } bg-white px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100`;
+
+const AGE_OPTIONS = [
+  "01 – 10 years Kids",
+  "11 – 20 years Teenage",
+  "21 – 45 years Adults",
+  "45 – 60 years Middle Age",
+  "61 – 100 years Senior Citizens",
+];
+
+const normalizeAgeGroups = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string" && value.trim()) {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
 
 const emptyProgram = () => ({
   id: Date.now(),
@@ -18,8 +40,12 @@ const emptyProgram = () => ({
   subCategory: "",
   programName: "",
   ageGroup: "",
+  ageGroups: [],
   skillLevel: "",
   batchTimings: "",
+  classDays: [],
+  startTime: "",
+  endTime: "",
   duration: "",
   fees: "",
   feeCycle: "Monthly",
@@ -41,25 +67,40 @@ const REQUIRED_FIELDS = [
   "trialSessions",
 ];
 
-const toProgram = (item = {}) => ({
-  ...emptyProgram(),
-  ...item,
-  id: item.id || Date.now(),
-  fees: item.fees !== undefined && item.fees !== null ? String(item.fees) : "",
-  seatsAvailable:
-    item.seatsAvailable !== undefined && item.seatsAvailable !== null
-      ? String(item.seatsAvailable)
-      : "",
-  feeCycle: item.feeCycle || "Monthly",
-});
+const toProgram = (item = {}) => {
+  const ageGroups = normalizeAgeGroups(item.ageGroups || item.ageGroup);
+  const schedule = parseSchedule(item);
+  return {
+    ...emptyProgram(),
+    ...item,
+    id: item.id || Date.now(),
+    ageGroups,
+    ageGroup: ageGroups.join(", "),
+    classDays: schedule.days,
+    startTime: schedule.startTime,
+    endTime: schedule.endTime,
+    batchTimings:
+      item.batchTimings ||
+      [schedule.days.join(", "), [schedule.startTime, schedule.endTime].filter(Boolean).join(" – ")]
+        .filter(Boolean)
+        .join(" | "),
+    fees: item.fees !== undefined && item.fees !== null ? String(item.fees) : "",
+    seatsAvailable:
+      item.seatsAvailable !== undefined && item.seatsAvailable !== null
+        ? String(item.seatsAvailable)
+        : "",
+    feeCycle: item.feeCycle || "Monthly",
+  };
+};
 
-const TrainingProgram = ({ setStep }) => {
+const TrainingProgram = ({ setStep, onSaved }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [programs, setPrograms] = useState([emptyProgram()]);
   const [expandedId, setExpandedId] = useState(null);
   const [errors, setErrors] = useState({});
+  const [agePickerIndex, setAgePickerIndex] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -131,6 +172,12 @@ const TrainingProgram = ({ setStep }) => {
     const newErrors = {};
     programs.forEach((program, index) => {
       REQUIRED_FIELDS.forEach((field) => {
+        if (field === "ageGroup") {
+          if (!normalizeAgeGroups(program.ageGroups || program.ageGroup).length) {
+            newErrors[`${index}-ageGroup`] = "Required";
+          }
+          return;
+        }
         if (!program[field] || String(program[field]).trim() === "") {
           newErrors[`${index}-${field}`] = "Required";
         }
@@ -158,11 +205,16 @@ const TrainingProgram = ({ setStep }) => {
 
     try {
       setSaving(true);
-      const normalized = programs.map((item) => ({
-        ...item,
-        fees: Number(item.fees),
-        seatsAvailable: Number(item.seatsAvailable),
-      }));
+      const normalized = programs.map((item) => {
+        const ageGroups = normalizeAgeGroups(item.ageGroups || item.ageGroup);
+        return {
+          ...item,
+          ageGroups,
+          ageGroup: ageGroups.join(", "),
+          fees: Number(item.fees),
+          seatsAvailable: Number(item.seatsAvailable),
+        };
+      });
       const first = normalized[0] || {};
       const sportsOffered = [
         ...new Set(normalized.map((p) => p.subCategory).filter(Boolean)),
@@ -198,7 +250,7 @@ const TrainingProgram = ({ setStep }) => {
         ),
       ]);
 
-      alert("Programs saved. Students will see class and fee details clearly.");
+      onSaved?.("Programs & Classes");
     } catch (error) {
       console.error("Error saving training program:", error);
       alert("Error saving data");
@@ -212,6 +264,27 @@ const TrainingProgram = ({ setStep }) => {
   }
 
   const err = (index, field) => errors[`${index}-${field}`];
+
+  const toggleAgeGroup = (index, option) => {
+    const current = normalizeAgeGroups(
+      programs[index].ageGroups || programs[index].ageGroup,
+    );
+    const next = current.includes(option)
+      ? current.filter((item) => item !== option)
+      : [...current, option];
+    const updated = [...programs];
+    updated[index].ageGroups = next;
+    updated[index].ageGroup = next.join(", ");
+    setPrograms(updated);
+    setErrors((prev) => {
+      const copy = { ...prev };
+      if (next.length) delete copy[`${index}-ageGroup`];
+      return copy;
+    });
+  };
+
+  const selectedAges = (program) =>
+    normalizeAgeGroups(program.ageGroups || program.ageGroup);
 
   return (
     <div className="w-full pb-6">
@@ -258,7 +331,7 @@ const TrainingProgram = ({ setStep }) => {
                   {program.subCategory ? ` · ${program.subCategory}` : ""}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {program.ageGroup || "Age group not set"}
+                  {selectedAges(program).join(" · ") || "Age group not set"}
                   {program.duration ? ` · ${program.duration}` : ""}
                   {program.fees
                     ? ` · ${formatRupee(program.fees)} / ${program.feeCycle || "Monthly"}`
@@ -314,22 +387,29 @@ const TrainingProgram = ({ setStep }) => {
 
                 <div>
                   <label className="text-sm font-medium mb-1 block">
-                    Age group
+                    Who can join?
                   </label>
-                  <select
-                    value={program.ageGroup}
-                    onChange={(e) =>
-                      handleChange(index, "ageGroup", e.target.value)
-                    }
-                    className={fieldClass(err(index, "ageGroup"))}
+                  <button
+                    type="button"
+                    onClick={() => setAgePickerIndex(index)}
+                    className={`${fieldClass(err(index, "ageGroup"))} text-left flex items-center justify-between gap-2`}
                   >
-                    <option value="">Who can join?</option>
-                    <option>01 – 10 years Kids</option>
-                    <option>11 – 20 years Teenage</option>
-                    <option>21 – 45 years Adults</option>
-                    <option>45 – 60 years Middle Age</option>
-                    <option>61 – 100 years Senior Citizens</option>
-                  </select>
+                    <span
+                      className={`min-w-0 truncate ${
+                        selectedAges(program).length
+                          ? "text-gray-900"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {selectedAges(program).length
+                        ? selectedAges(program).join(", ")
+                        : "Select 1 or more age groups"}
+                    </span>
+                    <ChevronDown size={18} className="shrink-0 text-gray-400" />
+                  </button>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    You can select 2 or 3 groups at a time.
+                  </p>
                 </div>
 
                 <div>
@@ -354,14 +434,30 @@ const TrainingProgram = ({ setStep }) => {
                   <label className="text-sm font-medium mb-1 block">
                     Class days & time
                   </label>
-                  <input
-                    placeholder="Mon – Fri | 6:00 PM – 7:00 PM"
-                    value={program.batchTimings}
-                    onChange={(e) =>
-                      handleChange(index, "batchTimings", e.target.value)
-                    }
-                    className={fieldClass(err(index, "batchTimings"))}
+                  <ClassSchedulePicker
+                    days={parseSchedule(program).days}
+                    startTime={parseSchedule(program).startTime}
+                    endTime={parseSchedule(program).endTime}
+                    error={!!err(index, "batchTimings")}
+                    onChange={({ classDays, startTime, endTime, batchTimings }) => {
+                      const updated = [...programs];
+                      updated[index].classDays = classDays;
+                      updated[index].startTime = startTime;
+                      updated[index].endTime = endTime;
+                      updated[index].batchTimings = batchTimings;
+                      setPrograms(updated);
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        if (batchTimings) delete next[`${index}-batchTimings`];
+                        return next;
+                      });
+                    }}
                   />
+                  {err(index, "batchTimings") && (
+                    <p className="text-red-500 text-xs mt-1">
+                      Select class days and start time
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -396,6 +492,11 @@ const TrainingProgram = ({ setStep }) => {
                       }
                       className={fieldClass(err(index, "fees"))}
                     />
+                    {program.feeCycle === "Monthly" && program.fees ? (
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Yearly ≈ ₹{(Number(program.fees) * 12).toLocaleString("en-IN")}
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="text-sm font-medium mb-1 block">
@@ -464,6 +565,60 @@ const TrainingProgram = ({ setStep }) => {
       >
         + Add another class
       </button>
+
+      {agePickerIndex !== null && programs[agePickerIndex] && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setAgePickerIndex(null)}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 pb-[max(20px,env(safe-area-inset-bottom))]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Who can join?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Select all age groups this class is for
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAgePickerIndex(null)}
+                className="text-orange-500 font-semibold text-sm min-h-[40px] px-2"
+              >
+                Done
+              </button>
+            </div>
+            <div className="divide-y border-t border-gray-100">
+              {AGE_OPTIONS.map((option) => {
+                const selected = selectedAges(programs[agePickerIndex]).includes(
+                  option,
+                );
+                return (
+                  <button
+                    type="button"
+                    key={option}
+                    onClick={() => toggleAgeGroup(agePickerIndex, option)}
+                    className="w-full min-h-[52px] flex items-center justify-between gap-3 py-3 text-left"
+                  >
+                    <span className="text-[15px] text-gray-800">{option}</span>
+                    <span
+                      className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${
+                        selected
+                          ? "bg-orange-500 border-orange-500 text-white"
+                          : "border-gray-300 bg-white"
+                      }`}
+                    >
+                      {selected ? <Check size={14} strokeWidth={3} /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -318,7 +318,7 @@ const Dashboard = () => {
     <div
       className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]"
     >
-      <div className="pb-6 space-y-4">
+      <div className="pt-3 sm:pt-4 pb-6 space-y-4">
         {/* Welcome */}
         <motion.div
           custom={0}

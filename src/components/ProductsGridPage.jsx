@@ -126,9 +126,9 @@ const ProductsGridPage = () => {
 
   /* ================= UI ================= */
   return (
-    <div className="min-h-screen bg-white flex">
+    <div className="min-h-screen bg-white flex flex-col md:flex-row">
       {/* SIDEBAR */}
-      <aside className="w-72 bg-orange-100 text-gray-900 p-5">
+      <aside className="hidden md:block w-72 shrink-0 bg-orange-100 text-gray-900 p-5">
         <h2 className="text-orange-600 text-xl font-bold mb-4">
           Category
         </h2>
@@ -210,19 +210,36 @@ const ProductsGridPage = () => {
         </div>
       </aside>
 
+      <div className="md:hidden px-4 pt-4 flex gap-2 overflow-x-auto scrollbar-hide">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => navigate(`/shop/products?category=${cat.id}`)}
+            className={`shrink-0 px-3 py-2 rounded-full text-xs font-semibold border ${
+              categoryFromURL === cat.id
+                ? "bg-[#FF6A00] text-white border-[#FF6A00]"
+                : "bg-white text-gray-700 border-gray-200"
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
       {/* PRODUCTS */}
-      <main className="flex-1 p-8">
+      <main className="flex-1 p-4 sm:p-6 md:p-8">
         {/* TOP BAR */}
-        <div className="relative flex items-center mb-6">
+        <div className="relative flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
           <button
             onClick={() => navigate("/shop")}
-            className="text-sm font-semibold text-orange-600 hover:underline"
+            className="text-sm font-semibold text-orange-600 hover:underline self-start"
           >
             ← Back
           </button>
 
-          <div className="absolute left-1/2 -translate-x-1/2">
-            <div className="relative w-[520px] h-12">
+          <div className="w-full sm:absolute sm:left-1/2 sm:-translate-x-1/2 sm:max-w-xl">
+            <div className="relative w-full h-12">
               <span className="absolute left-5 inset-y-0 flex items-center text-orange-400 text-lg">
                 🔍
               </span>
@@ -235,10 +252,10 @@ const ProductsGridPage = () => {
                            border border-orange-400
                            focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
-            </div>
           </div>
+        </div>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="sm:ml-auto flex items-center gap-3 self-end sm:self-auto">
             <button
               onClick={() => navigate("/wishlist")}
               className="relative w-12 h-12 rounded-full bg-orange-50 border-2 border-orange-200 

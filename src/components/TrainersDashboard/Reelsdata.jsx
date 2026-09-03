@@ -18,6 +18,7 @@ import {
   Tooltip,
   LineChart,
   Line,
+  CartesianGrid,
 } from "recharts";
 import {
   Eye,
@@ -27,6 +28,9 @@ import {
   ThumbsDown,
   Image as ImageIcon,
   X,
+  CalendarDays,
+  Download,
+  RotateCcw,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -76,6 +80,145 @@ const isVideoUrl = (url) => {
   );
 };
 
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+const PERIOD_PRESETS = [
+  { id: "thisMonth", label: "This month" },
+  { id: "3m", label: "Last 3 months" },
+  { id: "6m", label: "Last 6 months" },
+  { id: "1y", label: "1 year" },
+  { id: "ytd", label: "This year" },
+  { id: "custom", label: "Choose dates" },
+];
+
+const startOfDay = (date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const endOfDay = (date) => {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+};
+
+const toISODate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatDisplayDate = (date) =>
+  date.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+const computeAnalyticsRange = (preset, customFrom, customTo) => {
+  const now = new Date();
+  const to = endOfDay(now);
+
+  if (preset === "custom") {
+    const fallbackFrom = startOfDay(
+      new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()),
+    );
+    const fromDate = customFrom ? startOfDay(new Date(customFrom)) : fallbackFrom;
+    let toDate = customTo ? endOfDay(new Date(customTo)) : to;
+    if (Number.isNaN(fromDate.getTime())) {
+      return { from: fallbackFrom, to };
+    }
+    if (Number.isNaN(toDate.getTime())) {
+      toDate = to;
+    }
+    if (fromDate.getTime() > toDate.getTime()) {
+      return { from: startOfDay(toDate), to: endOfDay(fromDate) };
+    }
+    return { from: fromDate, to: toDate };
+  }
+
+  if (preset === "thisMonth") {
+    return { from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)), to };
+  }
+
+  if (preset === "ytd") {
+    return { from: startOfDay(new Date(now.getFullYear(), 0, 1)), to };
+  }
+
+  const monthsBack = preset === "6m" ? 6 : preset === "1y" ? 12 : 3;
+  const from = new Date(now);
+  from.setMonth(from.getMonth() - monthsBack);
+  return { from: startOfDay(from), to };
+};
+
+const parseRecordYearMonth = (record) => {
+  let month = "";
+  let year = "";
+  if (typeof record.month === "string" && record.month.includes("-")) {
+    const parts = record.month.split("-");
+    year = parts[0];
+    month = parts[1];
+  } else {
+    month = record.month?.toString().padStart(2, "0");
+    year = record.year?.toString();
+  }
+  if (!month || !year) return null;
+  const parsedYear = Number(year);
+  const parsedMonth = Number(month);
+  if (
+    Number.isNaN(parsedYear) ||
+    Number.isNaN(parsedMonth) ||
+    parsedMonth < 1 ||
+    parsedMonth > 12
+  ) {
+    return null;
+  }
+  return {
+    year: parsedYear,
+    month: parsedMonth,
+    key: `${parsedYear}-${String(parsedMonth).padStart(2, "0")}`,
+  };
+};
+
+const getMonthBuckets = (from, to) => {
+  const buckets = [];
+  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+  const last = new Date(to.getFullYear(), to.getMonth(), 1);
+  const spanYears = from.getFullYear() !== to.getFullYear();
+  while (cursor <= last) {
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth() + 1;
+    buckets.push({
+      key: `${year}-${String(month).padStart(2, "0")}`,
+      label: spanYears
+        ? `${MONTH_LABELS[month - 1]} '${String(year).slice(-2)}`
+        : MONTH_LABELS[month - 1],
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return buckets;
+};
+
+const currencyTooltip = (value, name) => [
+  `₹ ${Number(value || 0).toLocaleString("en-IN")}`,
+  String(name).charAt(0).toUpperCase() + String(name).slice(1),
+];
+
 const AnalyticsPage = () => {
   const user = auth.currentUser;
   const [expenses, setExpenses] = useState([]);
@@ -91,11 +234,9 @@ const AnalyticsPage = () => {
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
   const [commentDrawer, setCommentDrawer] = useState(null);
-  const currentYear = new Date().getFullYear();
-
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [startMonth, setStartMonth] = useState("");
-  const [endMonth, setEndMonth] = useState("");
+  const [periodPreset, setPeriodPreset] = useState("3m");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [employeeStats, setEmployeeStats] = useState({
     joined: 0,
     left: 0,
@@ -106,31 +247,48 @@ const AnalyticsPage = () => {
     left: 0,
   });
 
-  const getMonthRange = () => {
-    let start = startMonth === "" ? 0 : Number(startMonth);
-    let end = endMonth === "" ? 11 : Number(endMonth);
-    if (Number.isNaN(start)) start = 0;
-    if (Number.isNaN(end)) end = 11;
-    if (start > end) {
-      const swapped = start;
-      start = end;
-      end = swapped;
-    }
-    return { start, end };
-  };
+  const todayISO = toISODate(new Date());
+
+  const dateRange = useMemo(
+    () => computeAnalyticsRange(periodPreset, customFrom, customTo),
+    [periodPreset, customFrom, customTo],
+  );
+
+  const rangeDayCount =
+    Math.round((dateRange.to.getTime() - dateRange.from.getTime()) / 86400000) +
+    1;
+
+  const monthBuckets = useMemo(
+    () => getMonthBuckets(dateRange.from, dateRange.to),
+    [dateRange],
+  );
+
+  const bucketKeys = useMemo(
+    () => new Set(monthBuckets.map((bucket) => bucket.key)),
+    [monthBuckets],
+  );
 
   const matchesDateFilter = (date) => {
     if (!date || Number.isNaN(date.getTime())) return true;
-    if (Number(date.getFullYear()) !== Number(selectedYear)) return false;
-    const month = date.getMonth();
-    const { start, end } = getMonthRange();
-    return month >= start && month <= end;
+    return (
+      date.getTime() >= dateRange.from.getTime() &&
+      date.getTime() <= dateRange.to.getTime()
+    );
+  };
+
+  const handlePeriodChange = (presetId) => {
+    setPeriodPreset(presetId);
+    if (presetId === "custom") {
+      const fallback = computeAnalyticsRange("3m");
+      setCustomFrom((prev) => prev || toISODate(fallback.from));
+      setCustomTo((prev) => prev || toISODate(fallback.to));
+    }
   };
 
   const resetFilters = () => {
-    setSelectedYear(new Date().getFullYear());
-    setStartMonth("");
-    setEndMonth("");
+    setPeriodPreset("3m");
+    setCustomFrom("");
+    setCustomTo("");
     setContentFilter("all");
     setActiveTab("views");
     setContentSearch("");
@@ -151,12 +309,7 @@ Trainer Revenue Report
 </h1>
 
   <p>
-  Year: ${selectedYear} <br/>
- Months: ${new Date(0, getMonthRange().start).toLocaleString("default", {
-   month: "short",
- })}
--
-${new Date(0, getMonthRange().end).toLocaleString("default", { month: "short" })}
+  Period: ${formatDisplayDate(dateRange.from)} – ${formatDisplayDate(dateRange.to)}
   </p>
 
 <h3 style="text-align:center;margin-bottom:25px">
@@ -203,7 +356,9 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
     pdf.addImage(img, "PNG", 10, 10, imgWidth, imgHeight);
 
-    pdf.save(`Trainer_Revenue_${selectedYear}.pdf`);
+    pdf.save(
+      `Trainer_Revenue_${toISODate(dateRange.from)}_${toISODate(dateRange.to)}.pdf`,
+    );
 
     document.body.removeChild(container);
   };
@@ -216,7 +371,6 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           collection(db, "trainers", user.uid, "expenses"),
         );
 
-        const { start, end } = getMonthRange();
         const expenseData = [];
         let expenseTotal = 0;
 
@@ -227,25 +381,17 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
           if (!paidDate) return;
 
-          const [yearStr, monthStr] = paidDate.split("-");
+          const yearMonth = parseRecordYearMonth({ month: paidDate });
+          if (!yearMonth || !bucketKeys.has(yearMonth.key)) return;
 
-          const year = Number(yearStr);
-          const monthIndex = Number(monthStr) - 1;
+          const amount = Number(data.amount || 0);
 
-          if (
-            year === selectedYear &&
-            monthIndex >= start &&
-            monthIndex <= end
-          ) {
-            const amount = Number(data.amount || 0);
+          expenseTotal += amount;
 
-            expenseTotal += amount;
-
-            expenseData.push({
-              month: monthIndex,
-              amount,
-            });
-          }
+          expenseData.push({
+            month: yearMonth.month - 1,
+            amount,
+          });
         });
 
         setExpenses(expenseData);
@@ -256,7 +402,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
     };
 
     fetchExpenses();
-  }, [user, selectedYear, startMonth, endMonth]);
+  }, [user, periodPreset, customFrom, customTo]);
 
   /* ================= FETCH TOP REELS & POSTS ================= */
   useEffect(() => {
@@ -494,26 +640,31 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           .toLowerCase()
           .includes(keyword);
       })
-      .sort((a, b) => Number(b[activeTab] || 0) - Number(a[activeTab] || 0));
+      .sort((a, b) => {
+        if (activeTab === "newest") {
+          return (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0);
+        }
+        return Number(b[activeTab] || 0) - Number(a[activeTab] || 0);
+      });
   }, [
     topReels,
     topPosts,
     contentFilter,
     activeTab,
     contentSearch,
-    selectedYear,
-    startMonth,
-    endMonth,
+    periodPreset,
+    customFrom,
+    customTo,
   ]);
 
   const filteredReels = useMemo(
     () => topReels.filter((item) => matchesDateFilter(item.createdAt)),
-    [topReels, selectedYear, startMonth, endMonth],
+    [topReels, periodPreset, customFrom, customTo],
   );
 
   const filteredPosts = useMemo(
     () => topPosts.filter((item) => matchesDateFilter(item.createdAt)),
-    [topPosts, selectedYear, startMonth, endMonth],
+    [topPosts, periodPreset, customFrom, customTo],
   );
 
   const contentTotals = useMemo(() => {
@@ -543,7 +694,6 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
           ),
         );
 
-        const { start, end } = getMonthRange();
         let joinedCustomers = 0;
 
         studentsSnap.forEach((docSnap) => {
@@ -560,12 +710,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
           if (!joinDate || Number.isNaN(joinDate.getTime())) return;
 
-          const year = joinDate.getFullYear();
-          const month = joinDate.getMonth();
-          const validYear = Number(year) === Number(selectedYear);
-          const validMonth = month >= start && month <= end;
-
-          if (validYear && validMonth) {
+          if (matchesDateFilter(joinDate)) {
             joinedCustomers++;
           }
         });
@@ -580,7 +725,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
     };
 
     fetchWorkforce();
-  }, [user, selectedYear, startMonth, endMonth]);
+  }, [user, periodPreset, customFrom, customTo]);
   /* ================= GRAPH REVENUE FROM FIRESTORE ================= */
   /* ================= GRAPH REVENUE FROM FIRESTORE ================= */
   const [loadingRevenue, setLoadingRevenue] = useState(false);
@@ -592,27 +737,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
       try {
         setLoadingRevenue(true);
 
-        const months = [
-          "Jan",
-          "Feb",
-          "Mar",
-          "Apr",
-          "May",
-          "Jun",
-          "Jul",
-          "Aug",
-          "Sep",
-          "Oct",
-          "Nov",
-          "Dec",
-        ];
-
-        const { start, end } = getMonthRange();
         const revenueMap = {};
-
-        for (let i = 0; i < 12; i++) {
-          revenueMap[i] = 0;
-        }
 
         const feesSnap = await getDocs(
           query(
@@ -628,25 +753,17 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
           if (!paidDate) return;
 
-          const [yearStr, monthStr] = paidDate.split("-");
+          const yearMonth = parseRecordYearMonth({ month: paidDate });
+          if (!yearMonth || !bucketKeys.has(yearMonth.key)) return;
 
-          const year = Number(yearStr);
-          const monthIndex = Number(monthStr) - 1;
-
-          if (year === selectedYear && monthIndex >= start && monthIndex <= end) {
-            const amount = Number(data.paidAmount || 0);
-            revenueMap[monthIndex] += amount;
-          }
+          revenueMap[yearMonth.key] =
+            (revenueMap[yearMonth.key] || 0) + Number(data.paidAmount || 0);
         });
 
-        const graph = [];
-
-        for (let month = start; month <= end; month++) {
-          graph.push({
-            month: months[month],
-            revenue: revenueMap[month] || 0,
-          });
-        }
+        const graph = monthBuckets.map((bucket) => ({
+          month: bucket.label,
+          revenue: revenueMap[bucket.key] || 0,
+        }));
 
         setGraphData(graph);
       } catch (error) {
@@ -657,7 +774,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
     };
 
     fetchGraphData();
-  }, [user, selectedYear, startMonth, endMonth]);
+  }, [user, periodPreset, customFrom, customTo]);
   /* ================= PAYROLL CALCULATIONS ================= */
   const highestMonth = graphData.reduce(
     (max, item) => (item.revenue > max.revenue ? item : max),
@@ -732,105 +849,106 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
     "
     >
       {/* HEADER */}
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold leading-tight">
-            Growth & Performance Overview
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Track revenue, expenses, content and students
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full xl:w-auto">
-          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
-            <span className="text-[11px] font-semibold text-gray-500 uppercase">
-              Year
-            </span>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
-            >
-              {[2023, 2024, 2025, 2026, new Date().getFullYear()]
-                .filter((year, index, list) => list.indexOf(year) === index)
-                .sort((a, b) => b - a)
-                .map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
-            <span className="text-[11px] font-semibold text-gray-500 uppercase">
-              From
-            </span>
-            <select
-              value={startMonth}
-              onChange={(e) => {
-                const value = e.target.value;
-                setStartMonth(value);
-                if (value && endMonth && Number(value) > Number(endMonth)) {
-                  setEndMonth(value);
-                }
-              }}
-              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
-            >
-              <option value="">Jan</option>
-              {[...Array(12)].map((_, i) => (
-                <option key={i} value={i}>
-                  {new Date(0, i).toLocaleString("default", {
-                    month: "short",
-                  })}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
-            <span className="text-[11px] font-semibold text-gray-500 uppercase">
-              To
-            </span>
-            <select
-              value={endMonth}
-              onChange={(e) => {
-                const value = e.target.value;
-                setEndMonth(value);
-                if (value && startMonth && Number(value) < Number(startMonth)) {
-                  setStartMonth(value);
-                }
-              }}
-              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
-            >
-              <option value="">Dec</option>
-              {[...Array(12)].map((_, i) => (
-                <option key={i} value={i}>
-                  {new Date(0, i).toLocaleString("default", {
-                    month: "short",
-                  })}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex gap-2 items-end w-full sm:w-auto">
+      <div className="bg-white border border-orange-100 rounded-3xl p-4 sm:p-5 shadow-sm mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold leading-tight text-gray-800">
+              Growth & Performance Overview
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Track revenue, expenses, content and students
+            </p>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={resetFilters}
-              className="flex-1 sm:flex-none border border-gray-200 bg-white px-5 py-3 rounded-xl font-semibold text-sm text-gray-700"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 min-h-[44px] border border-gray-200 bg-gray-50 px-4 py-2.5 rounded-xl font-semibold text-sm text-gray-700"
             >
+              <RotateCcw size={15} />
               Reset
             </button>
             <button
               type="button"
               onClick={downloadPDFReport}
-              className="flex-1 sm:flex-none bg-orange-500 hover:bg-orange-600 transition text-white px-5 py-3 rounded-xl font-semibold shadow-sm"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 min-h-[44px] bg-orange-500 hover:bg-orange-600 transition text-white px-4 py-2.5 rounded-xl font-semibold shadow-sm text-sm"
             >
-              Download Report
+              <Download size={15} />
+              Report
             </button>
           </div>
+        </div>
+
+        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+          Statement period
+        </p>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-0.5 px-0.5">
+          {PERIOD_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => handlePeriodChange(preset.id)}
+              className={`shrink-0 min-h-[40px] px-3.5 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                periodPreset === preset.id
+                  ? "bg-[#FF6B00] text-white shadow-sm"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {periodPreset === "custom" && (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 min-w-0">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">
+                From date
+              </span>
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || todayISO}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setCustomFrom(value);
+                  if (value && customTo && value > customTo) {
+                    setCustomTo(value);
+                  }
+                }}
+                className="w-full min-w-0 max-w-full min-h-[44px] border border-gray-200 bg-gray-50 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-300"
+              />
+            </label>
+            <label className="flex flex-col gap-1 min-w-0">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">
+                To date
+              </span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                max={todayISO}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setCustomTo(value);
+                  if (value && customFrom && value < customFrom) {
+                    setCustomFrom(value);
+                  }
+                }}
+                className="w-full min-w-0 max-w-full min-h-[44px] border border-gray-200 bg-gray-50 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-300"
+              />
+            </label>
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <span className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-700 font-semibold px-3 py-1.5 rounded-full">
+            <CalendarDays size={13} />
+            {formatDisplayDate(dateRange.from)} – {formatDisplayDate(dateRange.to)}
+          </span>
+          <span className="bg-gray-100 text-gray-600 font-semibold px-3 py-1.5 rounded-full">
+            {rangeDayCount} {rangeDayCount === 1 ? "day" : "days"}
+          </span>
         </div>
       </div>
 
@@ -903,7 +1021,8 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
               Content insights
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Reels, posts, likes, comments and views for this login
+              Reels and posts from {formatDisplayDate(dateRange.from)} to{" "}
+              {formatDisplayDate(dateRange.to)}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -943,7 +1062,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
               key={tab.id}
               type="button"
               onClick={() => setContentFilter(tab.id)}
-              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
+              className={`min-h-[40px] px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
                 contentFilter === tab.id
                   ? "bg-[#FF6B00] text-white"
                   : "bg-gray-100 text-gray-600"
@@ -955,18 +1074,18 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
         </div>
 
         <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-5">
-          {["views", "likes", "dislikes", "comments"].map((tab) => (
+          {["newest", "views", "likes", "dislikes", "comments"].map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap capitalize transition ${
+              className={`min-h-[40px] px-4 py-2 rounded-full text-sm whitespace-nowrap capitalize transition ${
                 activeTab === tab
                   ? "bg-black text-orange-400 font-semibold"
                   : "bg-white border border-gray-200 text-gray-600"
               }`}
             >
-              Most {tab}
+              {tab === "newest" ? "Newest" : `Most ${tab}`}
             </button>
           ))}
         </div>
@@ -994,7 +1113,7 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
             <p className="text-sm text-gray-400 mt-1">
               {topReels.length + topPosts.length === 0
                 ? "Upload reels or posts to see views, likes and comments here."
-                : "Try another year, month range, type or search."}
+                : "Try another period, content type or search."}
             </p>
           </div>
         ) : (
@@ -1174,11 +1293,22 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
             <p className="mt-3 text-gray-500">Loading analytics...</p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={graphData}>
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
+          <ResponsiveContainer width="100%" height={window.innerWidth < 640 ? 280 : 320}>
+            <BarChart
+              data={graphData}
+              margin={{ top: 4, right: 8, left: -12, bottom: graphData.length > 6 ? 18 : 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+              <XAxis
+                dataKey="month"
+                interval={0}
+                tick={{ fontSize: 11 }}
+                angle={graphData.length > 6 ? -35 : 0}
+                textAnchor={graphData.length > 6 ? "end" : "middle"}
+                height={graphData.length > 6 ? 48 : 28}
+              />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={currencyTooltip} />
               <Bar dataKey="revenue" fill="#f97316" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -1190,10 +1320,11 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
       <div className="bg-white rounded-2xl shadow p-4">
         <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={financeChartData}>
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
+          <BarChart data={financeChartData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip formatter={currencyTooltip} />
 
             <Bar dataKey="amount" fill="#f97316" radius={[8, 8, 0, 0]} />
           </BarChart>
@@ -1206,10 +1337,21 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-white rounded-2xl shadow p-4">
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={graphData}>
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip />
+            <LineChart
+              data={graphData}
+              margin={{ top: 4, right: 8, left: -12, bottom: graphData.length > 6 ? 18 : 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+              <XAxis
+                dataKey="month"
+                interval={0}
+                tick={{ fontSize: 11 }}
+                angle={graphData.length > 6 ? -35 : 0}
+                textAnchor={graphData.length > 6 ? "end" : "middle"}
+                height={graphData.length > 6 ? 48 : 28}
+              />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip formatter={currencyTooltip} />
               <Line
                 type="monotone"
                 dataKey="revenue"
@@ -1241,7 +1383,11 @@ Total Revenue: ₹${totalRevenue.toLocaleString()}
 
       {/* CUSTOMER SECTION */}
       <div className="bg-white rounded-2xl shadow p-5 mt-8">
-        <h2 className="text-xl font-bold mb-4">Workforce & Clients</h2>
+        <h2 className="text-xl font-bold mb-2">Workforce & Clients</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Joined between {formatDisplayDate(dateRange.from)} and{" "}
+          {formatDisplayDate(dateRange.to)}
+        </p>
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="border rounded-xl p-5">

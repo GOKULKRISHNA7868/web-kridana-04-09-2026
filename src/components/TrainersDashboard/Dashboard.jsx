@@ -9,6 +9,8 @@ import {
   IndianRupee,
   Users,
   BadgeCheck,
+  UserPlus,
+  X,
 } from "lucide-react";
 
 import { db } from "../../firebase";
@@ -21,10 +23,11 @@ import { useNavigate } from "react-router-dom";
 
 import { getDashboardGreeting } from "../../utils/dashboardGreeting";
 
-const TrainerDashboard = () => {
+const TrainerDashboard = ({ setView }) => {
   const { user } = useAuth();
 
   const navigate = useNavigate();
+  const [showAddPrompt, setShowAddPrompt] = useState(true);
 
   const [students, setStudents] = useState([]);
 
@@ -167,6 +170,15 @@ const TrainerDashboard = () => {
     });
   }, [students, search]);
 
+  const goToAddCustomer = () => {
+    setShowAddPrompt(false);
+    if (typeof setView === "function") {
+      setView("addStudent");
+      return;
+    }
+    navigate("/trainers/dashboard");
+  };
+
   // =========================================================
   // LOADING
   // =========================================================
@@ -187,7 +199,7 @@ const TrainerDashboard = () => {
   }
 
   return (
-    <div className="h-full min-h-0 bg-[#F4F6FB] flex flex-col overflow-hidden rounded-2xl">
+    <div className="relative h-full min-h-0 bg-[#F4F6FB] flex flex-col overflow-hidden rounded-2xl">
       <div className="flex-shrink-0 bg-gradient-to-br from-[#FF6A00] via-[#FF7A1A] to-[#FF9A4A] px-3 py-3.5 sm:px-4 relative overflow-hidden">
         <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-white/15 pointer-events-none" />
         <div className="relative flex items-center justify-between gap-3">
@@ -274,7 +286,31 @@ const TrainerDashboard = () => {
                 </thead>
 
                 <tbody>
-                  {filteredStudents.length === 0 ? (
+                  {students.length === 0 ? (
+                    <tr>
+                      <td colSpan={13} className="p-0">
+                        <div className="min-w-[320px] py-10 px-6 flex flex-col items-center text-center">
+                          <div className="w-14 h-14 rounded-2xl bg-orange-50 text-[#FF6A00] flex items-center justify-center">
+                            <UserPlus size={26} />
+                          </div>
+                          <p className="mt-3 text-base font-bold text-gray-800">
+                            No customers yet
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1 max-w-sm">
+                            Add your first student to start attendance, fees
+                            and training on Kridana.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={goToAddCustomer}
+                            className="mt-4 min-h-[44px] px-5 rounded-xl bg-[#FF6A00] text-white text-sm font-semibold active:scale-95"
+                          >
+                            Add your customers
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredStudents.length === 0 ? (
                     <tr>
                       <td
                         colSpan={13}
@@ -391,6 +427,54 @@ const TrainerDashboard = () => {
             FEES TABLE
         =================================================== */}
       </div>
+
+      {showAddPrompt && students.length === 0 && (
+        <div className="absolute inset-0 z-40 flex items-end sm:items-center justify-center bg-black/45 p-0 sm:p-4">
+          <div
+            className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden"
+            style={{
+              paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
+            }}
+          >
+            <div className="px-5 pt-4 pb-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAddPrompt(false)}
+                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-5 pb-5 text-center">
+              <div className="mx-auto w-14 h-14 rounded-2xl bg-orange-50 text-[#FF6A00] flex items-center justify-center">
+                <UserPlus size={26} />
+              </div>
+              <h2 className="mt-3 text-lg font-bold text-gray-900">
+                Add your customers
+              </h2>
+              <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                Your dashboard is ready. Add students to manage attendance,
+                fees and training from one place.
+              </p>
+              <button
+                type="button"
+                onClick={goToAddCustomer}
+                className="mt-5 w-full min-h-[48px] rounded-xl bg-[#FF6A00] text-white font-semibold active:scale-[0.99]"
+              >
+                Add customers
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddPrompt(false)}
+                className="mt-2 w-full min-h-[40px] text-sm font-medium text-gray-500"
+              >
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -15,7 +15,7 @@ import { User, ChevronDown } from "lucide-react";
 import { getDoc } from "firebase/firestore";
 /* -------------------- STYLES -------------------- */
 const inputClass =
-  "h-11 px-3 sm:px-3 w-full border border-orange-400 rounded-md bg-white outline-none focus:border-2 focus:border-orange-500 text-sm appearance-none";
+  "h-12 min-h-[48px] px-3.5 w-full border border-orange-300 rounded-xl bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 text-[16px] appearance-none";
 
 const DEFAULT_PASSWORD = "123456";
 
@@ -880,7 +880,7 @@ export default function AddTrainerDetailsPage() {
 
   /* -------------------- UI -------------------- */
   return (
-    <div className="min-h-screen flex justify-center bg-white pt-2 pb-24 sm:pb-10 px-3 sm:px-6 lg:px-8 overflow-x-hidden">
+    <div className="min-h-screen flex justify-center bg-[#F7F8FB] pt-2 pb-[calc(var(--bottom-navbar-height,64px)+88px)] px-3 sm:px-6 lg:px-8 overflow-x-hidden">
       <div className="w-full max-w-5xl p-2">
         {/* HEADER */}
         <div className="flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-6 mb-8 sm:mb-10 text-center lg:text-left">
@@ -929,11 +929,11 @@ export default function AddTrainerDetailsPage() {
           </div>
           {/* TITLE */}
           <div className="flex-1 flex flex-col items-center">
-            <h2 className="text-3xl font-bold text-orange-500">
-              Customers Data
+            <h2 className="text-2xl sm:text-3xl font-bold text-orange-500">
+              Customer Details
             </h2>
 
-            <p className="mt-4">Step {step} to 2</p>
+            <p className="mt-2 text-sm text-gray-500">Step {step} of 2</p>
 
             <div className="flex gap-4 mt-4 w-full max-w-xl">
               {[1, 2].map((s) => (
@@ -1449,7 +1449,7 @@ export default function AddTrainerDetailsPage() {
         )}
 
         {step === 2 && (
-          <div className="mt-6 grid grid-cols-2 gap-x-10 gap-y-6">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
             {/* Monthly Fee */}
             <div className="flex flex-col">
               <label className="text-sm font-semibold mb-2">
@@ -1547,7 +1547,7 @@ export default function AddTrainerDetailsPage() {
               </p>
             </div>
 
-            <div className="col-span-2 flex flex-col">
+            <div className="md:col-span-2 flex flex-col">
               <label className="text-sm font-semibold mb-2">
                 Enter Address*
               </label>
@@ -1569,54 +1569,53 @@ export default function AddTrainerDetailsPage() {
               )}
             </div>
 
-            <p className="col-span-2 text-red-500 text-sm mt-2">
+            <p className="md:col-span-2 text-red-500 text-sm mt-2">
               <span className="font-semibold">NOTE :</span> Customers will
               receive a reminder notification five days prior to the payment due
               date.
             </p>
-            {/* ACTION BUTTONS */}
-            <div className="col-span-2 mt-16 w-full flex items-center">
-              {/* LEFT SIDE */}
-              <button
-                type="button"
-                onClick={handleBack}
-                className="text-orange-500 font-medium"
-              >
-                Back
-              </button>
-
-              {/* PUSH RIGHT SIDE TO CORNER */}
-              <div className="ml-auto flex items-center gap-8">
-                <button
-                  onClick={handleSubmit}
-                  disabled={isSaving}
-                  className={`px-10 py-3 rounded-lg font-semibold text-white transition
-    ${
-      isSaving
-        ? "bg-orange-300 cursor-not-allowed"
-        : "bg-orange-500 hover:bg-orange-600"
-    }
-  `}
-                >
-                  {isSaving ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </div>
           </div>
         )}
+      </div>
 
-        {/* BUTTONS */}
-        {step === 1 && (
-          <div className="flex justify-end gap-6 mt-12">
+      <div
+        className="fixed left-0 right-0 z-[40] bg-white/95 backdrop-blur-md border-t border-orange-100"
+        style={{ bottom: "var(--bottom-navbar-height, 64px)" }}
+      >
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          {step === 2 ? (
+            <button
+              type="button"
+              onClick={handleBack}
+              className="min-h-[48px] px-4 text-orange-500 font-semibold"
+            >
+              Back
+            </button>
+          ) : (
+            <div className="hidden sm:block flex-1" />
+          )}
+
+          {step === 1 ? (
             <button
               type="button"
               onClick={handleNext}
-              className="bg-orange-500 px-8 py-2 rounded-md font-semibold text-white"
+              className="ml-auto w-full sm:w-auto min-h-[48px] px-8 rounded-xl font-semibold text-white bg-orange-500"
             >
               Next
             </button>
-          </div>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isSaving}
+              className={`ml-auto w-full sm:w-auto min-h-[48px] px-8 rounded-xl font-semibold text-white ${
+                isSaving ? "bg-orange-300 cursor-not-allowed" : "bg-orange-500"
+              }`}
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+          )}
+        </div>
       </div>
       {showRelationPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">

@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Capacitor } from "@capacitor/core";
-import StepCounter from "../../plugins/StepCounter";
 import {
   DEFAULT_GOAL,
   dateKeysBetween,
@@ -34,6 +33,19 @@ import {
   requestWalkNotificationPermission,
   scheduleDailyWalkReminder,
 } from "./walkingNotifications";
+import {
+  activityPermissionUI,
+  notificationPermissionUI,
+  readWalkPermissions,
+  requestWalkPermissions,
+  toneClasses,
+} from "./walkingPermissions";
+import {
+  CheckCircle2,
+  AlertCircle,
+  Info,
+  Loader2,
+} from "lucide-react";
 
 const GOAL_OPTIONS = [5000, 8000, 10000, 12000, 15000];
 
@@ -59,6 +71,8 @@ export default function WalkDashboard() {
     notifications: "unknown",
     sensor: "none",
   });
+  const [permissionBusy, setPermissionBusy] = useState(false);
+  const [permissionFeedback, setPermissionFeedback] = useState("");
 
   const todayKey = useMemo(() => localDateKey(), []);
 
@@ -78,7 +92,7 @@ export default function WalkDashboard() {
       await Promise.all([
         loadGoal(identity),
         loadHistory(identity),
-        preparePermissions(),
+        refreshPermissions(),
       ]);
       if (!cancelled) setLoading(false);
     }
@@ -89,40 +103,36 @@ export default function WalkDashboard() {
     };
   }, [navigate]);
 
-  async function preparePermissions() {
-    const notices = await requestWalkNotificationPermission();
-    if (notices) {
+  useEffect(() => {
+    if (!permissionFeedback) return;
+    const timer = setTimeout(() => setPermissionFeedback(""), 4000);
+    return () => clearTimeout(timer);
+  }, [permissionFeedback]);
+
+  async function refreshPermissions() {
+    const next = await readWalkPermissions();
+    setPermission(next);
+    if (next.notifications === "granted") {
       await scheduleDailyWalkReminder(19);
     }
+    return next;
+  }
 
-    if (!Capacitor.isNativePlatform()) {
-      setPermission({
-        activity: "web",
-        notifications: notices ? "granted" : "denied",
-        sensor: "none",
-      });
-      return;
-    }
-
+  async function handleEnablePermissions() {
+    if (permissionBusy) return;
+    setPermissionBusy(true);
+    setPermissionFeedback("");
     try {
-      let status = {};
-      try {
-        status = await StepCounter.requestPermissions();
-      } catch {
-        status = await StepCounter.getStatus();
+      const result = await requestWalkPermissions();
+      setPermission(result);
+      if (result.notifications === "granted") {
+        await scheduleDailyWalkReminder(19);
       }
-      const sensor = status?.sensor && status.sensor !== "none" ? status.sensor : "motion";
-      setPermission({
-        activity: status?.activityRecognition || "denied",
-        notifications: status?.notifications || (notices ? "granted" : "denied"),
-        sensor: status?.available === false ? "none" : sensor,
-      });
+      setPermissionFeedback(result.message || "Permission settings updated.");
     } catch {
-      setPermission({
-        activity: "unknown",
-        notifications: notices ? "granted" : "denied",
-        sensor: "motion",
-      });
+      setPermissionFeedback("Something went wrong. Please try again.");
+    } finally {
+      setPermissionBusy(false);
     }
   }
 
@@ -270,6 +280,17 @@ export default function WalkDashboard() {
   const maxBar = Math.max(goal, ...chartItems.map((item) => item.steps), 1);
   const bottomNavPad = "var(--bottom-navbar-height, 64px)";
 
+  const activityUI = useMemo(
+    () => activityPermissionUI(permission.activity),
+    [permission.activity],
+  );
+  const notificationsUI = useMemo(
+    () => notificationPermissionUI(permission.notifications),
+    [permission.notifications],
+  );
+  const needsActivityAccess =
+    Capacitor.isNativePlatform() && permission.activity !== "granted";
+
   const startWalk = () => navigate("/Fitness/ActiveWalk");
 
   if (loading) {
@@ -281,7 +302,8 @@ export default function WalkDashboard() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-[#F7F8FC] overflow-x-hidden">
+    <div className="min-h-screen bg-[#F7F8FC] overflow-x-hidden">
+      <div className="max-w-5xl mx-auto">
       <div
         className="sticky top-0 z-20 bg-white px-5 pb-4 shadow-sm"
         style={{
@@ -309,7 +331,7 @@ export default function WalkDashboard() {
             className="relative w-11 h-11 rounded-full bg-gray-50 flex items-center justify-center flex-shrink-0"
           >
             <Bell size={20} className="text-gray-700" />
-            {permission.activity !== "granted" && Capacitor.isNativePlatform() ? (
+            {needsActivityAccess ? (
               <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-orange-500" />
             ) : null}
           </button>
@@ -319,17 +341,48 @@ export default function WalkDashboard() {
       <div
         className="px-5 pt-5 pb-[calc(var(--bottom-navbar-height,64px)+88px)] md:!pb-10"
       >
-        {permission.activity !== "granted" && Capacitor.isNativePlatform() ? (
-          <button
-            type="button"
-            onClick={preparePermissions}
-            className="w-full mb-4 rounded-2xl bg-white border border-orange-100 p-4 text-left"
+        {Capacitor.isNativePlatform() ? (
+          permission.activity === "granted" ? (
+            <div className="mb-4 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3 flex items-center gap-3">
+              <CheckCircle2 size={20} className="text-emerald-600 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-emerald-900">
+                  Step counting enabled
+                </p>
+                <p className="text-xs text-emerald-800/80 mt-0.5">
+                  Physical activity access is allowed on this device.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <PermissionStatusCard
+              ui={activityUI}
+              busy={permissionBusy}
+              onEnable={handleEnablePermissions}
+              compact
+            />
+          )
+        ) : (
+          <PermissionStatusCard
+            ui={activityUI}
+            busy={permissionBusy}
+            onEnable={handleEnablePermissions}
+            compact
+          />
+        )}
+
+        {permissionFeedback ? (
+          <div
+            className={`mb-4 rounded-2xl px-4 py-3 text-sm leading-relaxed border ${
+              permission.activity === "granted"
+                ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                : permission.activity === "denied"
+                  ? "bg-red-50 border-red-200 text-red-900"
+                  : "bg-blue-50 border-blue-200 text-blue-900"
+            }`}
           >
-            <p className="font-semibold text-gray-900">Allow activity access</p>
-            <p className="text-sm text-gray-500 mt-1">
-              Kridana needs Physical activity permission to count real steps on this phone.
-            </p>
-          </button>
+            {permissionFeedback}
+          </div>
         ) : null}
 
         <div className="rounded-[30px] bg-gradient-to-br from-orange-400 via-orange-500 to-orange-600 p-6 text-white shadow-xl">
@@ -535,60 +588,83 @@ export default function WalkDashboard() {
 
       {showNotices ? (
         <div
-          className="fixed inset-0 z-[10050] bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-[10050] bg-black/45 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4"
           onClick={() => setShowNotices(false)}
         >
           <div
-            className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5"
+            className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90dvh] overflow-y-auto"
             style={{
               paddingBottom: "calc(20px + env(safe-area-inset-bottom, 0px))",
             }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="text-orange-500" size={20} />
-                <h3 className="font-bold text-gray-900">Walk alerts</h3>
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mt-3 sm:hidden" />
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <ShieldCheck className="text-orange-500 shrink-0" size={20} />
+                <div className="min-w-0">
+                  <h3 className="font-bold text-gray-900">Walk permissions</h3>
+                  <p className="text-xs text-gray-500 truncate">
+                    Required for accurate step counting
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowNotices(false)}
-                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+                className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
+                aria-label="Close"
               >
                 <X size={16} />
               </button>
             </div>
-            <div className="space-y-3 text-sm text-gray-600">
-              <p>
-                Activity permission:{" "}
-                <span className="font-semibold capitalize">{permission.activity}</span>
-              </p>
-              <p>
-                Notifications:{" "}
-                <span className="font-semibold capitalize">{permission.notifications}</span>
-              </p>
-              <p>
-                Sensor:{" "}
-                <span className="font-semibold">
+
+            <div className="px-5 py-4 space-y-3">
+              <PermissionStatusCard
+                ui={activityUI}
+                busy={permissionBusy}
+                onEnable={handleEnablePermissions}
+              />
+              <PermissionStatusCard
+                ui={notificationsUI}
+                busy={permissionBusy}
+                onEnable={handleEnablePermissions}
+              />
+
+              <div className="rounded-2xl bg-gray-50 border border-gray-100 px-4 py-3">
+                <p className="text-xs font-semibold text-gray-700">Step sensor</p>
+                <p className="text-sm text-gray-600 mt-1 capitalize">
                   {permission.sensor === "none"
-                    ? "Motion fallback"
-                    : permission.sensor.replace(/_/g, " ")}
-                </span>
+                    ? "Motion fallback (phone movement)"
+                    : String(permission.sensor).replace(/_/g, " ")}
+                </p>
+              </div>
+
+              {permissionFeedback ? (
+                <div
+                  className={`rounded-2xl px-4 py-3 text-sm leading-relaxed border ${
+                    permission.activity === "granted" &&
+                    permission.notifications === "granted"
+                      ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                      : permission.activity === "denied" ||
+                          permission.notifications === "denied"
+                        ? "bg-red-50 border-red-200 text-red-900"
+                        : "bg-blue-50 border-blue-200 text-blue-900"
+                  }`}
+                >
+                  {permissionFeedback}
+                </div>
+              ) : null}
+
+              <p className="text-xs text-gray-500 leading-relaxed px-1">
+                Live walk notice, halfway and goal alerts, plus a daily reminder at
+                7:00 PM when notifications are allowed.
               </p>
-              <p className="text-gray-500">
-                You will get a live walk notice, halfway/goal alerts, and a daily reminder at 7:00 PM.
-              </p>
-              <button
-                type="button"
-                onClick={preparePermissions}
-                className="w-full mt-2 rounded-xl bg-orange-500 text-white py-3 font-semibold"
-              >
-                Enable permissions
-              </button>
             </div>
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -599,6 +675,71 @@ function SummaryCard({ icon: Icon, color, bg, value, label }) {
       <Icon className={`${color} mb-3`} size={24} />
       <h3 className="text-3xl font-bold text-gray-900">{value}</h3>
       <p className="text-gray-500">{label}</p>
+    </div>
+  );
+}
+
+function PermissionStatusCard({ ui, busy, onEnable, compact = false }) {
+  const tone = toneClasses(ui.tone);
+  const granted = ui.status === "granted";
+  const denied = ui.status === "denied";
+
+  const StatusIcon =
+    granted ? CheckCircle2 : denied ? AlertCircle : Info;
+
+  return (
+    <div className={`rounded-2xl border p-4 ${tone.card}`}>
+      <div className="flex items-start gap-3">
+        <StatusIcon size={20} className={`shrink-0 mt-0.5 ${tone.icon}`} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-semibold text-gray-900 text-sm sm:text-base">
+              {ui.title}
+            </p>
+            <span
+              className={`text-[10px] sm:text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${tone.badge}`}
+            >
+              {ui.label}
+            </span>
+          </div>
+          <p
+            className={`text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed ${
+              compact ? "line-clamp-2 sm:line-clamp-none" : ""
+            }`}
+          >
+            {ui.description}
+          </p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        disabled={!ui.canEnable || busy || granted}
+        onClick={onEnable}
+        className={`w-full mt-3 min-h-[48px] rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition active:scale-[0.99] ${
+          granted
+            ? "bg-emerald-600/90 text-white cursor-default opacity-95"
+            : ui.canEnable
+              ? denied
+                ? "bg-white border border-red-200 text-red-700"
+                : "bg-[#FF6A00] text-white shadow-sm"
+              : "bg-gray-200 text-gray-500 cursor-not-allowed"
+        } disabled:opacity-70`}
+      >
+        {busy && ui.canEnable ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            Checking…
+          </>
+        ) : granted ? (
+          <>
+            <CheckCircle2 size={16} />
+            {ui.buttonLabel}
+          </>
+        ) : (
+          ui.buttonLabel
+        )}
+      </button>
     </div>
   );
 }

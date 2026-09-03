@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { ArrowLeft, CalendarDays, IndianRupee } from "lucide-react";
 import { auth, db } from "../../firebase";
 import {
   doc,
@@ -12,7 +12,7 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { useSelectedStudent } from "../../context/SelectedStudentContext";
 import { useNavigate } from "react-router-dom";
-const PaymentOverview = () => {
+const PaymentOverview = ({ onBack }) => {
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -221,8 +221,35 @@ const PaymentOverview = () => {
     fetchStudentData();
   }, [activeStudentId, selectedCategory, selectedSubCategory]);
 
-  if (loading) return <div className="p-8">Loading...</div>;
-  if (!student) return <div className="p-8">No Data Found</div>;
+  const goBack = () => {
+    if (typeof onBack === "function") {
+      onBack();
+      return;
+    }
+    navigate(-1);
+  };
+
+  if (loading) {
+    return (
+      <div className="h-full min-h-[240px] flex items-center justify-center text-sm text-gray-500">
+        Loading fees...
+      </div>
+    );
+  }
+  if (!student) {
+    return (
+      <div className="h-full min-h-[240px] flex flex-col items-center justify-center px-6 text-center">
+        <p className="text-sm font-semibold text-gray-700">No fee data found</p>
+        <button
+          type="button"
+          onClick={goBack}
+          className="mt-4 min-h-[44px] px-5 rounded-xl bg-[#FF6A00] text-white text-sm font-semibold"
+        >
+          Back
+        </button>
+      </div>
+    );
+  }
 
   let monthlyFee = 0;
 
@@ -290,49 +317,41 @@ const PaymentOverview = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F7F7F7] flex flex-col">
-      {/* HEADER */}
+    <div className="h-full min-h-0 bg-[#F4F6FB] flex flex-col overflow-hidden rounded-2xl">
+      <div
+        className="shrink-0 z-30 bg-white border-b border-orange-100 px-3 sm:px-4"
+        style={{ paddingTop: "max(8px, env(safe-area-inset-top))" }}
+      >
+        <div className="flex items-center gap-3 py-2.5">
+          <button
+            type="button"
+            onClick={goBack}
+            className="w-12 h-12 rounded-2xl bg-orange-50 text-[#FF6A00] flex items-center justify-center active:scale-95 shrink-0"
+            aria-label="Back to dashboard"
+          >
+            <ArrowLeft size={22} strokeWidth={2.4} />
+          </button>
 
-      <div className="z-30 bg-white px-4 py- border-b">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate(-1)}
-              className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center"
-            >
-              ←
-            </button>
-
-            <h1 className="text-lg font-semibold text-gray-800">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
               Fees Details
             </h1>
+            <p className="text-[11px] text-gray-400">
+              Monthly fees and payment history
+            </p>
           </div>
-
-          <button className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center">
-            <svg
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M4 5h10l-4 5v4l-2 1V10L4 5z" />
-            </svg>
-          </button>
         </div>
       </div>
 
-      <div className="px-4 py-4">
-        {/* FILTERS */}
-
-        <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-4">
+        <div className="grid grid-cols-2 gap-2.5 mb-4">
           <select
             value={selectedCategory}
             onChange={(e) => {
               setSelectedCategory(e.target.value);
               setSelectedSubCategory("");
             }}
-            className="bg-white border border-gray-200 rounded-xl px-3 h-11 text-sm shadow-sm outline-none"
+            className="bg-white border border-gray-200 rounded-xl px-3 min-h-[44px] text-[16px] sm:text-sm shadow-sm outline-none"
           >
             <option value="">All Categories</option>
 
@@ -344,7 +363,7 @@ const PaymentOverview = () => {
           <select
             value={selectedSubCategory}
             onChange={(e) => setSelectedSubCategory(e.target.value)}
-            className="bg-white border border-gray-200 rounded-xl px-3 h-11 text-sm shadow-sm outline-none"
+            className="bg-white border border-gray-200 rounded-xl px-3 min-h-[44px] text-[16px] sm:text-sm shadow-sm outline-none"
           >
             <option value="">All SubCategories</option>
 
@@ -354,75 +373,75 @@ const PaymentOverview = () => {
           </select>
         </div>
 
-        {/* CUSTOMER CARD */}
-
         <div className="rounded-3xl overflow-hidden shadow-md bg-gradient-to-br from-[#FF8A26] via-[#FF6A00] to-[#F4511E] text-white">
           <div className="p-5">
-            <div className="flex justify-between items-start">
-              <div className="flex gap-3">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center font-bold text-xl">
-                  {student.firstName?.charAt(0)}
-                </div>
-
-                <div>
-                  <p className="text-[12px] opacity-90">Customer 01</p>
-
-                  <h2 className="font-semibold text-[17px]">
-                    {student.firstName} {student.lastName}
-                  </h2>
-
-                  <p className="text-xs mt-1 leading-5 text-white/90">
-                    {(student.sports || []).map((sport, i) => (
-                      <span key={i}>
-                        {sport.category} • {sport.subCategory}
-                        {i !== student.sports.length - 1 && (
-                          <>
-                            <br />
-                          </>
-                        )}
-                      </span>
-                    ))}
-                  </p>
-                </div>
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center font-bold text-xl shrink-0">
+                {student.firstName?.charAt(0)}
               </div>
 
-              <button className="text-2xl leading-none">⋮</button>
+              <div className="min-w-0">
+                <p className="text-[11px] opacity-90">Student</p>
+                <h2 className="font-semibold text-[17px] truncate">
+                  {student.firstName} {student.lastName}
+                </h2>
+                <p className="text-xs mt-1 leading-5 text-white/90">
+                  {(student.sports || []).map((sport, i) => (
+                    <span key={i}>
+                      {sport.category} • {sport.subCategory}
+                      {i !== student.sports.length - 1 && (
+                        <>
+                          <br />
+                        </>
+                      )}
+                    </span>
+                  ))}
+                </p>
+              </div>
             </div>
 
-            <div className="mt-6 flex justify-between items-end">
+            <div className="mt-6 flex justify-between items-end gap-3">
               <div>
                 <p className="text-xs opacity-90">Due Amount</p>
-
-                <h1 className="text-4xl font-bold mt-1">₹{monthlyFee}</h1>
+                <h1 className="text-3xl sm:text-4xl font-bold mt-1">
+                  ₹{monthlyFee}
+                </h1>
               </div>
 
               <div className="text-right">
-                <p className="text-xs opacity-80">To be paid :</p>
-
+                <p className="text-xs opacity-80 inline-flex items-center gap-1">
+                  <CalendarDays size={12} />
+                  To be paid
+                </p>
                 <p className="text-sm font-medium mt-1">
-                  Every Month {student.monthlyDate}th
+                  Every month {student.monthlyDate}th
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Reminder */}
-
-        <div className="mt-4 bg-[#FFF2E8] rounded-xl px-4 py-3 flex justify-between items-center border border-orange-200">
-          <div className="w-7 h-7 rounded-full bg-[#FF6A00] text-white flex items-center justify-center text-xs font-semibold">
+        <div className="mt-4 bg-[#FFF2E8] rounded-xl px-4 py-3 flex items-center gap-3 border border-orange-200">
+          <div className="w-9 h-9 rounded-full bg-[#FF6A00] text-white flex items-center justify-center text-sm font-semibold shrink-0">
             {pendingMonths}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-800">
+              Pending month{pendingMonths === 1 ? "" : "s"}
+            </p>
+            <p className="text-xs text-gray-500">
+              {pendingMonths
+                ? "Some months still need payment"
+                : "All listed months are paid"}
+            </p>
           </div>
         </div>
 
         {/* PAYMENT HISTORY */}
 
-        <div className="mt-5 space-y-4 overflow-y-auto pb-24">
-          {/* Payment History */}
-          {/* Payment History */}
-
-          <p className="text-[11px] text-red-400 mb-3">
-            ↓ Scroll to view previous and Pending Months: {pendingMonths}
+        <div className="mt-5 space-y-4 pb-6">
+          <p className="text-xs text-gray-500 mb-3">
+            Scroll to view previous months · Pending: {pendingMonths}
           </p>
 
           {generatedMonths.length === 0 && (

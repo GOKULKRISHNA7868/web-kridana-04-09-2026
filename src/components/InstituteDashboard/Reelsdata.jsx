@@ -19,6 +19,7 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  CartesianGrid,
 } from "recharts";
 import {
   Eye,
@@ -28,6 +29,9 @@ import {
   ThumbsDown,
   Image as ImageIcon,
   X,
+  CalendarDays,
+  Download,
+  RotateCcw,
 } from "lucide-react";
 
 import jsPDF from "jspdf";
@@ -78,10 +82,146 @@ const isVideoUrl = (url) => {
   );
 };
 
-const AnalyticsPage = () => {
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+const PERIOD_PRESETS = [
+  { id: "thisMonth", label: "This month" },
+  { id: "3m", label: "Last 3 months" },
+  { id: "6m", label: "Last 6 months" },
+  { id: "1y", label: "1 year" },
+  { id: "ytd", label: "This year" },
+  { id: "custom", label: "Choose dates" },
+];
+
+const startOfDay = (date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const endOfDay = (date) => {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+};
+
+const toISODate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatDisplayDate = (date) =>
+  date.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+const computeAnalyticsRange = (preset, customFrom, customTo) => {
+  const now = new Date();
+  const to = endOfDay(now);
+
+  if (preset === "custom") {
+    const fallbackFrom = startOfDay(
+      new Date(now.getFullYear(), now.getMonth() - 3, now.getDate()),
+    );
+    const fromDate = customFrom ? startOfDay(new Date(customFrom)) : fallbackFrom;
+    let toDate = customTo ? endOfDay(new Date(customTo)) : to;
+    if (Number.isNaN(fromDate.getTime())) {
+      return { from: fallbackFrom, to };
+    }
+    if (Number.isNaN(toDate.getTime())) {
+      toDate = to;
+    }
+    if (fromDate.getTime() > toDate.getTime()) {
+      return { from: startOfDay(toDate), to: endOfDay(fromDate) };
+    }
+    return { from: fromDate, to: toDate };
+  }
+
+  if (preset === "thisMonth") {
+    return { from: startOfDay(new Date(now.getFullYear(), now.getMonth(), 1)), to };
+  }
+
+  if (preset === "ytd") {
+    return { from: startOfDay(new Date(now.getFullYear(), 0, 1)), to };
+  }
+
+  const monthsBack = preset === "6m" ? 6 : preset === "1y" ? 12 : 3;
+  const from = new Date(now);
+  from.setMonth(from.getMonth() - monthsBack);
+  return { from: startOfDay(from), to };
+};
+
+const parseRecordYearMonth = (record) => {
+  let month = "";
+  let year = "";
+  if (typeof record.month === "string" && record.month.includes("-")) {
+    const parts = record.month.split("-");
+    year = parts[0];
+    month = parts[1];
+  } else {
+    month = record.month?.toString().padStart(2, "0");
+    year = record.year?.toString();
+  }
+  if (!month || !year) return null;
+  const parsedYear = Number(year);
+  const parsedMonth = Number(month);
+  if (
+    Number.isNaN(parsedYear) ||
+    Number.isNaN(parsedMonth) ||
+    parsedMonth < 1 ||
+    parsedMonth > 12
+  ) {
+    return null;
+  }
+  return {
+    year: parsedYear,
+    month: parsedMonth,
+    key: `${parsedYear}-${String(parsedMonth).padStart(2, "0")}`,
+  };
+};
+
+const getMonthBuckets = (from, to) => {
+  const buckets = [];
+  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+  const last = new Date(to.getFullYear(), to.getMonth(), 1);
+  const spanYears = from.getFullYear() !== to.getFullYear();
+  while (cursor <= last) {
+    const year = cursor.getFullYear();
+    const month = cursor.getMonth() + 1;
+    buckets.push({
+      key: `${year}-${String(month).padStart(2, "0")}`,
+      label: spanYears
+        ? `${MONTH_LABELS[month - 1]} '${String(year).slice(-2)}`
+        : MONTH_LABELS[month - 1],
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return buckets;
+};
+
+const AnalyticsPage = ({ setActiveMenu }) => {
   const user = auth.currentUser;
 
   const [graphData, setGraphData] = useState([]);
+  const [dailyBillingTotal, setDailyBillingTotal] = useState(0);
+  const [dailyBillCount, setDailyBillCount] = useState(0);
   const [topReels, setTopReels] = useState([]);
   const [activeTab, setActiveTab] = useState("views");
 
@@ -89,15 +229,15 @@ const AnalyticsPage = () => {
   const [activeVideoUrl, setActiveVideoUrl] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
   const [topPosts, setTopPosts] = useState([]);
+  const [topVideos, setTopVideos] = useState([]);
   const [contentFilter, setContentFilter] = useState("all");
   const [contentSearch, setContentSearch] = useState("");
   const [loadingContent, setLoadingContent] = useState(false);
   const [commentDrawer, setCommentDrawer] = useState(null);
 
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-
-  const [startMonth, setStartMonth] = useState("");
-  const [endMonth, setEndMonth] = useState("");
+  const [periodPreset, setPeriodPreset] = useState("3m");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   const [loadingGraph, setLoadingGraph] = useState(false);
 
@@ -112,47 +252,39 @@ const AnalyticsPage = () => {
   });
 
   const isMobile = window.innerWidth < 768;
+  const todayISO = toISODate(new Date());
 
-  const monthsList = [
-    { name: "Jan", value: "01" },
-    { name: "Feb", value: "02" },
-    { name: "Mar", value: "03" },
-    { name: "Apr", value: "04" },
-    { name: "May", value: "05" },
-    { name: "Jun", value: "06" },
-    { name: "Jul", value: "07" },
-    { name: "Aug", value: "08" },
-    { name: "Sep", value: "09" },
-    { name: "Oct", value: "10" },
-    { name: "Nov", value: "11" },
-    { name: "Dec", value: "12" },
-  ];
+  const dateRange = useMemo(
+    () => computeAnalyticsRange(periodPreset, customFrom, customTo),
+    [periodPreset, customFrom, customTo],
+  );
 
-  const getMonthRange = () => {
-    let start = startMonth ? parseInt(startMonth, 10) : 1;
-    let end = endMonth ? parseInt(endMonth, 10) : 12;
-    if (Number.isNaN(start)) start = 1;
-    if (Number.isNaN(end)) end = 12;
-    if (start > end) {
-      const swapped = start;
-      start = end;
-      end = swapped;
-    }
-    return { start, end };
-  };
+  const rangeDayCount =
+    Math.round(
+      (dateRange.to.getTime() - dateRange.from.getTime()) / 86400000,
+    ) + 1;
 
   const matchesDateFilter = (date) => {
     if (!date || Number.isNaN(date.getTime())) return true;
-    if (Number(date.getFullYear()) !== Number(selectedYear)) return false;
-    const month = date.getMonth() + 1;
-    const { start, end } = getMonthRange();
-    return month >= start && month <= end;
+    return (
+      date.getTime() >= dateRange.from.getTime() &&
+      date.getTime() <= dateRange.to.getTime()
+    );
+  };
+
+  const handlePeriodChange = (presetId) => {
+    setPeriodPreset(presetId);
+    if (presetId === "custom") {
+      const fallback = computeAnalyticsRange("3m");
+      setCustomFrom((prev) => prev || toISODate(fallback.from));
+      setCustomTo((prev) => prev || toISODate(fallback.to));
+    }
   };
 
   const resetFilters = () => {
-    setSelectedYear(new Date().getFullYear());
-    setStartMonth("");
-    setEndMonth("");
+    setPeriodPreset("3m");
+    setCustomFrom("");
+    setCustomTo("");
     setContentFilter("all");
     setActiveTab("views");
     setContentSearch("");
@@ -258,6 +390,7 @@ const AnalyticsPage = () => {
 
         if (!ownerType || !ownerDoc) {
           setTopReels([]);
+          setTopVideos([]);
           setTopPosts([]);
           return;
         }
@@ -271,6 +404,7 @@ const AnalyticsPage = () => {
           "Content";
 
         const reelItems = Array.isArray(data.reels) ? data.reels : [];
+        const videoItems = Array.isArray(data.videos) ? data.videos : [];
         const imageItems = [
           ...(Array.isArray(data.trainingImages) ? data.trainingImages : []),
           ...(Array.isArray(data.mediaGallery?.trainingImages)
@@ -281,13 +415,38 @@ const AnalyticsPage = () => {
         const reelTasks = reelItems.map(async (item, idx) => {
           const videoUrl = getMediaUrl(item);
           if (!videoUrl) return null;
+          const itemType =
+            typeof item === "object" && item.postType === "video"
+              ? "video"
+              : "reel";
           const reelId = `${ownerType}_${ownerId}_${idx}`;
           const stats = await fetchReelStats(reelId);
           return {
             id: reelId,
             reelId,
-            mediaType: "reel",
-            title: getMediaCaption(item, `${ownerName} reel`),
+            mediaType: itemType,
+            title: getMediaCaption(
+              item,
+              `${ownerName} ${itemType === "video" ? "video" : "reel"}`,
+            ),
+            caption: getMediaCaption(item, ""),
+            videoUrl,
+            thumbnail: videoUrl,
+            createdAt: getMediaDate(item),
+            ...stats,
+          };
+        });
+
+        const extraVideoTasks = videoItems.map(async (item, idx) => {
+          const videoUrl = getMediaUrl(item);
+          if (!videoUrl) return null;
+          const videoId = `${ownerType}_${ownerId}_video_${idx}`;
+          const stats = await fetchReelStats(videoId);
+          return {
+            id: videoId,
+            reelId: videoId,
+            mediaType: "video",
+            title: getMediaCaption(item, `${ownerName} video`),
             caption: getMediaCaption(item, ""),
             videoUrl,
             thumbnail: videoUrl,
@@ -319,12 +478,19 @@ const AnalyticsPage = () => {
           };
         });
 
-        const [reelStats, postStats] = await Promise.all([
+        const [reelStats, extraVideoStats, postStats] = await Promise.all([
           Promise.all(reelTasks),
+          Promise.all(extraVideoTasks),
           Promise.all(postTasks),
         ]);
 
-        setTopReels(reelStats.filter(Boolean));
+        const mappedReels = reelStats.filter(Boolean);
+        const extraVideos = extraVideoStats.filter(Boolean);
+        setTopReels(mappedReels.filter((item) => item.mediaType !== "video"));
+        setTopVideos([
+          ...mappedReels.filter((item) => item.mediaType === "video"),
+          ...extraVideos,
+        ]);
         setTopPosts(postStats.filter(Boolean));
       } catch (err) {
         console.error("Dynamic reel analytics error:", err);
@@ -357,8 +523,6 @@ const AnalyticsPage = () => {
           ),
         );
 
-        const { start, end } = getMonthRange();
-
         let joinedEmployees = 0;
 
         trainersSnap.forEach((docSnap) => {
@@ -373,16 +537,7 @@ const AnalyticsPage = () => {
           }
 
           if (!joinDate || isNaN(joinDate)) return;
-
-          const year = joinDate.getFullYear();
-
-          const month = joinDate.getMonth() + 1;
-
-          const validYear = Number(year) === Number(selectedYear);
-
-          const validMonth = month >= start && month <= end;
-
-          if (validYear && validMonth) {
+          if (matchesDateFilter(joinDate)) {
             joinedEmployees++;
           }
         });
@@ -401,16 +556,7 @@ const AnalyticsPage = () => {
           }
 
           if (!joinDate || isNaN(joinDate)) return;
-
-          const year = joinDate.getFullYear();
-
-          const month = joinDate.getMonth() + 1;
-
-          const validYear = Number(year) === Number(selectedYear);
-
-          const validMonth = month >= start && month <= end;
-
-          if (validYear && validMonth) {
+          if (matchesDateFilter(joinDate)) {
             joinedCustomers++;
           }
         });
@@ -430,7 +576,7 @@ const AnalyticsPage = () => {
     };
 
     fetchWorkforce();
-  }, [user, selectedYear, startMonth, endMonth]);
+  }, [user, periodPreset, customFrom, customTo]);
 
   /* ================= PLAY VIDEO ================= */
 
@@ -484,8 +630,15 @@ const AnalyticsPage = () => {
   const displayedContent = useMemo(() => {
     const keyword = contentSearch.trim().toLowerCase();
     let items = [];
-    if (contentFilter !== "posts") items = [...items, ...topReels];
-    if (contentFilter !== "reels") items = [...items, ...topPosts];
+    if (contentFilter === "all" || contentFilter === "reels") {
+      items = [...items, ...topReels];
+    }
+    if (contentFilter === "all" || contentFilter === "videos") {
+      items = [...items, ...topVideos];
+    }
+    if (contentFilter === "all" || contentFilter === "posts") {
+      items = [...items, ...topPosts];
+    }
 
     return items
       .filter((item) => matchesDateFilter(item.createdAt))
@@ -495,37 +648,48 @@ const AnalyticsPage = () => {
           .toLowerCase()
           .includes(keyword);
       })
-      .sort((a, b) => Number(b[activeTab] || 0) - Number(a[activeTab] || 0));
+      .sort((a, b) => {
+        if (activeTab === "newest") {
+          return (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0);
+        }
+        return Number(b[activeTab] || 0) - Number(a[activeTab] || 0);
+      });
   }, [
     topReels,
+    topVideos,
     topPosts,
     contentFilter,
     activeTab,
     contentSearch,
-    selectedYear,
-    startMonth,
-    endMonth,
+    periodPreset,
+    customFrom,
+    customTo,
   ]);
 
   const filteredReels = useMemo(
     () => topReels.filter((item) => matchesDateFilter(item.createdAt)),
-    [topReels, selectedYear, startMonth, endMonth],
+    [topReels, periodPreset, customFrom, customTo],
+  );
+
+  const filteredVideos = useMemo(
+    () => topVideos.filter((item) => matchesDateFilter(item.createdAt)),
+    [topVideos, periodPreset, customFrom, customTo],
   );
 
   const filteredPosts = useMemo(
     () => topPosts.filter((item) => matchesDateFilter(item.createdAt)),
-    [topPosts, selectedYear, startMonth, endMonth],
+    [topPosts, periodPreset, customFrom, customTo],
   );
 
   const contentTotals = useMemo(() => {
-    const all = [...filteredReels, ...filteredPosts];
+    const all = [...filteredReels, ...filteredVideos, ...filteredPosts];
     return {
       items: all.length,
       views: all.reduce((sum, item) => sum + Number(item.views || 0), 0),
       likes: all.reduce((sum, item) => sum + Number(item.likes || 0), 0),
       comments: all.reduce((sum, item) => sum + Number(item.comments || 0), 0),
     };
-  }, [filteredReels, filteredPosts]);
+  }, [filteredReels, filteredVideos, filteredPosts]);
 
   /* ================= FETCH GRAPH DATA ================= */
 
@@ -536,22 +700,8 @@ const AnalyticsPage = () => {
       setLoadingGraph(true);
 
       try {
-        const months = [
-          "Jan",
-          "Feb",
-          "Mar",
-          "Apr",
-          "May",
-          "Jun",
-          "Jul",
-          "Aug",
-          "Sep",
-          "Oct",
-          "Nov",
-          "Dec",
-        ];
-
-        const { start, end } = getMonthRange();
+        const monthBuckets = getMonthBuckets(dateRange.from, dateRange.to);
+        const bucketKeys = new Set(monthBuckets.map((bucket) => bucket.key));
 
         /* ===== FETCH ===== */
 
@@ -586,123 +736,79 @@ const AnalyticsPage = () => {
 
         studentSnap.forEach((docSnap) => {
           const d = docSnap.data();
+          const yearMonth = parseRecordYearMonth(d);
+          if (!yearMonth || !bucketKeys.has(yearMonth.key)) return;
 
-          let month = "";
-
-          let year = "";
-
-          if (typeof d.month === "string" && d.month.includes("-")) {
-            const parts = d.month.split("-");
-
-            year = parts[0];
-
-            month = parts[1];
-          } else {
-            month = d.month?.toString().padStart(2, "0");
-
-            year = d.year?.toString();
-          }
-
-          if (selectedYear && year && Number(year) !== Number(selectedYear)) {
-            return;
-          }
-
-          if (!month) return;
-
-          revenueMap[month] =
-            (revenueMap[month] || 0) + Number(d.paidAmount || 0);
+          revenueMap[yearMonth.key] =
+            (revenueMap[yearMonth.key] || 0) + Number(d.paidAmount || 0);
         });
+
+        let dailyTotal = 0;
+        let dailyCount = 0;
+        try {
+          const dailySnap = await getDocs(
+            collection(db, "institutes", user.uid, "dailyBills"),
+          );
+          dailySnap.forEach((docSnap) => {
+            const d = docSnap.data();
+            if (d.status && String(d.status).toLowerCase() !== "paid") return;
+            const yearMonth =
+              parseRecordYearMonth(d) ||
+              parseRecordYearMonth({
+                year: String(d.date || "").slice(0, 4),
+                month: String(d.date || "").slice(5, 7),
+              });
+            if (!yearMonth || !bucketKeys.has(yearMonth.key)) return;
+            const amount = Number(d.paidAmount || d.total || 0);
+            revenueMap[yearMonth.key] =
+              (revenueMap[yearMonth.key] || 0) + amount;
+            dailyTotal += amount;
+            dailyCount += 1;
+          });
+        } catch (dailyErr) {
+          console.error("Daily billing analytics error:", dailyErr);
+        }
+        setDailyBillingTotal(dailyTotal);
+        setDailyBillCount(dailyCount);
 
         /* ================= SALARY ================= */
 
         salarySnap.forEach((docSnap) => {
           const d = docSnap.data();
+          const yearMonth = parseRecordYearMonth(d);
+          if (!yearMonth || !bucketKeys.has(yearMonth.key)) return;
 
-          let month = "";
-
-          let year = "";
-
-          if (typeof d.month === "string" && d.month.includes("-")) {
-            const parts = d.month.split("-");
-
-            year = parts[0];
-
-            month = parts[1];
-          } else {
-            month = d.month?.toString().padStart(2, "0");
-
-            year = d.year?.toString();
-          }
-
-          if (selectedYear && year && Number(year) !== Number(selectedYear)) {
-            return;
-          }
-
-          if (!month) return;
-
-          salaryMap[month] =
-            (salaryMap[month] || 0) + Number(d.paidAmount || 0);
+          salaryMap[yearMonth.key] =
+            (salaryMap[yearMonth.key] || 0) + Number(d.paidAmount || 0);
         });
 
         /* ================= EXPENSES ================= */
 
         expenseSnap.forEach((docSnap) => {
           const d = docSnap.data();
+          const yearMonth = parseRecordYearMonth(d);
+          if (!yearMonth || !bucketKeys.has(yearMonth.key)) return;
 
-          let month = "";
-
-          let year = "";
-
-          if (typeof d.month === "string" && d.month.includes("-")) {
-            const parts = d.month.split("-");
-
-            year = parts[0];
-
-            month = parts[1];
-          } else {
-            month = d.month?.toString().padStart(2, "0");
-
-            year = d.year?.toString();
-          }
-
-          if (selectedYear && year && Number(year) !== Number(selectedYear)) {
-            return;
-          }
-
-          if (!month) return;
-
-          expenseMap[month] = (expenseMap[month] || 0) + Number(d.amount || 0);
+          expenseMap[yearMonth.key] =
+            (expenseMap[yearMonth.key] || 0) + Number(d.amount || 0);
         });
 
         /* ================= FINAL ================= */
 
-        const data = [];
-
-        for (let m = start; m <= end; m++) {
-          const monthStr = m.toString().padStart(2, "0");
-
-          const revenue = revenueMap[monthStr] || 0;
-
-          const salary = salaryMap[monthStr] || 0;
-
-          const expense = expenseMap[monthStr] || 0;
-
+        const data = monthBuckets.map((bucket) => {
+          const revenue = revenueMap[bucket.key] || 0;
+          const salary = salaryMap[bucket.key] || 0;
+          const expense = expenseMap[bucket.key] || 0;
           const totalExpenses = salary + expense;
-
-          data.push({
-            month: months[m - 1],
-
+          return {
+            month: bucket.label,
             revenue,
-
             salary,
-
             expense,
-
             totalExpenses,
-
             profit: revenue - totalExpenses,
-          });
-        }
+          };
+        });
 
         setGraphData(data);
       } catch (err) {
@@ -713,7 +819,7 @@ const AnalyticsPage = () => {
     };
 
     fetchGraphData();
-  }, [user, selectedYear, startMonth, endMonth]);
+  }, [user, periodPreset, customFrom, customTo]);
 
   /* ================= CALCULATIONS ================= */
 
@@ -739,6 +845,7 @@ const AnalyticsPage = () => {
   const totalProfit = useMemo(() => {
     return totalRevenue - totalExpenses;
   }, [totalRevenue, totalExpenses]);
+  const isLoss = totalProfit < 0;
 
   const highestMonth = graphData.reduce(
     (max, item) => (item.revenue > max.revenue ? item : max),
@@ -769,7 +876,7 @@ const AnalyticsPage = () => {
       <h2>Institute Analytics Report</h2>
 
       <p>
-      Year: ${selectedYear}
+      Period: ${formatDisplayDate(dateRange.from)} – ${formatDisplayDate(dateRange.to)}
       </p>
 
       </div>
@@ -800,8 +907,8 @@ const AnalyticsPage = () => {
       </div>
 
       <div style="border:1px solid #ddd;padding:15px;border-radius:10px">
-      <p>Total Profit</p>
-      <h2>₹ ${totalProfit.toLocaleString()}</h2>
+      <p>${isLoss ? "Total Loss" : "Total Profit"}</p>
+      <h2>₹ ${Math.abs(totalProfit).toLocaleString()}</h2>
       </div>
 
       </div>
@@ -833,7 +940,7 @@ const AnalyticsPage = () => {
       </th>
 
       <th style="border:1px solid #ccc;padding:8px">
-      Profit
+      ${isLoss ? "Result" : "Profit"}
       </th>
 
       </tr>
@@ -868,7 +975,7 @@ const AnalyticsPage = () => {
       </td>
 
       <td style="border:1px solid #ccc;padding:8px;text-align:center">
-      ₹ ${r.profit.toLocaleString()}
+      ${r.profit < 0 ? "Loss" : "Profit"} ₹ ${Math.abs(Number(r.profit || 0)).toLocaleString()}
       </td>
 
       </tr>
@@ -909,7 +1016,9 @@ const AnalyticsPage = () => {
 
       pdf.addImage(imgData, "PNG", 10, 10, imgWidth, imgHeight);
 
-      pdf.save(`Analytics_Report_${selectedYear}.pdf`);
+      pdf.save(
+        `Analytics_Report_${toISODate(dateRange.from)}_${toISODate(dateRange.to)}.pdf`,
+      );
 
       document.body.removeChild(container);
     } catch (err) {
@@ -923,104 +1032,106 @@ const AnalyticsPage = () => {
     <div className="min-h-screen pb-24 bg-gray-50 p-3 sm:p-4 md:p-6 overflow-x-hidden">
       {/* HEADER */}
 
-      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-            Growth & Performance Overview
-          </h1>
-
-          <p className="text-sm text-gray-500 mt-1">
-            Track revenue, salary, expenses, profit and workforce
-          </p>
-        </div>
-
-        {/* FILTERS */}
-
-        <div className="flex flex-col sm:flex-row flex-wrap gap-3 w-full xl:w-auto">
-          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
-            <span className="text-[11px] font-semibold text-gray-500 uppercase">
-              Year
-            </span>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
-            >
-              {[2023, 2024, 2025, 2026, new Date().getFullYear()]
-                .filter((year, index, list) => list.indexOf(year) === index)
-                .sort((a, b) => b - a)
-                .map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
-            <span className="text-[11px] font-semibold text-gray-500 uppercase">
-              From
-            </span>
-            <select
-              value={startMonth}
-              onChange={(e) => {
-                const value = e.target.value;
-                setStartMonth(value);
-                if (value && endMonth && Number(value) > Number(endMonth)) {
-                  setEndMonth(value);
-                }
-              }}
-              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
-            >
-              <option value="">Jan</option>
-              {monthsList.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1 min-w-[120px] flex-1 sm:flex-none">
-            <span className="text-[11px] font-semibold text-gray-500 uppercase">
-              To
-            </span>
-            <select
-              value={endMonth}
-              onChange={(e) => {
-                const value = e.target.value;
-                setEndMonth(value);
-                if (value && startMonth && Number(value) < Number(startMonth)) {
-                  setStartMonth(value);
-                }
-              }}
-              className="border bg-white px-4 py-3 rounded-xl shadow-sm text-sm w-full"
-            >
-              <option value="">Dec</option>
-              {monthsList.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex gap-2 items-end w-full sm:w-auto">
+      <div className="bg-white border border-orange-100 rounded-3xl p-4 sm:p-5 shadow-sm mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-3xl font-bold text-gray-800">
+              Growth & Performance Overview
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Track revenue, salary, expenses and workforce
+            </p>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={resetFilters}
-              className="flex-1 sm:flex-none border border-gray-200 bg-white px-5 py-3 rounded-xl font-semibold text-sm text-gray-700"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 min-h-[44px] border border-gray-200 bg-gray-50 px-4 py-2.5 rounded-xl font-semibold text-sm text-gray-700"
             >
+              <RotateCcw size={15} />
               Reset
             </button>
             <button
               type="button"
               onClick={downloadPDFReport}
-              className="flex-1 sm:flex-none bg-orange-500 hover:bg-orange-600 transition text-white px-5 py-3 rounded-xl font-semibold shadow-sm"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 min-h-[44px] bg-orange-500 hover:bg-orange-600 transition text-white px-4 py-2.5 rounded-xl font-semibold shadow-sm text-sm"
             >
-              Download Report
+              <Download size={15} />
+              Report
             </button>
           </div>
+        </div>
+
+        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">
+          Statement period
+        </p>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-0.5 px-0.5">
+          {PERIOD_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => handlePeriodChange(preset.id)}
+              className={`shrink-0 min-h-[40px] px-3.5 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                periodPreset === preset.id
+                  ? "bg-[#FF6B00] text-white shadow-sm"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {periodPreset === "custom" && (
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1 min-w-0">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">
+                From date
+              </span>
+              <input
+                type="date"
+                value={customFrom}
+                max={customTo || todayISO}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setCustomFrom(value);
+                  if (value && customTo && value > customTo) {
+                    setCustomTo(value);
+                  }
+                }}
+                className="w-full min-w-0 max-w-full min-h-[44px] border border-gray-200 bg-gray-50 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-300"
+              />
+            </label>
+            <label className="flex flex-col gap-1 min-w-0">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">
+                To date
+              </span>
+              <input
+                type="date"
+                value={customTo}
+                min={customFrom || undefined}
+                max={todayISO}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setCustomTo(value);
+                  if (value && customFrom && value < customFrom) {
+                    setCustomFrom(value);
+                  }
+                }}
+                className="w-full min-w-0 max-w-full min-h-[44px] border border-gray-200 bg-gray-50 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-300"
+              />
+            </label>
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <span className="inline-flex items-center gap-1.5 bg-orange-50 text-orange-700 font-semibold px-3 py-1.5 rounded-full">
+            <CalendarDays size={13} />
+            {formatDisplayDate(dateRange.from)} – {formatDisplayDate(dateRange.to)}
+          </span>
+          <span className="bg-gray-100 text-gray-600 font-semibold px-3 py-1.5 rounded-full">
+            {rangeDayCount} {rangeDayCount === 1 ? "day" : "days"}
+          </span>
         </div>
       </div>
 
@@ -1070,10 +1181,14 @@ const AnalyticsPage = () => {
         {/* PROFIT */}
 
         <div className="bg-white border border-orange-100 rounded-2xl p-4 shadow-sm">
-          <p className="text-gray-500 text-sm">Profit</p>
+          <p className="text-gray-500 text-sm">{isLoss ? "Loss" : "Profit"}</p>
 
-          <p className="text-lg sm:text-2xl font-bold text-emerald-600 mt-2 break-words">
-            ₹ {totalProfit.toLocaleString()}
+          <p
+            className={`text-lg sm:text-2xl font-bold mt-2 break-words ${
+              isLoss ? "text-red-500" : "text-emerald-600"
+            }`}
+          >
+            ₹ {Math.abs(totalProfit).toLocaleString()}
           </p>
         </div>
 
@@ -1083,10 +1198,36 @@ const AnalyticsPage = () => {
           <p className="text-gray-500 text-sm">Video Views</p>
 
           <p className="text-lg sm:text-2xl font-bold text-orange-600 mt-2">
-            {filteredReels.reduce((s, r) => s + Number(r.views || 0), 0)}
+            {filteredReels.reduce((s, r) => s + Number(r.views || 0), 0) +
+              filteredVideos.reduce((s, r) => s + Number(r.views || 0), 0)}
           </p>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => {
+          sessionStorage.setItem("openDailyBillHistory", "1");
+          setActiveMenu?.("Daily Bill");
+        }}
+        className="w-full text-left bg-white border border-orange-100 rounded-2xl p-4 shadow-sm mb-8 active:scale-[0.99] transition"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-gray-500 text-sm">Walk-in daily billing</p>
+            <p className="text-lg sm:text-2xl font-bold text-orange-600 mt-2">
+              ₹ {dailyBillingTotal.toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {dailyBillCount} paid walk-in bill{dailyBillCount === 1 ? "" : "s"}{" "}
+              in this period. Tap to open full history.
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-orange-500 mt-1">
+            View history
+          </span>
+        </div>
+      </button>
 
       {/* TOP CONTENT */}
 
@@ -1097,12 +1238,16 @@ const AnalyticsPage = () => {
               Content insights
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Reels, posts, likes, comments and views for this login
+              Reels, videos and posts from {formatDisplayDate(dateRange.from)} to{" "}
+              {formatDisplayDate(dateRange.to)}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="text-xs bg-orange-50 text-orange-700 px-3 py-1.5 rounded-full font-semibold">
               {filteredReels.length} reels
+            </span>
+            <span className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-full font-semibold">
+              {filteredVideos.length} videos
             </span>
             <span className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full font-semibold">
               {filteredPosts.length} posts
@@ -1119,21 +1264,22 @@ const AnalyticsPage = () => {
         <input
           value={contentSearch}
           onChange={(event) => setContentSearch(event.target.value)}
-          placeholder="Search reels and posts"
+          placeholder="Search reels, videos and posts"
           className="w-full mb-4 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none"
         />
 
         <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-4">
           {[
-            { id: "all", label: "All", count: filteredReels.length + filteredPosts.length },
+            { id: "all", label: "All", count: filteredReels.length + filteredVideos.length + filteredPosts.length },
             { id: "reels", label: "Reels", count: filteredReels.length },
+            { id: "videos", label: "Videos", count: filteredVideos.length },
             { id: "posts", label: "Posts", count: filteredPosts.length },
           ].map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setContentFilter(tab.id)}
-              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
+              className={`min-h-[40px] px-4 py-2 rounded-full text-sm whitespace-nowrap transition ${
                 contentFilter === tab.id
                   ? "bg-[#FF6B00] text-white"
                   : "bg-gray-100 text-gray-600"
@@ -1145,18 +1291,18 @@ const AnalyticsPage = () => {
         </div>
 
         <div className="flex gap-2 overflow-x-auto scrollbar-hide mb-5">
-          {["views", "likes", "dislikes", "comments"].map((tab) => (
+          {["newest", "views", "likes", "dislikes", "comments"].map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-full text-sm whitespace-nowrap capitalize transition ${
+              className={`min-h-[40px] px-4 py-2 rounded-full text-sm whitespace-nowrap capitalize transition ${
                 activeTab === tab
                   ? "bg-black text-orange-400 font-semibold"
                   : "bg-white border border-gray-200 text-gray-600"
               }`}
             >
-              Most {tab}
+              {tab === "newest" ? "Newest" : `Most ${tab}`}
             </button>
           ))}
         </div>
@@ -1177,14 +1323,14 @@ const AnalyticsPage = () => {
         ) : displayedContent.length === 0 ? (
           <div className="text-center py-12 px-4">
             <p className="font-semibold text-gray-700">
-              {topReels.length + topPosts.length === 0
+              {topReels.length + topVideos.length + topPosts.length === 0
                 ? "No content yet"
                 : "No results for these filters"}
             </p>
             <p className="text-sm text-gray-400 mt-1">
-              {topReels.length + topPosts.length === 0
-                ? "Upload reels or posts to see views, likes and comments here."
-                : "Try another year, month range, type or search."}
+              {topReels.length + topVideos.length + topPosts.length === 0
+                ? "Upload reels, videos or posts to see views, likes and comments here."
+                : "Try another period, content type or search."}
             </p>
           </div>
         ) : (
@@ -1216,7 +1362,11 @@ const AnalyticsPage = () => {
                     />
                   )}
                   <span className="absolute top-3 left-3 text-[10px] font-bold uppercase bg-white/90 px-2 py-1 rounded-full">
-                    {item.mediaType === "post" ? "Post" : "Reel"}
+                    {item.mediaType === "post"
+                      ? "Post"
+                      : item.mediaType === "video"
+                        ? "Video"
+                        : "Reel"}
                   </span>
                   <span className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition">
                     {item.mediaType === "post" ? (
@@ -1366,21 +1516,40 @@ const AnalyticsPage = () => {
       <h2 className="text-xl font-semibold mt-8 mb-4">Revenue Reports</h2>
 
       <div className="bg-white shadow-sm border rounded-3xl p-3 sm:p-5 overflow-hidden">
+        <div className="flex flex-wrap gap-3 text-[11px] font-semibold text-gray-500 mb-3">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Revenue
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Salary
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Expenses
+          </span>
+        </div>
         <ResponsiveContainer
           width="100%"
-          height={window.innerWidth < 640 ? 260 : 340}
+          height={window.innerWidth < 640 ? 280 : 340}
         >
-          <BarChart data={graphData}>
-            <XAxis dataKey="month" />
-
-            <YAxis />
-
-            <Tooltip />
-
-            <Bar dataKey="revenue" fill="#22c55e" />
-
+          <BarChart data={graphData} margin={{ top: 4, right: 8, left: -12, bottom: graphData.length > 6 ? 18 : 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+            <XAxis
+              dataKey="month"
+              interval={0}
+              tick={{ fontSize: 11 }}
+              angle={graphData.length > 6 ? -35 : 0}
+              textAnchor={graphData.length > 6 ? "end" : "middle"}
+              height={graphData.length > 6 ? 48 : 28}
+            />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip
+              formatter={(value, name) => [
+                `₹ ${Number(value || 0).toLocaleString("en-IN")}`,
+                String(name).charAt(0).toUpperCase() + String(name).slice(1),
+              ]}
+            />
+            <Bar dataKey="revenue" fill="#22c55e" radius={[4, 4, 0, 0]} />
             <Bar dataKey="salary" fill="#3b82f6" />
-
             <Bar dataKey="expense" fill="#ef4444" />
           </BarChart>
         </ResponsiveContainer>
@@ -1394,13 +1563,26 @@ const AnalyticsPage = () => {
         {/* LEFT GRAPH */}
 
         <div className="xl:col-span-2 bg-white shadow-sm border rounded-3xl p-3 sm:p-5 overflow-hidden">
-          <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={graphData}>
-              <XAxis dataKey="month" />
+          <ResponsiveContainer width="100%" height={isMobile ? 280 : 350}>
+            <LineChart data={graphData} margin={{ top: 4, right: 8, left: -12, bottom: graphData.length > 6 ? 18 : 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+              <XAxis
+                dataKey="month"
+                interval={0}
+                tick={{ fontSize: 11 }}
+                angle={graphData.length > 6 ? -35 : 0}
+                textAnchor={graphData.length > 6 ? "end" : "middle"}
+                height={graphData.length > 6 ? 48 : 28}
+              />
 
-              <YAxis />
+              <YAxis tick={{ fontSize: 11 }} />
 
-              <Tooltip />
+              <Tooltip
+                formatter={(value, name) => [
+                  `₹ ${Number(value || 0).toLocaleString("en-IN")}`,
+                  String(name).charAt(0).toUpperCase() + String(name).slice(1),
+                ]}
+              />
 
               <Line
                 type="monotone"
@@ -1462,7 +1644,10 @@ const AnalyticsPage = () => {
       {/* WORKFORCE */}
 
       <div className="bg-white border rounded-3xl p-4 sm:p-6 mt-5 shadow-sm">
-        <h2 className="text-2xl font-bold mb-6">Workforce & Clients Metrics</h2>
+        <h2 className="text-xl sm:text-2xl font-bold mb-2">Workforce & Clients Metrics</h2>
+        <p className="text-sm text-gray-500 mb-6">
+          Joined between {formatDisplayDate(dateRange.from)} and {formatDisplayDate(dateRange.to)}
+        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="border border-orange-100 p-5 rounded-3xl bg-orange-50">

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
-import { useAuth } from "../../../../context/AuthContext";
+import { useAccountScope } from "../AccountScopeContext";
 import { IndianRupee, Trash2, Pencil } from "lucide-react";
 import StepHeader from "../StepHeader";
 import CategoryFields from "../CategoryFields";
@@ -36,8 +36,8 @@ const fieldClass = (hasError) =>
 
 const digitsOnly = (value) => value.replace(/\D/g, "");
 
-const PricingTransparency = ({ setStep }) => {
-  const { user } = useAuth();
+const PricingTransparency = ({ setStep, onSaved }) => {
+  const { instituteId } = useAccountScope();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -50,16 +50,23 @@ const PricingTransparency = ({ setStep }) => {
   const [showForm, setShowForm] = useState(false);
   const [errors, setErrors] = useState({});
   const [formErrors, setFormErrors] = useState({});
+  const [yearlyEdited, setYearlyEdited] = useState(false);
+
+  const yearlyFromMonthly = (monthly) => {
+    const amount = Number(digitsOnly(String(monthly || "")));
+    if (!amount) return "";
+    return String(amount * 12);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
 
       try {
-        const instituteSnap = await getDoc(doc(db, "institutes", user.uid));
+        const instituteSnap = await getDoc(doc(db, "institutes", instituteId));
         if (instituteSnap.exists()) {
           const data = instituteSnap.data();
           const pricing = data?.pricing || {};
@@ -92,19 +99,29 @@ const PricingTransparency = ({ setStep }) => {
     };
 
     fetchData();
-  }, [user]);
+  }, [instituteId]);
 
   const openAdd = () => {
     setDraft(emptyPackage());
     setEditingIndex(null);
     setFormErrors({});
+    setYearlyEdited(false);
     setShowForm(true);
   };
 
   const openEdit = (index) => {
-    setDraft({ ...emptyPackage(), ...packages[index] });
+    const item = { ...emptyPackage(), ...packages[index] };
+    setDraft(item);
     setEditingIndex(index);
     setFormErrors({});
+    const monthly = Number(item.monthlyFee || 0);
+    setYearlyEdited(
+      Boolean(
+        item.yearlyFee &&
+          monthly &&
+          Number(item.yearlyFee) !== monthly * 12,
+      ),
+    );
     setShowForm(true);
   };
 
@@ -162,7 +179,7 @@ const PricingTransparency = ({ setStep }) => {
   };
 
   const handleSave = async () => {
-    if (!user?.uid) return;
+    if (!instituteId) return;
     if (showForm) {
       alert("Save or cancel the fee form first.");
       return;
@@ -176,7 +193,7 @@ const PricingTransparency = ({ setStep }) => {
       setSaving(true);
       const first = packages[0] || {};
       await setDoc(
-        doc(db, "institutes", user.uid),
+        doc(db, "institutes", instituteId),
         {
           pricing: {
             packages,
@@ -190,7 +207,7 @@ const PricingTransparency = ({ setStep }) => {
         },
         { merge: true },
       );
-      alert("Fees saved. Students will see these clearly on your profile.");
+      onSaved?.("Fees & Packages");
     } catch (error) {
       console.error("Error saving pricing:", error);
       alert("Error saving data");
@@ -340,12 +357,16 @@ const PricingTransparency = ({ setStep }) => {
                 inputMode="numeric"
                 placeholder="e.g. 2500"
                 value={draft.monthlyFee}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const monthlyFee = digitsOnly(e.target.value);
                   setDraft((p) => ({
                     ...p,
-                    monthlyFee: digitsOnly(e.target.value),
-                  }))
-                }
+                    monthlyFee,
+                    yearlyFee: yearlyEdited
+                      ? p.yearlyFee
+                      : yearlyFromMonthly(monthlyFee),
+                  }));
+                }}
                 className={fieldClass(formErrors.monthlyFee)}
               />
               {formErrors.monthlyFee && (
@@ -362,14 +383,20 @@ const PricingTransparency = ({ setStep }) => {
                 inputMode="numeric"
                 placeholder="e.g. 25000"
                 value={draft.yearlyFee}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setYearlyEdited(true);
                   setDraft((p) => ({
                     ...p,
                     yearlyFee: digitsOnly(e.target.value),
-                  }))
-                }
+                  }));
+                }}
                 className={fieldClass(false)}
               />
+              <p className="text-[11px] text-gray-400 mt-1">
+                {yearlyEdited
+                  ? "Custom yearly fee. You can still edit this."
+                  : "Filled as monthly × 12. You can edit it."}
+              </p>
             </div>
             <div>
               <label className="text-sm font-medium mb-1.5 block">

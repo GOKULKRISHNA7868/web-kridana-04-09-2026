@@ -5,7 +5,10 @@ import { Capacitor } from "@capacitor/core";
 
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { App } from "@capacitor/app";
+import useChatThreadHistory from "../../hooks/useChatThreadHistory";
 import ChatMuteMenuItems from "../chat/ChatMuteMenuItems";
+import ChatSelectionToolbar from "../chat/ChatSelectionToolbar";
+import ChatDeleteConfirmModal from "../chat/ChatDeleteConfirmModal";
 import { getChatDayKey, getChatDayLabel } from "../../utils/chatDayLabel";
 import {
   ensureChatNotifications,
@@ -61,8 +64,8 @@ const ChatBox = () => {
   const [showUpcomingPopup, setShowUpcomingPopup] = useState(false);
   const appState = useRef(true);
   const [selectedMessages, setSelectedMessages] = useState([]);
-  const [showMessageMenu, setShowMessageMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingMessages, setDeletingMessages] = useState(false);
 
   const longPressTimer = useRef(null);
   const longPressTriggered = useRef(false);
@@ -83,7 +86,7 @@ const ChatBox = () => {
   const previousRequestCount = useRef(0);
   const [activeChat, setActiveChat] = useState(null);
   const [activeChatName, setActiveChatName] = useState("");
-  const [text, setText] = useState("");
+  const [draftsByChat, setDraftsByChat] = useState({});
   const navigate = useNavigate();
   const [groupName, setGroupName] = useState("");
   const [selectedMembers, setSelectedMembers] = useState([]);
@@ -115,6 +118,36 @@ const ChatBox = () => {
   useEffect(() => {
     return () => setActiveChatId(null);
   }, []);
+
+  const closeOpenChat = () => {
+    setActiveChat(null);
+    setActiveChatName("");
+    setMessages([]);
+    setSelectedMessages([]);
+  };
+
+  const draftText = activeChat?.id ? draftsByChat[activeChat.id] || "" : "";
+
+  const updateDraft = (value) => {
+    if (!activeChat?.id) return;
+    const chatId = activeChat.id;
+    setDraftsByChat((prev) => {
+      if (prev[chatId] === value) return prev;
+      return { ...prev, [chatId]: value };
+    });
+  };
+
+  const clearDraft = (chatId = activeChat?.id) => {
+    if (!chatId) return;
+    setDraftsByChat((prev) => {
+      if (!(chatId in prev)) return prev;
+      const next = { ...prev };
+      delete next[chatId];
+      return next;
+    });
+  };
+
+  const requestCloseChat = useChatThreadHistory(activeChat?.id, closeOpenChat);
 
   useEffect(() => {
     mutedRef.current = isMuted;
@@ -310,25 +343,7 @@ const ChatBox = () => {
     return () => window.removeEventListener("kridana-incoming-chat", handler);
   }, []);
 
-  /* Hardware / swipe-back: close chat before leaving page */
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let handle;
-    const setup = async () => {
-      handle = await App.addListener("backButton", () => {
-        if (activeChatRef.current) {
-          setActiveChat(null);
-          setActiveChatName("");
-          setMessages([]);
-          setSelectedMessages([]);
-        } else {
-          navigate(-1);
-        }
-      });
-    };
-    setup();
-    return () => handle?.remove();
-  }, [navigate]);
+  /* Hardware / corner-swipe back is handled by useChatThreadHistory */
 
   useEffect(() => {
     ensureChatNotifications();
@@ -1049,6 +1064,7 @@ const ChatBox = () => {
     await deleteDoc(doc(db, "chats", activeChat.id));
     await deleteDoc(gRef);
 
+    clearDraft(activeChat.id);
     setActiveChat(null);
     setActiveChatName("");
     setMessages([]);
@@ -1056,15 +1072,16 @@ const ChatBox = () => {
 
   /* ================= SEND MESSAGE ================= */
   const sendMessage = async () => {
-    const message = text.trim();
+    const message = draftText.trim();
 
     if (!message || !activeChat?.id || !user || sending) return;
 
+    const chatId = activeChat.id;
     setSending(true);
-    setText("");
+    clearDraft(chatId);
 
     try {
-      const msgRef = collection(db, "chats", activeChat.id, "messages");
+      const msgRef = collection(db, "chats", chatId, "messages");
 
       await addDoc(msgRef, {
         text: message,
@@ -1073,13 +1090,13 @@ const ChatBox = () => {
         readBy: [user.uid],
       });
 
-      await updateDoc(doc(db, "chats", activeChat.id), {
+      await updateDoc(doc(db, "chats", chatId), {
         lastMessage: message,
         lastAt: serverTimestamp(),
       });
     } catch (err) {
       console.error(err);
-      setText(message);
+      setDraftsByChat((prev) => ({ ...prev, [chatId]: message }));
     } finally {
       setSending(false);
     }
@@ -1379,7 +1396,11 @@ Please attend your class on time.`;
       return [...prev, message];
     });
 
-    setShowMessageMenu(false);
+  };
+
+  const cancelMessageSelection = () => {
+    setSelectedMessages([]);
+    setShowDeleteConfirm(false);
   };
 
   /* ================= LONG PRESS ================= */
@@ -1472,10 +1493,11 @@ Please attend your class on time.`;
     );
 
     if (messagesToDelete.length === 0) {
-      setSelectedMessages([]);
-      setShowDeleteConfirm(false);
+      cancelMessageSelection();
       return;
     }
+
+    setDeletingMessages(true);
 
     try {
       await Promise.all(
@@ -1509,13 +1531,13 @@ Please attend your class on time.`;
         });
       }
 
-      setSelectedMessages([]);
-      setShowMessageMenu(false);
-      setShowDeleteConfirm(false);
+      cancelMessageSelection();
     } catch (error) {
       console.error("Error deleting selected messages:", error);
 
       alert("Unable to delete messages. Please try again.");
+    } finally {
+      setDeletingMessages(false);
     }
   };
   return (
@@ -1527,7 +1549,7 @@ Please attend your class on time.`;
   w-full
   max-w-lg
   mx-auto
-  md:max-w-none
+  md:max-w-6xl
   bg-[#f3f3f3]
   overflow-hidden
   md:rounded-xl
@@ -1807,10 +1829,7 @@ overflow-y-auto
             <button
               onClick={() => {
                 if (activeChat) {
-                  setActiveChat(null);
-                  setActiveChatName("");
-                  setMessages([]);
-                  setSelectedMessages([]);
+                  requestCloseChat();
                 } else {
                   navigate(-1);
                 }
@@ -2162,180 +2181,113 @@ overflow-y-auto
           z-20
         "
         >
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setActiveChat(null);
-                setActiveChatName("");
-                setMessages([]);
-                setSelectedMessages([]);
-              }}
-              className="md:hidden text-xl"
-            >
-              ←
-            </button>
-
-            <div className="relative">
-              <img
-                src={getValidImage("", activeChatName)}
-                className="w-11 h-11 rounded-full object-cover"
-              />
-
-              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-            </div>
-
-            <div>
-              <h2 className="font-semibold text-[15px]">
-                {activeChatName || "Chat"}
-              </h2>
-
-              <p
-                className={`text-xs ${
-                  activeChat?.uid && onlineUsers[activeChat.uid]?.online
-                    ? "text-green-500"
-                    : "text-gray-400"
-                }`}
-              >
-                {activeChat?.uid && onlineUsers[activeChat.uid]?.online
-                  ? "Online"
-                  : onlineUsers[activeChat?.uid]?.lastSeen?.toDate
-                  ? `Last seen ${onlineUsers[activeChat.uid].lastSeen
-                      .toDate()
-                      .toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}`
-                  : "Offline"}
-              </p>
-            </div>
-          </div>
-
-          <div className="relative">
-            <button
-              onClick={() => {
-                if (selectedMessages.length > 0) {
-                  setShowMessageMenu((prev) => !prev);
-                  setShowChatMenu(false);
-                } else {
-                  setShowChatMenu((prev) => !prev);
-                  setShowMessageMenu(false);
-                }
-              }}
-              className={`
-      w-10
-      h-10
-      rounded-full
-      flex
-      items-center
-      justify-center
-      transition
-      ${
-        selectedMessages.length > 0
-          ? "bg-orange-50 text-orange-600"
-          : "text-gray-500"
-      }
-    `}
-              aria-label="Chat options"
-            >
-              <MoreVertical size={21} />
-            </button>
-
-            {showChatMenu && selectedMessages.length === 0 && (
-              <div className="absolute right-0 top-11 z-[100] w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+          {selectedMessages.length > 0 ? (
+            <ChatSelectionToolbar
+              count={selectedMessages.length}
+              onCancel={cancelMessageSelection}
+              onDelete={() => setShowDeleteConfirm(true)}
+            />
+          ) : (
+            <>
+              <div className="flex items-center gap-3 min-w-0">
                 <button
-                  onClick={() => {
-                    setShowChatSearch(true);
-                    setShowChatMenu(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                  onClick={requestCloseChat}
+                  className="md:hidden text-xl shrink-0"
                 >
-                  <Search size={16} />
-                  Search messages
+                  ←
                 </button>
-                <ChatMuteMenuItems
-                  conversationMuted={conversationMuted}
-                  globalMuted={isMuted}
-                  onToggleConversation={async () => {
-                    if (!user || !activeChat?.id) return;
-                    const next = !conversationMuted;
-                    setConversationMuted(next);
-                    setShowChatMenu(false);
-                    await setConversationMute(user.uid, activeChat.id, next);
-                  }}
-                  onToggleGlobal={async () => {
-                    if (!user) return;
-                    const next = !isMuted;
-                    setIsMuted(next);
-                    setShowChatMenu(false);
-                    await setGlobalMute(user.uid, next);
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    setShowChatMenu(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
-                >
-                  <Info size={16} />
-                  Chat info
-                </button>
-              </div>
-            )}
 
-            {selectedMessages.length > 0 && showMessageMenu && (
-              <div
-                className="
-          absolute
-          right-0
-          top-11
-          z-[100]
-          w-48
-          bg-white
-          rounded-2xl
-          shadow-2xl
-          border
-          border-gray-100
-          overflow-hidden
-        "
-              >
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="text-xs text-gray-400">
-                    {selectedMessages.length} selected
-                  </p>
+                <div className="relative shrink-0">
+                  <img
+                    src={getValidImage("", activeChatName)}
+                    className="w-11 h-11 rounded-full object-cover"
+                    alt=""
+                  />
+
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
                 </div>
 
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-[15px] truncate">
+                    {activeChatName || "Chat"}
+                  </h2>
+
+                  <p
+                    className={`text-xs ${
+                      activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                        ? "text-green-500"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {activeChat?.uid && onlineUsers[activeChat.uid]?.online
+                      ? "Online"
+                      : onlineUsers[activeChat?.uid]?.lastSeen?.toDate
+                      ? `Last seen ${onlineUsers[activeChat.uid].lastSeen
+                          .toDate()
+                          .toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`
+                      : "Offline"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative shrink-0">
                 <button
                   onClick={() => {
-                    setShowMessageMenu(false);
-                    setShowDeleteConfirm(true);
+                    setShowChatMenu((prev) => !prev);
                   }}
-                  className="
-            w-full
-            flex
-            items-center
-            gap-3
-            px-4
-            py-3
-            text-left
-            text-red-600
-            hover:bg-red-50
-            active:bg-red-100
-            text-sm
-            font-semibold
-          "
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500"
+                  aria-label="Chat options"
                 >
-                  <span className="text-lg">🗑️</span>
-
-                  <span>
-                    Delete{" "}
-                    {selectedMessages.length > 1
-                      ? `${selectedMessages.length} messages`
-                      : "message"}
-                  </span>
+                  <MoreVertical size={21} />
                 </button>
+
+                {showChatMenu && (
+                  <div className="absolute right-0 top-11 z-[100] w-64 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+                    <button
+                      onClick={() => {
+                        setShowChatSearch(true);
+                        setShowChatMenu(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                    >
+                      <Search size={16} />
+                      Search messages
+                    </button>
+                    <ChatMuteMenuItems
+                      conversationMuted={conversationMuted}
+                      globalMuted={isMuted}
+                      onToggleConversation={async () => {
+                        if (!user || !activeChat?.id) return;
+                        const next = !conversationMuted;
+                        setConversationMuted(next);
+                        setShowChatMenu(false);
+                        await setConversationMute(user.uid, activeChat.id, next);
+                      }}
+                      onToggleGlobal={async () => {
+                        if (!user) return;
+                        const next = !isMuted;
+                        setIsMuted(next);
+                        setShowChatMenu(false);
+                        await setGlobalMute(user.uid, next);
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        setShowChatMenu(false);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-sm hover:bg-gray-50"
+                    >
+                      <Info size={16} />
+                      Chat info
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
 
         {showChatSearch && (
@@ -2598,8 +2550,8 @@ overflow-y-auto
             "
             >
               <input
-                value={text}
-                onChange={(e) => setText(e.target.value)}
+                value={draftText}
+                onChange={(e) => updateDraft(e.target.value)}
                 placeholder="Message"
                 className="flex-1 outline-none text-sm bg-transparent"
                 onKeyDown={(e) => {
@@ -2612,7 +2564,7 @@ overflow-y-auto
 
             <button
               onClick={sendMessage}
-              disabled={sending || !text.trim()}
+              disabled={sending || !draftText.trim()}
               className="
               w-14
               h-12
@@ -2718,168 +2670,14 @@ overflow-y-auto
           </div>
         </div>
       )}
-      {/* ================= DELETE MESSAGE CONFIRMATION ================= */}
-
-      {showDeleteConfirm && (
-        <div
-          className="
-      fixed
-      inset-0
-      z-[2000]
-      bg-black/50
-      backdrop-blur-[2px]
-      flex
-      items-end
-      sm:items-center
-      justify-center
-      p-0
-      sm:p-4
-    "
-          onClick={() => setShowDeleteConfirm(false)}
-        >
-          <div
-            className="
-        bg-white
-        w-full
-        sm:max-w-sm
-        rounded-t-3xl
-        sm:rounded-3xl
-        p-6
-        shadow-2xl
-      "
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Icon */}
-            <div className="flex justify-center mb-4">
-              <div
-                className="
-            w-16
-            h-16
-            rounded-full
-            bg-red-50
-            flex
-            items-center
-            justify-center
-            text-2xl
-          "
-              >
-                🗑️
-              </div>
-            </div>
-
-            {/* Title */}
-            <h2
-              className="
-          text-lg
-          font-bold
-          text-gray-900
-          text-center
-        "
-            >
-              Delete{" "}
-              {selectedMessages.length === 1
-                ? "message?"
-                : `${selectedMessages.length} messages?`}
-            </h2>
-
-            {/* Description */}
-            <p
-              className="
-          text-sm
-          text-gray-500
-          text-center
-          mt-2
-          leading-relaxed
-        "
-            >
-              Are you sure you want to delete{" "}
-              {selectedMessages.length === 1
-                ? "this message"
-                : `these ${selectedMessages.length} messages`}
-              ?
-              <br />
-              This action cannot be undone.
-            </p>
-
-            {/* Selected messages preview */}
-            <div
-              className="
-          mt-4
-          bg-gray-50
-          rounded-2xl
-          p-3
-          max-h-28
-          overflow-y-auto
-          space-y-2
-        "
-            >
-              {selectedMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className="
-                bg-white
-                rounded-xl
-                px-3
-                py-2
-                border
-                border-gray-100
-              "
-                >
-                  <p
-                    className="
-                  text-xs
-                  text-gray-600
-                  whitespace-pre-wrap
-                  break-words
-                "
-                  >
-                    {message.text}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Buttons */}
-            <div
-              className="
-          grid
-          grid-cols-2
-          gap-3
-          mt-5
-        "
-            >
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="
-            h-12
-            rounded-xl
-            bg-gray-100
-            text-gray-700
-            font-semibold
-            active:scale-[0.98]
-          "
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={deleteSelectedMessages}
-                className="
-            h-12
-            rounded-xl
-            bg-red-500
-            text-white
-            font-semibold
-            active:scale-[0.98]
-            shadow-sm
-          "
-              >
-                Yes, Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ChatDeleteConfirmModal
+        open={showDeleteConfirm}
+        count={selectedMessages.length}
+        messages={selectedMessages}
+        deleting={deletingMessages}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={deleteSelectedMessages}
+      />
     </div>
   );
 };

@@ -16,7 +16,7 @@ const Section = ({ title, children }) => (
 const PaymentPolicy = () => {
   const navigate = useNavigate();
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
+    <div className="min-h-screen bg-gray-50 py-10 px-4 md:px-10">
       <div className="max-w-4xl mx-auto bg-white shadow-md rounded-2xl p-6 md:p-10">
         {/* Header */}
         <button

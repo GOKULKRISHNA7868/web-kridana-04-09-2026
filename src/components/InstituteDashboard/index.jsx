@@ -23,6 +23,7 @@ import TrainersAttendancePage from "./TrainersAttendancePage";
 import FeesDetailsPage from "./FeesDetailsPage";
 import SalaryDetailsPage from "./SalaryDetailsPage";
 import AddTrainerDetailsPage from "./AddTrainerDetailsPage";
+import TrainerAccessPage from "./TrainerAccessPage";
 import AddStudentDetailsPage from "./AddStudentDetailsPage";
 import PaymentsPage from "./PaymentsPage";
 import Editprofile from "./Editprofile";
@@ -40,6 +41,7 @@ import EventsPage from "./Events/EventsPage";
 import EventsSidebar from "./Events/EventsSidebar";
 import MyAccountPage from "./MyAccountPage";
 import PaidRecipet from "./PaidRecipet";
+import DailyBill from "./DailyBill";
 import ComplaintHistory from "./ComplaintHistory";
 import ResetPassword from "./ResetPassword";
 import KYC from "./KYC";
@@ -71,6 +73,7 @@ const sidebarSections = [
       //"RegisterNumber",
       "Add Customers",
       "Paid Recipets",
+      "Daily Bill",
       "Fees Details",
       "Performance Reports",
     ],
@@ -83,7 +86,12 @@ const sidebarSections = [
   {
     title: "Management",
     icon: "management",
-    items: ["Management Attendance", "Management Details", "Salary Details"],
+    items: [
+      "Management Attendance",
+      "Management Details",
+      "Trainer Access",
+      "Salary Details",
+    ],
   },
   {
     title: "Operations",
@@ -279,6 +287,8 @@ const InstituteDashboard = () => {
         return <SalaryDetailsPage />;
       case "Management Details":
         return <AddTrainerDetailsPage />;
+      case "Trainer Access":
+        return <TrainerAccessPage />;
       case "Uploadimages":
         return <Uploadimages />;
       case "Add Customers":
@@ -300,7 +310,7 @@ const InstituteDashboard = () => {
       case "Performance Reports":
         return <PerformanceReports />;
       case "Analytics":
-        return <Reelsdata />;
+        return <Reelsdata setActiveMenu={setActiveMenu} />;
       case "Time Table":
         return <Timetable />;
       case "Chat Box":
@@ -320,10 +330,12 @@ const InstituteDashboard = () => {
       //return <AddSportsFacilitiesPage />;
       case "Paid Recipets":
         return <PaidRecipet />;
+      case "Daily Bill":
+        return <DailyBill />;
       //case "Payment & Subscription":
       //return <PaymentsSubscriptionPage />;
       case "Complete KYC":
-        return <KYC />;
+        return <KYC setActiveMenu={setActiveMenu} />;
       case "RegisterNumber":
         return <RegisterNumber />;
       case "Complaint History":
@@ -728,7 +740,9 @@ const InstituteDashboard = () => {
                 activeMenu === "Customers Attendance" ||
                 activeMenu === "Customer & Management Settings" ||
                 activeMenu === "Edit My Account" ||
-                activeMenu === "Time Table"
+                activeMenu === "Time Table" ||
+                activeMenu === "Paid Recipets" ||
+                activeMenu === "Daily Bill"
                   ? "overflow-hidden flex flex-col min-h-0"
                   : "overflow-y-auto overflow-x-hidden"
               }
@@ -745,7 +759,9 @@ const InstituteDashboard = () => {
                 activeMenu === "Customers Attendance" ||
                 activeMenu === "Customer & Management Settings" ||
                 activeMenu === "Edit My Account" ||
-                activeMenu === "Time Table"
+                activeMenu === "Time Table" ||
+                activeMenu === "Paid Recipets" ||
+                activeMenu === "Daily Bill"
                   ? "h-full min-h-0 flex flex-col overflow-hidden dash-page-in"
                   : "dash-page-in md:pt-2"
               }

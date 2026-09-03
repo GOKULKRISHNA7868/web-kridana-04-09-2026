@@ -11,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { runTransaction } from "firebase/firestore";
 import { db, secondaryAuth } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
-import { User, ChevronDown } from "lucide-react";
+import { User, ChevronDown, Check } from "lucide-react";
 import { getDoc } from "firebase/firestore";
 /* -------------------- STYLES -------------------- */
 const inputClass =
@@ -24,6 +24,7 @@ export default function AddTrainerDetailsPage() {
   const navigate = useNavigate();
   const [availableBranches, setAvailableBranches] = useState([]);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
+  const [newBranchDraft, setNewBranchDraft] = useState("");
   const branchRef = useRef(null);
   const [step, setStep] = useState(1);
   const [createLogin, setCreateLogin] = useState(true);
@@ -960,11 +961,38 @@ Password: ${DEFAULT_PASSWORD}`);
       ) {
         setShowSubCategoryDropdown(false);
       }
+
+      if (branchRef.current && !branchRef.current.contains(e.target)) {
+        setShowBranchDropdown(false);
+        setNewBranchDraft("");
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const sanitizeBranchName = (value = "") =>
+    value.replace(/[^A-Za-z0-9\s-]/g, "").trim();
+
+  const confirmNewBranch = () => {
+    const branch = sanitizeBranchName(newBranchDraft);
+    if (!branch) {
+      setErrors((prev) => ({
+        ...prev,
+        branch: "Enter a branch name and tap OK",
+      }));
+      return;
+    }
+
+    setFormData((prev) => ({ ...prev, branch }));
+    setAvailableBranches((prev) =>
+      prev.includes(branch) ? prev : [...prev, branch].sort(),
+    );
+    setErrors((prev) => ({ ...prev, branch: "" }));
+    setNewBranchDraft("");
+    setShowBranchDropdown(false);
+  };
 
   /* -------------------- UI -------------------- */
   return (
@@ -1562,14 +1590,17 @@ Password: ${DEFAULT_PASSWORD}`);
                       const dropdownHeight = 320;
 
                       setBranchDropdownUp(spaceBelow < dropdownHeight);
+                      setNewBranchDraft("");
                     }
 
                     setShowBranchDropdown(!showBranchDropdown);
                   }}
-                  className={`${inputClass} w-full min-h-[44px] flex items-center justify-between text-left text-sm sm:text-base`}
+                  className={`${inputClass} w-full min-h-[44px] flex items-center justify-between text-left text-sm sm:text-base ${
+                    formData.branch ? "text-gray-900" : "text-gray-400"
+                  }`}
                 >
                   <span className="truncate">
-                    {formData.branch || "Select or Enter Branch"}
+                    {formData.branch || "Select or enter branch"}
                   </span>
 
                   <ChevronDown
@@ -1583,16 +1614,12 @@ Password: ${DEFAULT_PASSWORD}`);
                 {/* DROPDOWN */}
                 {showBranchDropdown && (
                   <div
-                    className={`
-absolute z-50 w-full
-bg-white border border-orange-200
-rounded-xl shadow-lg
-overflow-hidden
-max-w-[100vw]
-`}
+                    className={`absolute z-50 w-full bg-white border border-orange-200 rounded-xl shadow-lg overflow-hidden max-w-[100vw] ${
+                      branchDropdownUp ? "bottom-full mb-1.5" : "top-full mt-1.5"
+                    }`}
                   >
                     {/* EXISTING BRANCHES */}
-                    <div className="max-h-60 sm:max-h-52overflow-y-auto">
+                    <div className="max-h-48 sm:max-h-52 overflow-y-auto overscroll-contain">
                       {branchesLoading ? (
                         <div className="flex items-center justify-center py-6">
                           <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -1607,57 +1634,74 @@ max-w-[100vw]
                                 ...prev,
                                 branch,
                               }));
-
+                              setErrors((prev) => ({ ...prev, branch: "" }));
+                              setNewBranchDraft("");
                               setShowBranchDropdown(false);
                             }}
-                            className="
-                  w-full text-left
-                  px-4 py-3
-                  text-sm sm:text-base
-                  hover:bg-orange-100
-                  transition
-                "
+                            className={`w-full text-left px-4 py-3 text-sm sm:text-base transition ${
+                              formData.branch === branch
+                                ? "bg-orange-50 text-orange-700 font-semibold"
+                                : "hover:bg-orange-50 text-gray-800"
+                            }`}
                           >
                             {branch}
                           </button>
                         ))
                       ) : (
                         <p className="text-sm text-gray-400 px-4 py-3">
-                          No branches available
+                          No saved branches yet
                         </p>
                       )}
                     </div>
 
                     {/* ADD NEW BRANCH */}
-                    <div className="border-t p-3 bg-gray-50">
-                      <p className="text-xs text-gray-500 mb-2">
-                        Add New Branch
+                    <div className="border-t border-orange-100 p-3 bg-gray-50">
+                      <p className="text-xs font-semibold text-gray-600 mb-2">
+                        Add new branch
                       </p>
 
                       <input
                         type="text"
-                        placeholder="Enter new branch"
-                        value={formData.branch}
+                        placeholder="Type branch name"
+                        value={newBranchDraft}
                         onChange={(e) => {
-                          const value = e.target.value.replace(
-                            /[^A-Za-z0-9\s-]/g,
-                            "",
+                          setNewBranchDraft(
+                            e.target.value.replace(/[^A-Za-z0-9\s-]/g, ""),
                           );
-
-                          setFormData((prev) => ({
-                            ...prev,
-                            branch: value,
-                          }));
+                          if (errors.branch) {
+                            setErrors((prev) => ({ ...prev, branch: "" }));
+                          }
                         }}
-                        className="
-              h-11 px-3 w-full
-              border border-orange-300
-              rounded-lg bg-white
-              outline-none
-              focus:border-2 focus:border-orange-500
-              text-sm
-            "
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            confirmNewBranch();
+                          }
+                        }}
+                        className="h-11 px-3 w-full border border-orange-300 rounded-xl bg-white outline-none focus:border-2 focus:border-orange-500 text-sm sm:text-base"
                       />
+
+                      <div className="mt-2.5 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewBranchDraft("");
+                            setShowBranchDropdown(false);
+                          }}
+                          className="flex-1 min-h-[44px] rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 active:scale-[0.98]"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={confirmNewBranch}
+                          disabled={!sanitizeBranchName(newBranchDraft)}
+                          className="flex-1 min-h-[44px] rounded-xl bg-orange-500 text-white text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-45 disabled:cursor-not-allowed active:scale-[0.98]"
+                        >
+                          <Check size={16} />
+                          OK
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

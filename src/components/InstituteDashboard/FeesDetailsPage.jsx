@@ -10,6 +10,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db, auth } from "../../firebase";
+import { logStaffAction } from "../../utils/trainerAccess";
 import { ChevronDown } from "lucide-react";
 import { Filter, X } from "lucide-react";
 const MONTHS = [
@@ -31,8 +32,8 @@ const YEARS = Array.from({ length: 10 }, (_, i) =>
   (new Date().getFullYear() - 5 + i).toString(),
 );
 
-const FeesDetailsPage = () => {
-  const instituteId = auth.currentUser?.uid;
+const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
+  const instituteId = overrideId || auth.currentUser?.uid;
 
   const [students, setStudents] = useState([]);
   const [fees, setFees] = useState([]);
@@ -261,6 +262,9 @@ const FeesDetailsPage = () => {
           paidAmount: Number(paidAmount),
           paidDate,
           updatedAt: serverTimestamp(),
+          lastEditedBy: actor?.trainerUid || instituteId,
+          lastEditedByName: actor?.name || "Academy",
+          lastEditedByRole: actor?.role || "institute",
         });
       } else {
         await setDoc(doc(collection(db, "studentFees")), {
@@ -275,6 +279,20 @@ const FeesDetailsPage = () => {
           waiveReason: editData.waiveReason || "",
           month: `${selectedYear}-${selectedMonth}`,
           createdAt: serverTimestamp(),
+          lastEditedBy: actor?.trainerUid || instituteId,
+          lastEditedByName: actor?.name || "Academy",
+          lastEditedByRole: actor?.role || "institute",
+        });
+      }
+
+      if (actor?.trainerUid) {
+        await logStaffAction({
+          instituteId,
+          trainerUid: actor.trainerUid,
+          trainerName: actor.name,
+          action: "fee_update",
+          page: "Fee details",
+          details: `Updated fee for ${selectedStudent.firstName || ""} ${selectedStudent.lastName || ""}`.trim(),
         });
       }
 
@@ -338,7 +356,7 @@ const FeesDetailsPage = () => {
     const pending = total - paid;
     const paidDate = feeRecord?.paidDate || "-";
 
-    return { total, paid, pending, paidDate, reason: "" };
+    return { total, paid, pending, paidDate, reason: "", lastEditedByName: feeRecord?.lastEditedByName || "" };
   };
 
   const StatCard = ({ title, value }) => (
@@ -638,6 +656,9 @@ const FeesDetailsPage = () => {
                           {data.paidDate !== "-"
                             ? `Paid: ${data.paidDate}`
                             : "Not Paid"}
+                          {data.lastEditedByName
+                            ? ` · ${data.lastEditedByName}`
+                            : ""}
                         </span>
 
                         {data.reason && (

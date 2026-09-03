@@ -18,7 +18,7 @@ const COMMON_FACILITIES = [
   "Equipment Provided",
 ];
 
-const FacilitiesInfrastructure = ({ setStep }) => {
+const FacilitiesInfrastructure = ({ setStep, onSaved }) => {
   const { user } = useAuth();
   const [facility, setFacility] = useState("");
   const [facilityTags, setFacilityTags] = useState([]);
@@ -79,7 +79,7 @@ const FacilitiesInfrastructure = ({ setStep }) => {
         { merge: true },
       );
 
-      alert("Saved Successfully ✅");
+      onSaved?.("Facilities");
     } catch (error) {
       console.error("Save Error:", error);
       alert("Save Failed ❌");

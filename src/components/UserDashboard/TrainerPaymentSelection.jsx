@@ -176,8 +176,8 @@ export default function TrainerPaymentSelection() {
   };
 
   return (
-    <div className="min-h-screen flex justify-center bg-gradient-to-br from-orange-50 to-white px-3 py-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow p-4">
+    <div className="min-h-screen flex justify-center bg-gradient-to-br from-orange-50 to-white px-3 py-4 md:py-10">
+      <div className="w-full max-w-md md:max-w-2xl bg-white rounded-2xl shadow p-4 md:p-8">
         {/* HEADER */}
         <div className="flex items-center gap-3 mb-4">
           <button onClick={() => navigate(-1)}>

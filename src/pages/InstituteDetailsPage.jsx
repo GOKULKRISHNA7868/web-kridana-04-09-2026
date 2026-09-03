@@ -448,7 +448,7 @@ export default function InstituteDetailsPage() {
 
   return (
     <div className="page-content min-h-screen bg-[#F4F5F7] flex justify-center">
-      <div className="w-full max-w-lg relative">
+      <div className="w-full max-w-lg md:max-w-4xl lg:max-w-5xl relative">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

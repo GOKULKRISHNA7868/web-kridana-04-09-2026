@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { auth, db } from "../firebase";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
@@ -43,11 +44,10 @@ import {
   TrendingUp,
   LayoutGrid,
   MessageSquareText,
-  Footprints,
   User,
+  ChevronDown,
   Settings,
   Users,
-  Image,
   FileText,
   ShieldCheck,
   HelpCircle,
@@ -872,25 +872,26 @@ const Navbar = () => {
     friendRequestCount;
 
   const isHomeActive = location.pathname === "/";
-  const isWalkActive = location.pathname.includes("/Fitness/");
-  const isDashActive =
-    location.pathname.includes("dashboard") && !isWalkActive;
+  const isDashActive = location.pathname.includes("dashboard");
   const isChatActive =
     location.pathname.includes("ChatBox") ||
     location.pathname.includes("/chat/");
+  const isReelsActive = location.pathname.includes("trending-plays");
+  const isCategoriesActive =
+    location.pathname.startsWith("/services/") ||
+    location.pathname === "/categories" ||
+    location.pathname === "/MobileCategoriesPage";
 
-  const openWalkPage = () => {
-    setDropdownOpen(false);
-    closeMenu();
-    if (!auth.currentUser) {
-      setMenuOpen(true);
-      return;
-    }
-    navigate("/Fitness/fitnessdashboard");
-  };
+  const desktopLinkClass = (active) =>
+    `relative px-3 py-2 rounded-xl text-[13px] lg:text-sm font-semibold tracking-wide transition-all duration-200 ${
+      active
+        ? "text-[#FF6A00] bg-orange-50"
+        : "text-gray-700 hover:text-[#FF6A00] hover:bg-orange-50/70"
+    }`;
+
   const navItemClass = (active) =>
     `flex flex-col items-center justify-center min-h-[48px] px-1 active:scale-95 transition-all duration-200 ${
-      active ? "text-[#FF6A00]" : "text-gray-600"
+      active ? "text-[#FF6A00]" : "text-gray-700"
     }`;
   /* REPLACE THIS useEffect BODY FOR PERFECT PAGE GAP */
 
@@ -900,280 +901,358 @@ const Navbar = () => {
 
   return (
     <>
-      <nav className="hidden md:block w-full bg-black shadow-md sticky top-0 z-50">
-        <div className="w-full px-6 md:px-10 lg:px-14">
-          <div className="flex items-center justify-between h-16">
-            {/* LOGO */}
-            <div
-              onClick={() => navigate("/")}
-              className="flex items-center cursor-pointer"
-            >
-              <div
-                className={`relative w-12 h-12 md:w-14 md:h-14 rounded-full overflow-hidden 
-      bg-white flex items-center justify-center transition-all duration-500
-      ${highlight ? "ring-4 ring-orange-400 animate-pulse scale-110" : ""}
-      hover:scale-110 hover:ring-2 hover:ring-orange-400`}
-              >
-                <img
-                  src="/Kridana logo.png"
-                  alt="Kridana Logo"
-                  className="w-full h-full object-contain p-1"
-                />
-              </div>
-            </div>
-
-            {/* DESKTOP MENU */}
-            <div className="hidden md:flex items-center space-x-8 text-orange-500 font-normal text-lg">
-              <NavLink to="/" className="hover:text-white transition">
-                Home
-              </NavLink>
-
-              {/* SERVICES */}
-              <div className="relative" ref={servicesRef}>
-                <button
-                  onClick={() => setServiceOpen((prev) => !prev)}
-                  className="flex items-center gap-1 transition hover:text-white"
-                >
-                  Categories
-                  <svg
-                    className={`w-4 h-4 transition-transform ${
-                      serviceOpen ? "rotate-180" : ""
-                    }`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-
-                {serviceOpen && (
-                  <div className="absolute top-10 left-0 w-60 bg-white shadow-md rounded-lg border border-gray-200 py-1 z-50">
-                    {serviceTypes.map((service) => (
-                      <NavLink
-                        key={service.path}
-                        to={service.path}
-                        onClick={() => {
-                          setIsOpen(false);
-                          setServiceOpen(false); // ✅ IMPORTANT FIX
-                        }}
-                        className="block text-sm hover:text-orange-600"
-                      >
-                        {service.name}
-                      </NavLink>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <NavLink
-                to="/trending-plays"
-                className="hover:text-white transition"
-              >
-                Reels
-              </NavLink>
-
+      <nav className="hidden md:block w-full sticky top-0 z-50">
+        <div className="relative bg-white/95 backdrop-blur-xl border-b border-gray-200 shadow-[0_4px_24px_rgba(15,23,42,0.06)] desktop-nav-safe text-gray-900">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#FF6A00]/50 to-transparent" />
+          <div className="w-full max-w-7xl mx-auto px-5 lg:px-8">
+            <div className="flex items-center justify-between h-[72px] gap-4">
               <button
                 type="button"
-                onClick={openWalkPage}
-                className={`flex items-center gap-1.5 transition ${
-                  isWalkActive ? "text-white" : "hover:text-white"
-                }`}
+                onClick={() => navigate("/")}
+                className="flex items-center gap-3 group shrink-0"
               >
-                <Footprints size={18} />
-                Walk
+                <div
+                  className={`relative w-11 h-11 lg:w-12 lg:h-12 rounded-2xl overflow-hidden bg-white border border-orange-100 flex items-center justify-center shadow-sm transition-transform duration-300 group-hover:scale-105 ${
+                    highlight ? "ring-2 ring-[#FF6A00] animate-pulse" : ""
+                  }`}
+                >
+                  <img
+                    src="/Kridana logo.png"
+                    alt="Kridana"
+                    className="w-full h-full object-contain p-1"
+                  />
+                </div>
+                <div className="hidden lg:block text-left">
+                  <p className="text-gray-900 font-bold text-lg leading-none tracking-tight">
+                    Kridana
+                  </p>
+                  <p className="text-[11px] text-[#FF6A00] mt-1 font-semibold">
+                    Sports community
+                  </p>
+                </div>
               </button>
 
-              {/* USER ACTIONS (profile + new dropdown side by side) */}
-              {/* PROFILE + ARROW DROPDOWN */}
-              {/* PROFILE + SMALL ARROW (tight like Categories) */}
-              {auth.currentUser && (
-                <div className="relative flex items-center gap-4" ref={userDropdownRef}>
+              <div className="flex items-center gap-1 lg:gap-1.5">
+                <NavLink to="/" className={desktopLinkClass(isHomeActive)}>
+                  Home
+                  {isHomeActive && (
+                    <motion.span
+                      layoutId="desktop-nav-pill"
+                      className="absolute inset-x-2 -bottom-0.5 h-0.5 rounded-full bg-[#FF6A00]"
+                    />
+                  )}
+                </NavLink>
+
+                <div className="relative" ref={servicesRef}>
                   <button
                     type="button"
                     onClick={() => {
-                      setDesktopNotifOpen((prev) => !prev);
+                      setServiceOpen((prev) => !prev);
                       setDropdownOpen(false);
+                      setDesktopNotifOpen(false);
                     }}
-                    className="relative p-1 text-orange-500 hover:text-white transition"
-                    aria-label="Notifications"
+                    className={`${desktopLinkClass(isCategoriesActive || serviceOpen)} inline-flex items-center gap-1`}
                   >
-                    <Bell className="w-6 h-6" />
-                    {notificationCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
-                        {notificationCount > 99 ? "99+" : notificationCount}
-                      </span>
-                    )}
+                    Categories
+                    <ChevronDown
+                      size={15}
+                      className={`transition-transform duration-200 ${
+                        serviceOpen ? "rotate-180" : ""
+                      }`}
+                    />
                   </button>
 
-                  {desktopNotifOpen && (
-                    <div className="absolute right-12 top-10 w-72 bg-white shadow-xl rounded-2xl border border-gray-100 z-50 overflow-hidden">
-                      <div className="px-4 py-3 border-b border-gray-100">
-                        <p className="text-sm font-bold text-gray-900">
-                          Notifications
-                        </p>
-                        <p className="text-[11px] text-gray-400">
-                          Messages, follows and requests
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setDesktopNotifOpen(false);
-                          navigate(chatRoute);
-                        }}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between"
+                  <AnimatePresence>
+                    {serviceOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="absolute top-[calc(100%+12px)] left-0 w-[min(36rem,70vw)] bg-white text-gray-900 rounded-2xl shadow-2xl border border-gray-200 overflow-hidden z-50"
                       >
-                        <span className="text-sm text-gray-800">Messages</span>
-                        {totalUnread > 0 && (
-                          <span className="text-[11px] font-bold text-white bg-orange-500 rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
-                            {totalUnread > 99 ? "99+" : totalUnread}
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDesktopNotifOpen(false);
-                          navigate("/AllPeoplePage");
-                        }}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between"
-                      >
-                        <span className="text-sm text-gray-800">
-                          New followers
-                        </span>
-                        {newFollowersList.length > 0 && (
-                          <span className="text-[11px] font-bold text-white bg-red-500 rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
-                            {newFollowersList.length}
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDesktopNotifOpen(false);
-                          navigate(chatRoute);
-                        }}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between"
-                      >
-                        <span className="text-sm text-gray-800">
-                          Connection requests
-                        </span>
-                        {friendRequestCount > 0 && (
-                          <span className="text-[11px] font-bold text-white bg-blue-500 rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
-                            {friendRequestCount}
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        onClick={toggleChatMute}
-                        className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center justify-between border-t border-gray-100"
-                      >
-                        <span className="text-sm text-gray-800">
-                          {chatMuted ? "Unmute all chat alerts" : "Mute all chat alerts"}
-                        </span>
-                        {chatMuted ? (
-                          <BellOff size={16} className="text-gray-400" />
-                        ) : (
-                          <Bell size={16} className="text-orange-500" />
-                        )}
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex items-center">
-                    {/* PROFILE ICON (no click) */}
-                    {profileImage ? (
-                      <div className="w-8 h-8 rounded-full overflow-hidden">
-                        <img
-                          src={profileImage}
-                          alt="Profile"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <User className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-white" />
+                        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-orange-50 to-white">
+                          <div>
+                            <p className="text-sm font-bold text-gray-900">
+                              Explore sports
+                            </p>
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              Find trainers and academies by category
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setServiceOpen(false);
+                              navigate("/categories");
+                            }}
+                            className="text-xs font-bold text-[#FF6A00] hover:underline"
+                          >
+                            View all
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 p-2">
+                          {serviceTypes.map((service) => (
+                            <NavLink
+                              key={service.path}
+                              to={service.path}
+                              onClick={() => {
+                                setIsOpen(false);
+                                setServiceOpen(false);
+                              }}
+                              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-800 hover:bg-orange-50 hover:text-[#FF6A00] transition-colors"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#FF6A00]" />
+                              {service.name}
+                            </NavLink>
+                          ))}
+                        </div>
+                      </motion.div>
                     )}
+                  </AnimatePresence>
+                </div>
 
-                    {/* SMALL ARROW BUTTON */}
+                <NavLink
+                  to="/trending-plays"
+                  className={desktopLinkClass(isReelsActive)}
+                >
+                  Reels
+                  {isReelsActive && (
+                    <motion.span
+                      layoutId="desktop-nav-pill"
+                      className="absolute inset-x-2 -bottom-0.5 h-0.5 rounded-full bg-[#FF6A00]"
+                    />
+                  )}
+                </NavLink>
+
+                {auth.currentUser && (
+                  <>
                     <button
-                      onClick={() => setDropdownOpen(!dropdownOpen)}
-                      className="ml-1 p-1 hover:text-orange-600 transition"
+                      type="button"
+                      onClick={handleDashboardNavigation}
+                      className={desktopLinkClass(isDashActive)}
                     >
-                      <svg
-                        className={`w-3.5 h-3.5 transition-transform ${
+                      Dashboard
+                      {isDashActive && (
+                        <motion.span
+                          layoutId="desktop-nav-pill"
+                          className="absolute inset-x-2 -bottom-0.5 h-0.5 rounded-full bg-[#FF6A00]"
+                        />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(chatRoute)}
+                      className={`${desktopLinkClass(isChatActive)} inline-flex items-center gap-1.5`}
+                    >
+                      Chat
+                      {unreadChats && (
+                        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                          {totalUnread > 99 ? "99+" : totalUnread || ""}
+                        </span>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 lg:gap-3 shrink-0">
+                {auth.currentUser && (
+                  <div className="relative flex items-center gap-2" ref={userDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDesktopNotifOpen((prev) => !prev);
+                        setDropdownOpen(false);
+                        setServiceOpen(false);
+                      }}
+                      className="relative w-10 h-10 rounded-xl bg-orange-50 border border-orange-100 text-[#FF6A00] hover:bg-orange-100 transition"
+                      aria-label="Notifications"
+                    >
+                      <Bell className="w-5 h-5 mx-auto" />
+                      {notificationCount > 0 && (
+                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center">
+                          {notificationCount > 99 ? "99+" : notificationCount}
+                        </span>
+                      )}
+                    </button>
+
+                    <AnimatePresence>
+                      {desktopNotifOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 8 }}
+                          transition={{ duration: 0.16 }}
+                          className="absolute right-0 top-12 w-80 bg-white text-gray-900 shadow-2xl rounded-2xl border border-gray-200 z-50 overflow-hidden"
+                        >
+                          <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-white">
+                            <p className="text-sm font-bold text-gray-900">
+                              Notifications
+                            </p>
+                            <p className="text-[11px] text-gray-600">
+                              Messages, follows and requests
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setDesktopNotifOpen(false);
+                              navigate(chatRoute);
+                            }}
+                            className="w-full px-4 py-3 text-left hover:bg-orange-50 flex items-center justify-between"
+                          >
+                            <span className="text-sm font-medium text-gray-900">
+                              Messages
+                            </span>
+                            {totalUnread > 0 && (
+                              <span className="text-[11px] font-bold text-white bg-orange-500 rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+                                {totalUnread > 99 ? "99+" : totalUnread}
+                              </span>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDesktopNotifOpen(false);
+                              navigate("/AllPeoplePage");
+                            }}
+                            className="w-full px-4 py-3 text-left hover:bg-orange-50 flex items-center justify-between"
+                          >
+                            <span className="text-sm font-medium text-gray-900">
+                              New followers
+                            </span>
+                            {newFollowersList.length > 0 && (
+                              <span className="text-[11px] font-bold text-white bg-red-500 rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+                                {newFollowersList.length}
+                              </span>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDesktopNotifOpen(false);
+                              navigate(chatRoute);
+                            }}
+                            className="w-full px-4 py-3 text-left hover:bg-orange-50 flex items-center justify-between"
+                          >
+                            <span className="text-sm font-medium text-gray-900">
+                              Connection requests
+                            </span>
+                            {friendRequestCount > 0 && (
+                              <span className="text-[11px] font-bold text-white bg-blue-500 rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
+                                {friendRequestCount}
+                              </span>
+                            )}
+                          </button>
+                          <button
+                            onClick={toggleChatMute}
+                            className="w-full px-4 py-3 text-left hover:bg-orange-50 flex items-center justify-between border-t border-gray-100"
+                          >
+                            <span className="text-sm font-medium text-gray-900">
+                              {chatMuted
+                                ? "Unmute all chat alerts"
+                                : "Mute all chat alerts"}
+                            </span>
+                            {chatMuted ? (
+                              <BellOff size={16} className="text-gray-500" />
+                            ) : (
+                              <Bell size={16} className="text-orange-500" />
+                            )}
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(!dropdownOpen);
+                        setDesktopNotifOpen(false);
+                        setServiceOpen(false);
+                      }}
+                      className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-2xl border border-gray-200 bg-white hover:bg-orange-50 transition shadow-sm"
+                    >
+                      {profileImage ? (
+                        <div className="w-9 h-9 rounded-xl overflow-hidden ring-2 ring-[#FF6A00]/35">
+                          <img
+                            src={profileImage}
+                            alt="Profile"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-9 h-9 rounded-xl bg-orange-50 flex items-center justify-center">
+                          <User className="w-5 h-5 text-[#FF6A00]" />
+                        </div>
+                      )}
+                      <ChevronDown
+                        size={14}
+                        className={`text-gray-600 transition-transform ${
                           dropdownOpen ? "rotate-180" : ""
                         }`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
+                      />
+                    </button>
+
+                    <AnimatePresence>
+                      {dropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 8 }}
+                          transition={{ duration: 0.16 }}
+                          className="absolute right-0 top-12 w-52 bg-white text-gray-900 shadow-2xl rounded-2xl border border-gray-200 z-50 overflow-hidden"
+                        >
+                          <button
+                            onClick={handleDashboardNavigation}
+                            className="flex w-full items-center gap-2 text-left px-4 py-3 text-sm font-medium text-gray-900 hover:bg-orange-50 transition"
+                          >
+                            <LayoutDashboard size={16} className="text-[#FF6A00]" />
+                            Dashboard
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDropdownOpen(false);
+                              navigate(chatRoute);
+                            }}
+                            className="flex w-full items-center gap-2 text-left px-4 py-3 text-sm font-medium text-gray-900 hover:bg-orange-50 transition"
+                          >
+                            <MessageSquareText size={16} className="text-[#FF6A00]" />
+                            Chat
+                          </button>
+                          <div className="h-px bg-gray-100" />
+                          <button
+                            onClick={handleLogout}
+                            className="flex w-full items-center gap-2 text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50 transition"
+                          >
+                            <LogOut size={16} />
+                            Logout
+                          </button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {!authLoading && !auth.currentUser && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/RoleSelection")}
+                      className="hidden lg:inline-flex text-sm font-semibold text-gray-700 hover:text-[#FF6A00] px-3 py-2 rounded-xl transition"
+                    >
+                      Log in
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/RoleSelection")}
+                      className="bg-gradient-to-r from-[#FF6A00] to-[#FF8A3D] hover:brightness-110 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-orange-500/25 transition-transform hover:scale-[1.03] active:scale-[0.98]"
+                    >
+                      Get started
                     </button>
                   </div>
-
-                  {dropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-40 bg-white shadow-md rounded-lg border border-gray-200 z-50 overflow-hidden">
-                      <button
-                        onClick={handleDashboardNavigation}
-                        className="block w-full text-left px-3 py-2 text-sm text-black hover:bg-gray-100 transition"
-                      >
-                        Dashboard
-                      </button>
-
-                      <button
-                        onClick={openWalkPage}
-                        className="block w-full text-left px-3 py-2 text-sm text-black hover:bg-gray-100 transition"
-                      >
-                        Walk
-                      </button>
-
-                      <div className="border-t border-gray-200"></div>
-
-                      <button
-                        onClick={handleLogout}
-                        className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition"
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* SIGN UP BUTTON */}
-              {!authLoading && !auth.currentUser && (
-                <button
-                  onClick={() => navigate("/RoleSelection")}
-                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-full shadow-md transition"
-                >
-                  Sign Up
-                </button>
-              )}
+                )}
+              </div>
             </div>
-
-            {/* MOBILE BUTTON */}
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="md:hidden text-white text-2xl z-50"
-            >
-              ☰
-            </button>
           </div>
         </div>
-
-        {/* MOBILE MENU */}
-
-        {/* ✅ MOBILE BOTTOM NAVBAR */}
-        {/* ✅ MOBILE BOTTOM NAVBAR */}
       </nav>
       {/* ================= MOBILE APP FOOTER NAVBAR ================= */}
       {/* ================= MOBILE APP FOOTER NAVBAR ================= */}
@@ -1187,10 +1266,11 @@ const Navbar = () => {
     left-0
     right-0
     z-[9999]
-    bg-white/90
+    bg-white
     backdrop-blur-xl
-    border-t border-gray-200/70
+    border-t border-gray-200
     shadow-[0_-8px_30px_rgba(0,0,0,0.08)]
+    text-gray-800
     transition-transform duration-300 ease-out
     ${
       keyboardOpen || hideNavbarOnChat || menuOpen
@@ -1230,23 +1310,23 @@ const Navbar = () => {
 
             <button
               type="button"
-              data-tour-id="nav-walk"
-              onClick={openWalkPage}
-              className={navItemClass(isWalkActive)}
+              data-tour-id="nav-categories"
+              onClick={() => navigate("/categories")}
+              className={navItemClass(isCategoriesActive)}
             >
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center ${
-                  isWalkActive ? "bg-[#FF6A00]" : "bg-orange-50"
+                  isCategoriesActive ? "bg-[#FF6A00]" : "bg-orange-50"
                 }`}
               >
-                <Footprints
+                <LayoutGrid
                   size={18}
-                  className={isWalkActive ? "text-white" : "text-[#FF6A00]"}
+                  className={isCategoriesActive ? "text-white" : "text-[#FF6A00]"}
                   strokeWidth={2.4}
                 />
               </div>
               <span className="text-[10px] sm:text-[11px] font-semibold mt-0.5">
-                Walk
+                Sports
               </span>
             </button>
 
@@ -1315,7 +1395,7 @@ const Navbar = () => {
       z-[100000]
       w-screen
       h-[100dvh]
-      min-h-[100vh]
+      max-h-[100dvh]
       bg-[#f7f8fa]
       overflow-hidden
       animate-morePageIn
@@ -1405,8 +1485,8 @@ const Navbar = () => {
         bg-[#f7f8fa]
       "
             style={{
-              paddingBottom: "calc(28px + env(safe-area-inset-bottom))",
-              top: "calc(64px + env(safe-area-inset-top))",
+              top: "calc(64px + env(safe-area-inset-top, 0px))",
+              paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
             }}
           >
             <div
@@ -1416,7 +1496,7 @@ const Navbar = () => {
           mx-auto
           px-4
           pt-4
-          pb-8
+          pb-3
         "
             >
               {/* ================= PROFILE ================= */}
@@ -1634,7 +1714,7 @@ const Navbar = () => {
                             goFromMore("/Uploadimages");
                           else if (smartTip.action === "notifications")
                             setNotifPanelOpen(true);
-                          else goFromMore("/Fitness/fitnessdashboard");
+                          else goFromMore("/categories");
                         }}
                         className="text-[11px] font-bold text-[#FF6A00] shrink-0"
                       >
@@ -1907,59 +1987,6 @@ const Navbar = () => {
 
                         <p className="text-[10px] text-gray-400 mt-0.5">
                           Update your personal information
-                        </p>
-                      </div>
-
-                      <ChevronRight
-                        size={18}
-                        className="text-gray-300 flex-shrink-0"
-                      />
-                    </button>
-
-                    <div className="h-px bg-gray-100 ml-[68px]" />
-
-                    {/* UPLOAD */}
-
-                    <button
-                      onClick={() => {
-                        setMenuOpen(false);
-                        navigate("/Uploadimages");
-                      }}
-                      className="
-                  w-full
-                  flex
-                  items-center
-                  gap-3
-                  px-4
-                  py-4
-                  text-left
-                  active:bg-gray-50
-                  transition
-                "
-                    >
-                      <div
-                        className="
-                    w-10
-                    h-10
-                    rounded-xl
-                    bg-orange-50
-                    text-orange-500
-                    flex
-                    items-center
-                    justify-center
-                    flex-shrink-0
-                  "
-                      >
-                        <Image size={19} />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-semibold text-gray-800">
-                          Upload Images
-                        </p>
-
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          Add and manage your photos
                         </p>
                       </div>
 
@@ -2292,7 +2319,7 @@ const Navbar = () => {
 
                   {/* VERSION */}
 
-                  <div className="text-center pt-5 pb-2">
+                  <div className="text-center pt-3 pb-1">
                     <p className="text-[9px] text-gray-400">Kridana</p>
 
                     <p className="text-[9px] text-gray-300 mt-0.5">
@@ -2331,7 +2358,8 @@ const Navbar = () => {
               <div
                 className="absolute left-0 right-0 top-[64px] bottom-0 overflow-y-auto px-4 pt-4"
                 style={{
-                  paddingBottom: "calc(24px + env(safe-area-inset-bottom))",
+                  top: "calc(64px + env(safe-area-inset-top, 0px))",
+                  paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
                 }}
               >
                 <div className="bg-white rounded-[20px] border border-gray-100 overflow-hidden shadow-sm mb-5 animate-moreFadeUp">

@@ -54,20 +54,21 @@ const CategoriesPage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-orange-500 p-4">
+    <div className="min-h-screen bg-orange-500 p-4 sm:p-8">
+      <div className="max-w-6xl mx-auto">
       {/* HEADER */}
-      <div className="flex items-center mb-4">
+      <div className="flex items-center mb-6">
         <ArrowLeft
           className="text-black cursor-pointer"
           onClick={() => navigate(-1)}
         />
-        <h1 className="ml-3 text-lg font-bold text-black">
+        <h1 className="ml-3 text-lg sm:text-2xl font-bold text-black">
           Choose Your Area of Interest
         </h1>
       </div>
 
       {/* GRID */}
-      <div className="grid grid-cols-3 gap-3 overflow-y-auto">
+      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4 overflow-y-auto">
         {categories.map((cat, index) => {
           const Icon = cat.icon;
 
@@ -84,6 +85,7 @@ const CategoriesPage = () => {
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

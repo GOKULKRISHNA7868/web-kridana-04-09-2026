@@ -37,8 +37,8 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="p-8 bg-white shadow-lg rounded-lg w-96">
+    <div className="min-h-screen flex justify-center items-center bg-gray-50 px-4 py-10">
+      <div className="p-8 bg-white shadow-lg rounded-lg w-full max-w-md">
         <h2 className="text-2xl font-bold mb-4 text-orange-500">
           Reset Your Password
         </h2>

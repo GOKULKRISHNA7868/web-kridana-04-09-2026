@@ -36,10 +36,10 @@ export const NAVBAR_TOUR_STEPS = [
     body: "Your personal control center for attendance, fees, schedules, and account tools after you sign in.",
   },
   {
-    id: "walk",
-    target: "nav-walk",
-    title: "Walk",
-    body: "Track daily steps, walking goals, and stay active with fitness tools built into Kridana.",
+    id: "categories",
+    target: "nav-categories",
+    title: "Categories",
+    body: "Explore sports and wellness categories to find trainers and academies that match you.",
   },
   {
     id: "chat",
@@ -51,6 +51,6 @@ export const NAVBAR_TOUR_STEPS = [
     id: "more",
     target: "nav-more",
     title: "More",
-    body: "Notifications, uploads, help, and settings — everything else lives here in one place.",
+    body: "Notifications, help, and settings — plus Upload in Quick actions. Everything else lives here.",
   },
 ];

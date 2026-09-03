@@ -82,7 +82,8 @@ export default function AvailableDemoClasses() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-700 text-white p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-700 text-white p-6 md:p-10">
+      <div className="max-w-7xl mx-auto">
       <button
         onClick={() => navigate(-1)}
         className="mb-6 text-orange-400 font-semibold"
@@ -185,6 +186,7 @@ export default function AvailableDemoClasses() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

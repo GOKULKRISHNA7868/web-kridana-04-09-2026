@@ -12,7 +12,7 @@ import {
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
 import { Pagination } from "./shared";
-import { Search, Download, ChevronDown } from "lucide-react";
+import { Search, Download, ChevronDown, Check, Layers, X } from "lucide-react";
 import * as XLSX from "xlsx";
 
 const today = new Date().toISOString().split("T")[0];
@@ -59,6 +59,10 @@ const StudentsAttendancePage = () => {
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedSubCategory, setSelectedSubCategory] = useState("");
+  const [showCategorySheet, setShowCategorySheet] = useState(false);
+  const [pickerCategory, setPickerCategory] = useState("");
+  const [pickerSubCategory, setPickerSubCategory] = useState("");
+  const pendingMarkRef = useRef(null);
   const categories = useMemo(() => {
     const set = new Set();
 
@@ -90,6 +94,23 @@ const StudentsAttendancePage = () => {
 
     return [...set];
   }, [students, selectedCategory]);
+
+  const pickerSubCategories = useMemo(() => {
+    const set = new Set();
+    students.forEach((s) => {
+      if (Array.isArray(s.sports)) {
+        s.sports.forEach((sp) => {
+          if (
+            (!pickerCategory || sp.category === pickerCategory) &&
+            sp.subCategory
+          ) {
+            set.add(sp.subCategory);
+          }
+        });
+      }
+    });
+    return [...set];
+  }, [students, pickerCategory]);
   const [summary, setSummary] = useState({
     totalStudents: 0,
     presentToday: 0,
@@ -255,13 +276,34 @@ const StudentsAttendancePage = () => {
   // ==============================
   // SAVE ATTENDANCE (TRAINER)
   // ==============================
-  const saveAttendance = (student, status) => {
+  const categoryReady = Boolean(selectedCategory && selectedSubCategory);
+
+  const openCategorySheet = (pending = null) => {
+    pendingMarkRef.current = pending;
+    setPickerCategory(selectedCategory);
+    setPickerSubCategory(selectedSubCategory);
+    setShowCategorySheet(true);
+  };
+
+  const confirmCategorySheet = () => {
+    if (!pickerCategory || !pickerSubCategory) return;
+    setSelectedCategory(pickerCategory);
+    setSelectedSubCategory(pickerSubCategory);
+    setShowCategorySheet(false);
+
+    const pending = pendingMarkRef.current;
+    pendingMarkRef.current = null;
+    if (pending?.student) {
+      applyMark(pending.student, pending.status);
+    }
+  };
+
+  const applyMark = (student, status) => {
     setDraftAttendance((prev) => ({
       ...prev,
       [student.uid]: status,
     }));
 
-    // if switching to present → remove reason
     if (status === "present") {
       setAbsenceReasons((prev) => {
         const copy = { ...prev };
@@ -271,9 +313,17 @@ const StudentsAttendancePage = () => {
     }
   };
 
+  const saveAttendance = (student, status) => {
+    if (!selectedCategory || !selectedSubCategory) {
+      openCategorySheet({ student, status });
+      return;
+    }
+    applyMark(student, status);
+  };
+
   const handleSaveAll = async () => {
     if (!selectedCategory || !selectedSubCategory) {
-      alert("Please select both Category and Sub Category before saving ❌");
+      openCategorySheet();
       return;
     }
     const dayName = getDayName(selectedDate);
@@ -413,22 +463,18 @@ const StudentsAttendancePage = () => {
     setShowExportModal(false);
   };
   return (
-    <div className="h-full w-full bg-gray-50 rounded-2xl overflow-hidden flex flex-col">
-      {/* ================= FIXED HEADER ================= */}
-      <div className="shrink-0 bg-white border-b shadow-sm sticky top-0 z-20">
-        <div className="px-4 py-4 md:px-8 md:py-6">
-          {/* TITLE */}
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-800">
-              Trainer Students
-            </h1>
-            <p className="text-sm text-orange-500 font-medium mt-0.5">
-              Attendance Management
-            </p>
-          </div>
-
-          {/* DATE PICKER */}
-          <div className="shrink-0">
+    <div className="relative h-full min-h-0 w-full bg-[#F4F6FB] rounded-2xl overflow-hidden flex flex-col">
+      <div className="shrink-0 bg-white border-b border-orange-100">
+        <div className="px-3 py-3 sm:px-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-[#FF6A00] truncate">
+                Students Attendance
+              </h1>
+              <p className="text-[11px] text-gray-400">
+                Mark present or absent for today
+              </p>
+            </div>
             <input
               type="date"
               value={selectedDate}
@@ -438,239 +484,150 @@ const StudentsAttendancePage = () => {
                 setDraftAttendance({});
                 setSelectedDate(e.target.value);
               }}
-              className="h-10 px-3 rounded-xl border border-orange-200 bg-orange-50 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-orange-400"
+              className="h-11 min-w-0 w-[138px] px-2 rounded-xl border border-orange-200 bg-orange-50 text-sm outline-none"
             />
           </div>
-        </div>
 
-        {/* SUMMARY CARDS */}
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          {[
-            {
-              label: "Total",
-              value: summary.totalStudents,
-              bg: "bg-white",
-              text: "text-gray-800",
-            },
-            {
-              label: "Present",
-              value: summary.presentToday,
-              bg: "bg-green-50",
-              text: "text-green-600",
-            },
-            {
-              label: "Absent",
-              value: summary.absentToday,
-              bg: "bg-red-50",
-              text: "text-red-500",
-            },
-          ].map((item, i) => (
-            <div
-              key={i}
-              className={`${item.bg} rounded-2xl px-3 py-3 border border-gray-100 shadow-sm`}
-            >
-              <p className="text-[11px] text-gray-500 font-medium">
-                {item.label}
-              </p>
-              <h3 className={`text-xl font-bold mt-1 ${item.text}`}>
-                {item.value}
-              </h3>
+          <div className="grid grid-cols-3 gap-2 mt-3">
+            {[
+              ["Total", summary.totalStudents, "bg-orange-50 text-orange-600"],
+              ["Present", summary.presentToday, "bg-green-50 text-green-600"],
+              ["Absent", summary.absentToday, "bg-red-50 text-red-500"],
+            ].map(([label, value, tone]) => (
+              <div key={label} className={`${tone} rounded-xl px-2 py-2 text-center`}>
+                <p className="text-[10px] text-gray-500 font-medium">{label}</p>
+                <p className="text-lg font-bold mt-0.5">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 mt-3">
+            <div className="flex items-center flex-1 min-h-[44px] rounded-xl bg-gray-50 border border-gray-200 px-3">
+              <Search size={16} className="text-gray-400 shrink-0" />
+              <input
+                className="ml-2 w-full bg-transparent outline-none text-[16px] sm:text-sm"
+                placeholder="Search student..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
-          ))}
-        </div>
-
-        {/* SEARCH + EXPORT */}
-        <div className="flex items-center gap-3 mt-4">
-          {/* SEARCH */}
-          <div className="flex items-center flex-1 h-11 rounded-2xl bg-gray-50 border border-gray-200 px-3 shadow-sm">
-            <Search size={17} className="text-gray-400" />
-
-            <input
-              className="ml-2 w-full bg-transparent outline-none text-sm text-gray-700 placeholder:text-gray-400"
-              placeholder="Search student..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <button
+              type="button"
+              onClick={() => setShowExportModal(true)}
+              className="w-11 h-11 rounded-xl bg-[#FF6A00] text-white flex items-center justify-center shrink-0"
+              aria-label="Export"
+            >
+              <Download size={18} />
+            </button>
           </div>
 
-          {/* EXPORT */}
+          <div className="grid grid-cols-3 gap-2 mt-2.5">
+            <select
+              value={selectedSession}
+              onChange={(e) => setSelectedSession(e.target.value)}
+              className="border border-gray-200 rounded-xl px-2 py-2.5 text-xs sm:text-sm bg-gray-50 outline-none min-h-[44px]"
+            >
+              <option value="">Session</option>
+              {SESSIONS.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => openCategorySheet()}
+              className={`col-span-2 flex items-center justify-between gap-2 border rounded-xl px-3 py-2 min-h-[44px] text-left ${
+                categoryReady
+                  ? "bg-orange-50 border-orange-200"
+                  : "bg-gray-50 border-gray-200"
+              }`}
+            >
+              <span className="min-w-0 flex items-center gap-2">
+                <Layers size={14} className="text-[#FF6A00] shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-[10px] text-gray-400 leading-none">
+                    Category
+                  </span>
+                  <span className="block text-xs sm:text-sm font-semibold text-gray-800 truncate">
+                    {categoryReady
+                      ? `${selectedCategory} · ${selectedSubCategory}`
+                      : "Choose before marking"}
+                  </span>
+                </span>
+              </span>
+              <ChevronDown size={16} className="text-gray-400 shrink-0" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 space-y-2.5"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
+        {!categoryReady && (
           <button
-            onClick={() => setShowExportModal(true)}
-            className="w-11 h-11 rounded-2xl bg-orange-500 text-white flex items-center justify-center shadow-md active:scale-95 transition"
+            type="button"
+            onClick={() => openCategorySheet()}
+            className="w-full rounded-2xl border border-orange-200 bg-orange-50 px-3 py-3 text-left"
           >
-            <Download size={18} />
+            <p className="text-sm font-semibold text-[#FF6A00]">
+              Choose category first
+            </p>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Select category and sub-category, then mark attendance.
+            </p>
           </button>
-        </div>
-      </div>
+        )}
 
-      {/* FILTERS */}
-      <div className="flex gap-2 overflow-x-auto mb-4">
-        <select
-          value={selectedSession}
-          onChange={(e) => setSelectedSession(e.target.value)}
-          className="border rounded-lg px-3 py-2 text-sm min-w-[120px]"
-        >
-          <option value="">Session</option>
-          {SESSIONS.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-
-        {/* TIME */}
-
-        <select
-          value={selectedCategory}
-          onChange={(e) => {
-            setSelectedCategory(e.target.value);
-            setSelectedSubCategory("");
-          }}
-          className="border rounded-lg px-3 py-2 text-sm min-w-[140px]"
-        >
-          <option value="">Category</option>
-          {categories.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
-
-        <select
-          value={selectedSubCategory}
-          onChange={(e) => setSelectedSubCategory(e.target.value)}
-          className="border rounded-lg px-3 py-2 text-sm min-w-[140px]"
-        >
-          <option value="">Sub</option>
-          {subCategories.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* ================= MOBILE VIEW ================= */}
-      <div className="block sm:hidden h-[42vh] overflow-y-auto overscroll-y-contain space-y-3 pb-2">
-        {paginatedStudents.map((s, index) => {
-          const record = draftAttendance[s.uid];
-
-          return (
-            <div
-              key={s.uid}
-              className="bg-white border rounded-xl p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex items-start gap-1 flex-1 min-w-0">
-                  <span className="w-4 shrink-0 text-sm">
-                    {(currentPage - 1) * itemsPerPage + index + 1}.
-                  </span>
-
-                  <span className="flex-1 break-words leading-5 text-sm font-semibold">
-                    {s.firstName} {s.lastName}
-                  </span>
-                </div>
-                <div className="text-xs text-gray-500">{s.sessions || "-"}</div>
-              </div>
-
-              <div className="flex justify-between">
-                <div
-                  onClick={() => saveAttendance(s, "present")}
-                  className="flex items-center gap-2 cursor-pointer"
-                >
-                  <div className="w-6 h-6 border rounded-full flex items-center justify-center">
-                    {record === "present" && (
-                      <div className="w-3 h-3 bg-green-500 rounded-full" />
-                    )}
+        {paginatedStudents.length === 0 ? (
+          <div className="h-full min-h-[180px] flex items-center justify-center text-sm text-gray-400">
+            No students found
+          </div>
+        ) : (
+          paginatedStudents.map((s, index) => {
+            const record = draftAttendance[s.uid];
+            return (
+              <div
+                key={s.uid}
+                className="bg-white border border-gray-100 rounded-2xl p-3.5 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 break-words">
+                      {(currentPage - 1) * itemsPerPage + index + 1}. {s.firstName}{" "}
+                      {s.lastName}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {s.sessions || "-"}
+                    </p>
                   </div>
-                  <span className="text-green-600">P</span>
                 </div>
 
-                <div
-                  onClick={() => saveAttendance(s, "absent")}
-                  className="flex items-center gap-2 cursor-pointer"
-                >
-                  <div className="w-6 h-6 border rounded-full flex items-center justify-center">
-                    {record === "absent" && (
-                      <div className="w-3 h-3 bg-red-500 rounded-full" />
-                    )}
-                  </div>
-                  <span className="text-red-500">A</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => saveAttendance(s, "present")}
+                    className={`min-h-[44px] rounded-xl border text-sm font-semibold ${
+                      record === "present"
+                        ? "bg-green-50 border-green-200 text-green-700"
+                        : "bg-gray-50 border-gray-200 text-gray-500"
+                    }`}
+                  >
+                    Present
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => saveAttendance(s, "absent")}
+                    className={`min-h-[44px] rounded-xl border text-sm font-semibold ${
+                      record === "absent"
+                        ? "bg-red-50 border-red-200 text-red-600"
+                        : "bg-gray-50 border-gray-200 text-gray-500"
+                    }`}
+                  >
+                    Absent
+                  </button>
                 </div>
-              </div>
 
-              {record === "absent" && (
-                <select
-                  value={absenceReasons[s.uid] || ""}
-                  onChange={(e) =>
-                    setAbsenceReasons((prev) => ({
-                      ...prev,
-                      [s.uid]: e.target.value,
-                    }))
-                  }
-                  className="mt-3 w-full border rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="">Select reason</option>
-                  {ABSENCE_OPTIONS.map((r) => (
-                    <option key={r}>{r}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="sticky bottom-20 bg-white pt-5 pb-3 flex justify-center sm:hidden">
-        <button
-          onClick={handleSaveAll}
-          disabled={!hasChanges}
-          className={`px-6 py-2 text-sm font-semibold rounded-lg text-white ${
-            hasChanges ? "bg-[#FF6A00]" : "bg-gray-300"
-          }`}
-        >
-          Save
-        </button>
-      </div>
-      {/* ================= DESKTOP VIEW ================= */}
-      <div className="hidden sm:block border rounded-xl overflow-x-auto">
-        <div className="grid grid-cols-[2.2fr_1fr_1fr_1fr_1.3fr] min-w-[700px] bg-[#1F2937] text-orange-400 font-semibold p-4">
-          <div>Name</div>
-          <div>Session</div>
-          <div className="text-center">Present</div>
-          <div className="text-center">Absent</div>
-          <div className="text-center">Reason</div>
-        </div>
-
-        {paginatedStudents.map((s, index) => {
-          const record = draftAttendance[s.uid];
-
-          return (
-            <div
-              key={s.uid}
-              className="grid grid-cols-[2.2fr_1fr_1fr_1fr_1.3fr] min-w-[700px] px-6 py-4 border-t items-center"
-            >
-              <div className="flex items-start gap-1 min-w-0">
-                <span className="w-5 shrink-0">
-                  {(currentPage - 1) * itemsPerPage + index + 1}.
-                </span>
-
-                <span className="flex-1 break-words leading-6">
-                  {s.firstName} {s.lastName}
-                </span>
-              </div>
-              <div>{s.sessions || "-"}</div>
-
-              <div className="flex justify-center">
-                <input
-                  type="checkbox"
-                  checked={record === "present"}
-                  onChange={() => saveAttendance(s, "present")}
-                />
-              </div>
-
-              <div className="flex justify-center">
-                <input
-                  type="checkbox"
-                  checked={record === "absent"}
-                  onChange={() => saveAttendance(s, "absent")}
-                />
-              </div>
-
-              <div>
                 {record === "absent" && (
                   <select
                     value={absenceReasons[s.uid] || ""}
@@ -680,33 +637,173 @@ const StudentsAttendancePage = () => {
                         [s.uid]: e.target.value,
                       }))
                     }
-                    className="border rounded px-2 py-1 w-full"
+                    className="mt-3 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-gray-50 outline-none"
                   >
-                    <option value="">Select</option>
+                    <option value="">Select reason</option>
                     {ABSENCE_OPTIONS.map((r) => (
                       <option key={r}>{r}</option>
                     ))}
                   </select>
                 )}
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
-      <Pagination
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onPageChange={setCurrentPage}
-      />
-      {/* EXPORT MODAL */}
+      <div className="shrink-0 bg-white border-t border-gray-100 px-3 sm:px-4 py-2.5">
+        <div className="flex justify-center gap-2">
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={!hasChanges}
+            className={`min-h-[44px] px-5 rounded-xl text-sm font-semibold border ${
+              hasChanges
+                ? "bg-white text-gray-700 border-gray-300"
+                : "bg-gray-100 text-gray-400 border-gray-200"
+            }`}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveAll}
+            disabled={!hasChanges}
+            className={`min-h-[44px] px-6 rounded-xl text-sm font-semibold text-white ${
+              hasChanges ? "bg-[#FF6A00]" : "bg-gray-300"
+            }`}
+          >
+            Save
+          </button>
+        </div>
+        <div className="mt-1">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        </div>
+      </div>
+
+      {showCategorySheet && (
+        <div className="absolute inset-0 z-40 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-xl flex flex-col max-h-[min(88dvh,620px)] overflow-hidden"
+            style={{
+              paddingBottom: "max(10px, env(safe-area-inset-bottom, 0px))",
+            }}
+          >
+            <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+              <div className="mx-auto mb-2 h-1.5 w-10 rounded-full bg-gray-200 sm:hidden" />
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">
+                    Choose category
+                  </h2>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Select both category and sub-category before marking
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pendingMarkRef.current = null;
+                    setShowCategorySheet(false);
+                  }}
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
+              <div>
+                <p className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
+                  Category
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setPickerCategory(c);
+                        setPickerSubCategory("");
+                      }}
+                      className={`min-h-[40px] px-3 rounded-xl text-sm font-semibold border ${
+                        pickerCategory === c
+                          ? "bg-[#FF6A00] text-white border-[#FF6A00]"
+                          : "bg-gray-50 text-gray-700 border-gray-200"
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {pickerCategory ? (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
+                    Sub category
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {pickerSubCategories.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setPickerSubCategory(s)}
+                        className={`min-h-[40px] px-3 rounded-xl text-sm font-semibold border inline-flex items-center gap-1 ${
+                          pickerSubCategory === s
+                            ? "bg-orange-50 text-[#FF6A00] border-orange-300"
+                            : "bg-gray-50 text-gray-700 border-gray-200"
+                        }`}
+                      >
+                        {pickerSubCategory === s && <Check size={14} />}
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="px-4 pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  pendingMarkRef.current = null;
+                  setShowCategorySheet(false);
+                }}
+                className="flex-1 min-h-[44px] rounded-xl border text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmCategorySheet}
+                disabled={!pickerCategory || !pickerSubCategory}
+                className={`flex-1 min-h-[44px] rounded-xl text-sm font-semibold text-white ${
+                  pickerCategory && pickerSubCategory
+                    ? "bg-[#FF6A00]"
+                    : "bg-gray-300"
+                }`}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showExportModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
-          <div className="bg-white w-full max-w-md rounded-2xl p-5 shadow-xl">
+        <div className="absolute inset-0 z-40 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl p-5 shadow-xl">
             <h2 className="text-lg font-bold text-gray-800 mb-4">
               Export Attendance
             </h2>
-
             <div className="space-y-4">
               <div>
                 <label className="text-sm text-gray-600 block mb-1">
@@ -716,10 +813,9 @@ const StudentsAttendancePage = () => {
                   type="date"
                   value={exportFromDate}
                   onChange={(e) => setExportFromDate(e.target.value)}
-                  className="w-full border rounded-xl px-3 py-2"
+                  className="w-full border rounded-xl px-3 py-2.5 min-h-[44px]"
                 />
               </div>
-
               <div>
                 <label className="text-sm text-gray-600 block mb-1">
                   To Date
@@ -728,22 +824,22 @@ const StudentsAttendancePage = () => {
                   type="date"
                   value={exportToDate}
                   onChange={(e) => setExportToDate(e.target.value)}
-                  className="w-full border rounded-xl px-3 py-2"
+                  className="w-full border rounded-xl px-3 py-2.5 min-h-[44px]"
                 />
               </div>
             </div>
-
             <div className="flex justify-end gap-3 mt-6">
               <button
+                type="button"
                 onClick={() => setShowExportModal(false)}
-                className="px-4 py-2 rounded-xl border"
+                className="min-h-[44px] px-4 rounded-xl border"
               >
                 Cancel
               </button>
-
               <button
+                type="button"
                 onClick={exportAttendanceRange}
-                className="px-5 py-2 rounded-xl bg-orange-500 text-white font-semibold"
+                className="min-h-[44px] px-5 rounded-xl bg-orange-500 text-white font-semibold"
               >
                 Download
               </button>

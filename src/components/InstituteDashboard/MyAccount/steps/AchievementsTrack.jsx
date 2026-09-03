@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../../../firebase";
-import { useAuth } from "../../../../context/AuthContext";
+import { useAccountScope } from "../AccountScopeContext";
 import { Trophy, Trash2 } from "lucide-react";
 import StepHeader from "../StepHeader";
 
-const AchievementsTrack = ({ setStep }) => {
-  const { user } = useAuth();
+const AchievementsTrack = ({ setStep, onSaved }) => {
+  const { instituteId } = useAccountScope();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,14 +34,14 @@ const AchievementsTrack = ({ setStep }) => {
   // ================= LOAD DATA =================
   useEffect(() => {
     const fetchData = async () => {
-      if (!user?.uid) {
+      if (!instituteId) {
         setLoading(false);
         return;
       }
 
       try {
         // 🔥 Dynamic institute
-        const instituteId = user.uid;
+        
         const docRef = doc(db, "institutes", instituteId);
         const docSnap = await getDoc(docRef);
 
@@ -104,7 +104,7 @@ const AchievementsTrack = ({ setStep }) => {
     };
 
     fetchData();
-  }, [user]);
+  }, [instituteId]);
   // ================= HANDLE INPUT =================
   const handleChange = (category, medal, value) => {
     setFormData((prev) => ({
@@ -192,7 +192,7 @@ const AchievementsTrack = ({ setStep }) => {
 
   // ================= SAVE =================
   const handleSave = async () => {
-    if (!user?.uid) {
+    if (!instituteId) {
       alert("User not logged in");
       return;
     }
@@ -201,7 +201,7 @@ const AchievementsTrack = ({ setStep }) => {
       setSaving(true);
 
       // 🔥 Dynamic institute
-      const instituteId = user.uid;
+      
       const docRef = doc(db, "institutes", instituteId);
 
       await setDoc(
@@ -218,7 +218,7 @@ const AchievementsTrack = ({ setStep }) => {
         { merge: true }, // ✅ keeps existing fields safe
       );
 
-      alert("Saved Successfully!");
+      onSaved?.("Achievements & Trust");
     } catch (error) {
       console.error("Save Error:", error);
       alert("Error saving data");

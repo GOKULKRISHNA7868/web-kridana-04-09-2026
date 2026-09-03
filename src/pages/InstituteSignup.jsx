@@ -1,12 +1,23 @@
 // src/pages/InstituteSignup.js
 
 import { useNavigate } from "react-router-dom";
-import { Trash2, Edit2, Building2, ChevronDown, Loader2 } from "lucide-react";
+import {
+  Trash2,
+  Edit2,
+  Building2,
+  ChevronDown,
+  Loader2,
+  MapPin,
+  CheckCircle2,
+  Shield,
+} from "lucide-react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import React, { useState, useRef, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { getCurrentUserLocation } from "../utils/location";
 
 export default function InstituteSignup() {
   const navigate = useNavigate();
@@ -16,6 +27,10 @@ export default function InstituteSignup() {
   const [profileImageFile, setProfileImageFile] = useState(null);
   const [fetchingLocation, setFetchingLocation] = useState(false);
   const [showFetchScreen, setShowFetchScreen] = useState(false);
+  const [locationWaitText, setLocationWaitText] = useState(
+    "Please wait, fetching your location…",
+  );
+  const [locationError, setLocationError] = useState("");
   const [showCategory, setShowCategory] = useState(false);
   const [showSubCategory, setShowSubCategory] = useState(false);
 
@@ -403,13 +418,22 @@ export default function InstituteSignup() {
       return;
     }
 
-    // ✅ Phone - Only numbers (max 10)
+    // ✅ Phone - Indian 10-digit mobile (strip +91 / 0)
     if (name === "phoneNumber") {
-      const onlyNumbers = value.replace(/[^0-9]/g, "").slice(0, 10);
+      let digits = String(value).replace(/\D/g, "");
+      if (digits.startsWith("91") && digits.length >= 12) {
+        digits = digits.slice(2);
+      } else if (digits.startsWith("0") && digits.length === 11) {
+        digits = digits.slice(1);
+      }
+      digits = digits.slice(0, 10);
       setFormData((prev) => ({
         ...prev,
-        phoneNumber: onlyNumbers,
+        phoneNumber: digits,
       }));
+      if (errors.phoneNumber) {
+        setErrors((prev) => ({ ...prev, phoneNumber: "" }));
+      }
       return;
     }
 
@@ -423,11 +447,10 @@ export default function InstituteSignup() {
       return;
     }
 
-    // Default
+    // Default — keep GPS lock if coordinates already exist
     setFormData((prev) => ({
       ...prev,
       [name]: value,
-      locationFetched: false,
     }));
   };
   const handleProfileImageChange = (e) => {
@@ -468,8 +491,13 @@ export default function InstituteSignup() {
       if (!formData.subCategory)
         newErrors.subCategory = "Sub category is required";
 
-      if (!formData.phoneNumber)
+      if (!formData.phoneNumber) {
         newErrors.phoneNumber = "Phone number is required";
+      } else if (formData.phoneNumber.length !== 10) {
+        newErrors.phoneNumber = "Enter a 10-digit mobile number";
+      } else if (!/^[6-9]\d{9}$/.test(formData.phoneNumber)) {
+        newErrors.phoneNumber = "Enter a valid Indian mobile number";
+      }
 
       if (!formData.email) newErrors.email = "Email is required";
       // Password required
@@ -686,67 +714,76 @@ export default function InstituteSignup() {
   // Progress bar width
   const progressPercentage = (step / 2) * 100;
 
-  const handleFetchLocation = async () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation not supported");
-      return;
-    }
+  const LOCATION_WAIT_MESSAGES = [
+    "Please wait, fetching your location…",
+    "Asking for GPS permission…",
+    "Finding your academy on the map…",
+    "Filling in your address…",
+  ];
 
+  useEffect(() => {
+    if (!fetchingLocation) return;
+    setLocationWaitText(LOCATION_WAIT_MESSAGES[0]);
+    let i = 0;
+    const interval = setInterval(() => {
+      i = (i + 1) % LOCATION_WAIT_MESSAGES.length;
+      setLocationWaitText(LOCATION_WAIT_MESSAGES[i]);
+    }, 1600);
+    return () => clearInterval(interval);
+  }, [fetchingLocation]);
+
+  const handleFetchLocation = async () => {
+    setLocationError("");
     setFetchingLocation(true);
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
+    try {
+      const coords = await getCurrentUserLocation();
+      if (!coords?.lat || !coords?.lng) {
+        setLocationError(
+          "We couldn’t access your location. Please allow location access and try again, or enter the address manually.",
+        );
+        setShowFetchScreen(false);
+        return;
+      }
 
-        try {
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-          );
+      const { lat, lng } = coords;
+      setLocationWaitText("Filling in your address…");
 
-          const data = await response.json();
-          const address = data.address || {};
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { headers: { "Accept-Language": "en" } },
+      );
+      const data = await response.json();
+      const address = data.address || {};
 
-          setFormData((prev) => ({
-            ...prev,
-            building: address.house_number || "",
-            street: address.road || "",
-            landmark: address.suburb || "",
-
-            city: address.village || address.town || address.city || "",
-            district: address.state_district || "",
-            state: address.state || "",
-            country: address.country || "",
-            zipCode: address.postcode || "",
-
-            latitude: latitude.toString(),
-            longitude: longitude.toString(),
-
-            locationFetched: true,
-          }));
-
-          // ❌ DO NOT move step automatically
-          // setStep(3)  ← removed
-        } catch {
-          alert("Failed to fetch location");
-        }
-
-        setFetchingLocation(false);
-      },
-      () => {
-        alert("Permission denied");
-        setFetchingLocation(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 0,
-      },
-    );
+      setFormData((prev) => ({
+        ...prev,
+        building: address.house_number || prev.building,
+        street: address.road || address.neighbourhood || prev.street,
+        landmark: address.suburb || address.neighbourhood || prev.landmark,
+        city: address.village || address.town || address.city || prev.city,
+        district: address.state_district || address.county || prev.district,
+        state: address.state || prev.state,
+        country: address.country || prev.country,
+        zipCode: address.postcode || prev.zipCode,
+        latitude: String(lat),
+        longitude: String(lng),
+        locationFetched: true,
+      }));
+    } catch (error) {
+      console.error(error);
+      setLocationError(
+        "Something went wrong while fetching location. You can enter your address manually.",
+      );
+      setShowFetchScreen(false);
+    } finally {
+      setFetchingLocation(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex justify-center bg-white py-10">
-      <div className="w-full max-w-6xl px-4 sm:px-6 md:px-8 lg:px-0 rounded-md mt-4 mb-10">
+    <div className="min-h-screen flex justify-center bg-white py-4 sm:py-10">
+      <div className="w-full max-w-6xl px-4 sm:px-6 md:px-8 rounded-md mt-2 sm:mt-4 mb-10">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-[#FF6A00] font-semibold mb-6"
@@ -818,7 +855,12 @@ export default function InstituteSignup() {
         >
           {/* STEP 1 */}
           {step === 1 && (
-            <div className="animate-fade-in space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28 }}
+              className="space-y-6"
+            >
               {/* Fields */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 md:gap-x-12 gap-y-6 mb-2">
                 <div className="flex flex-col">
@@ -1017,17 +1059,32 @@ export default function InstituteSignup() {
                   <label className="text-sm font-semibold mb-2">
                     Phone Number*
                   </label>
-                  <input
-                    type="tel"
-                    name="phoneNumber"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={formData.phoneNumber}
-                    onChange={handleChange}
-                    className={`${inputClass} ${
-                      errors.instituteName ? "border-red-500" : ""
+                  <div
+                    className={`flex items-center h-12 rounded-xl border bg-white overflow-hidden ${
+                      errors.phoneNumber
+                        ? "border-red-500"
+                        : "border-orange-300 focus-within:border-2 focus-within:border-orange-500"
                     }`}
-                  />
+                  >
+                    <span className="shrink-0 pl-3 pr-2 text-sm font-semibold text-gray-600 border-r border-orange-200">
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      name="phoneNumber"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      maxLength={10}
+                      placeholder="9876543210"
+                      value={formData.phoneNumber}
+                      onChange={handleChange}
+                      className="flex-1 min-w-0 h-full px-3 outline-none bg-transparent text-base"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    {formData.phoneNumber.length}/10 digits · Indian mobile
+                    number
+                  </p>
                   {errors.phoneNumber && (
                     <p className="text-red-500 text-xs mt-1">
                       {errors.phoneNumber}
@@ -1091,7 +1148,7 @@ export default function InstituteSignup() {
                   )}
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* ===== STEP 2 FETCH PAGE (FULL PAGE NOT MODAL) ===== */}
@@ -1167,18 +1224,56 @@ export default function InstituteSignup() {
 
           {/* STEP 2 */}
           {step === 2 && !showFetchScreen && (
-            <div className="animate-fade-in space-y-6">
-              <div className="flex justify-between items-center">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28 }}
+              className="space-y-6"
+            >
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                 <h3 className="text-xl font-bold text-gray-900">Add Address</h3>
 
                 <button
                   type="button"
-                  onClick={() => setShowFetchScreen(true)}
-                  className="bg-orange-500 text-orange px-4 py-2 rounded-lg text-sm hover:bg-orange-600"
+                  onClick={handleFetchLocation}
+                  disabled={fetchingLocation}
+                  className="inline-flex items-center justify-center gap-2 min-h-[44px] bg-orange-500 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-70 w-full sm:w-auto"
                 >
-                  {fetchingLocation ? "Fetching..." : "Fetch Current Location"}
+                  <MapPin size={16} />
+                  {fetchingLocation
+                    ? "Fetching location…"
+                    : "Fetch current location"}
                 </button>
               </div>
+              {locationError && (
+                <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                  {locationError}
+                </p>
+              )}
+              {formData.locationFetched && (
+                <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <CheckCircle2
+                    size={18}
+                    className="text-emerald-600 mt-0.5 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-emerald-800">
+                      Location found
+                    </p>
+                    <p className="text-xs text-emerald-700 mt-1 break-words">
+                      {[formData.building, formData.street, formData.city]
+                        .filter(Boolean)
+                        .join(", ") || "Address filled from GPS"}
+                    </p>
+                    {formData.latitude && (
+                      <p className="text-[11px] text-emerald-600 mt-1">
+                        {Number(formData.latitude).toFixed(5)},{" "}
+                        {Number(formData.longitude).toFixed(5)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-2">
                 <div className="flex flex-col">
                   <label className="text-sm font-semibold mb-2">
@@ -1327,7 +1422,7 @@ export default function InstituteSignup() {
                   )}
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* ✅ AGREEMENT SECTION */}
@@ -1380,7 +1475,7 @@ export default function InstituteSignup() {
               <button
                 type="button"
                 onClick={handleNext}
-                className="bg-orange-500 text-white px-8 py-2 rounded-md font-semibold hover:bg-orange-600"
+                className="bg-orange-500 text-white min-h-[44px] px-8 py-2.5 rounded-xl font-semibold hover:bg-orange-600 w-full sm:w-auto"
               >
                 Next
               </button>
@@ -1389,8 +1484,21 @@ export default function InstituteSignup() {
             {step === 2 && (
               <button
                 type="submit"
-                disabled={!agreed || loading || !formData.locationFetched}
-                className="bg-orange-500 text-white px-8 py-2 rounded-md font-semibold hover:bg-orange-600 disabled:opacity-50"
+                disabled={
+                  !agreed ||
+                  loading ||
+                  !(
+                    formData.locationFetched ||
+                    (formData.building &&
+                      formData.street &&
+                      formData.city &&
+                      formData.district &&
+                      formData.state &&
+                      formData.country &&
+                      formData.zipCode)
+                  )
+                }
+                className="bg-orange-500 text-white min-h-[44px] px-8 py-2 rounded-xl font-semibold hover:bg-orange-600 disabled:opacity-50"
               >
                 {loading ? "Saving..." : "Save"}
               </button>
@@ -1454,6 +1562,51 @@ export default function InstituteSignup() {
           </div>
         </div>
       )}
+
+      <AnimatePresence>
+        {fetchingLocation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-[#1a1208]/55 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 280, damping: 24 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-7 flex flex-col items-center text-center"
+            >
+              <div className="relative w-20 h-20">
+                <div className="absolute inset-0 rounded-full border-4 border-orange-100" />
+                <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-orange-500 animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <MapPin className="text-orange-500" size={28} />
+                </div>
+              </div>
+              <h2 className="mt-6 text-xl font-bold text-gray-800">
+                Please wait
+              </h2>
+              <p className="text-sm text-gray-500 mt-2 min-h-[40px]">
+                {locationWaitText}
+              </p>
+              <div className="w-full h-2 bg-gray-100 rounded-full mt-5 overflow-hidden">
+                <motion.div
+                  className="h-full bg-orange-500 rounded-full"
+                  initial={{ width: "18%" }}
+                  animate={{ width: ["18%", "78%", "42%", "88%"] }}
+                  transition={{ duration: 4.5, repeat: Infinity }}
+                />
+              </div>
+              <p className="text-xs text-gray-400 mt-4 flex items-center gap-1.5">
+                <Shield size={12} />
+                Used only to fill your academy address
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

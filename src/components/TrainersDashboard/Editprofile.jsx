@@ -148,7 +148,6 @@ export default function TrainerEditProfile() {
     locationName: "",
 
     profileImageUrl: "",
-    categories: {},
     /* ✅ MEDIA */
     images: [],
     videos: [],
