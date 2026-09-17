@@ -16,7 +16,7 @@ const AccountPageShell = ({ children, wide = false, fill = false }) => {
               md:h-auto md:max-h-none
             `
         }
-        ${wide ? "max-w-none" : "max-w-2xl"}
+        ${wide ? "max-w-none" : "max-w-3xl"}
       `}
     >
       <div

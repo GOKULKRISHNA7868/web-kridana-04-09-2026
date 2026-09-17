@@ -425,28 +425,30 @@ const BasicInformation = ({ setStep, onSaved }) => {
       : INSTITUTE_TYPES;
 
   return (
-    <div className="w-full pb-6">
+    <div className="w-full pb-6 max-w-2xl mx-auto">
       <StepHeader
         title="Basic Information"
+        subtitle="Section 1 of 8"
         onBack={() => setStep?.(0)}
         onSave={handleSave}
         saving={saving}
       />
 
-      <div className="flex flex-col items-center mb-5">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
+      <div className="flex flex-col items-center mb-5 pb-5 border-b border-slate-100">
         <label className="relative cursor-pointer">
           {formData.logo ? (
             <img
               src={formData.logo}
               alt="Logo"
-              className="w-20 h-20 rounded-full object-cover border-2 border-orange-200"
+              className="w-20 h-20 rounded-2xl object-cover border-2 border-orange-200"
             />
           ) : (
-            <div className="w-20 h-20 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+            <div className="w-20 h-20 rounded-2xl bg-orange-50 text-[#FF6A00] flex items-center justify-center">
               <User size={32} />
             </div>
           )}
-          <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center border-2 border-white">
+          <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-[#FF6A00] text-white flex items-center justify-center border-2 border-white">
             <Camera size={13} />
           </span>
           <input
@@ -781,6 +783,7 @@ const BasicInformation = ({ setStep, onSaved }) => {
             </span>
           )}
         </section>
+      </div>
       </div>
 
       <button

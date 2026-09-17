@@ -117,6 +117,22 @@ const sidebarSections = [
   },
 ];
 
+const menuDisplayName = (item) => {
+  const map = {
+    "Edit My Account": "Academy Profile",
+    "Customers Attendance": "Attendance",
+    "Add Customers": "Students",
+    "Paid Recipets": "Paid Receipts",
+    Uploadimages: "Posts & Media",
+    "Management Details": "Trainers",
+    "Fees Details": "Fees & Payments",
+    "Customer & Management Settings": "Settings",
+    "Complete KYC": "KYC Verification",
+    Analytics: "Analytics",
+  };
+  return map[item] || item;
+};
+
 const InstituteDashboard = () => {
   const [activeMenu, setActiveMenu] = useState("Dashboard");
   const { institute, user } = useAuth();
@@ -133,6 +149,13 @@ const InstituteDashboard = () => {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [openMenu, setOpenMenu] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (activeMenu === "Edit My Account") {
+      setOpenMenu("Account");
+    }
+  }, [activeMenu]);
+
   const toggleMenu = (title) => {
     setOpenMenu(openMenu === title ? null : title);
   };
@@ -409,28 +432,30 @@ const InstituteDashboard = () => {
   }, [user]);
 
   return (
-    <div className="fixed inset-0 bg-[#F4F6FB] md:bg-gray-200 md:pt-16 overflow-hidden">
+    <div className="fixed inset-0 bg-[#F4F6FB] md:bg-[#F4F6FB] md:pt-16 overflow-hidden">
       <div className="flex h-full flex-col md:flex-row overflow-hidden">
         {/* MOBILE TOPBAR */}
         <div
-          className="md:hidden fixed top-0 left-0 right-0 z-[80] bg-black/95 backdrop-blur-xl border-b border-white/10"
+          className="md:hidden fixed top-0 left-0 right-0 z-[80] bg-[#0F172A]/95 backdrop-blur-xl border-b border-white/10"
           style={{ paddingTop: "env(safe-area-inset-top)" }}
         >
-          <div className="h-10 px-2.5 sm:px-3 flex items-center justify-between gap-2">
+          <div className="h-12 px-3 flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="w-8 h-8 rounded-xl bg-white/10 text-white text-base flex items-center justify-center active:scale-95 transition"
+              className="w-9 h-9 rounded-xl bg-white/10 text-white text-base flex items-center justify-center active:scale-95 transition"
               aria-label="Open menu"
             >
               ☰
             </button>
 
-            <h2 className="flex-1 min-w-0 text-center text-orange-500 font-semibold text-xs sm:text-sm truncate">
-              {institute?.instituteName || "Dashboard"}
+            <h2 className="flex-1 min-w-0 text-center text-white font-semibold text-sm truncate">
+              {menuDisplayName(activeMenu) ||
+                institute?.instituteName ||
+                "Dashboard"}
             </h2>
 
-            <div className="w-8 h-8 rounded-xl overflow-hidden border border-orange-400/70 bg-gray-800 flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl overflow-hidden border border-[#FF6A00]/70 bg-slate-800 flex items-center justify-center flex-shrink-0">
               {institute?.profileImageUrl ? (
                 <img
                   src={institute.profileImageUrl}
@@ -438,7 +463,7 @@ const InstituteDashboard = () => {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <span className="text-orange-400 font-bold text-xs">
+                <span className="text-[#FF6A00] font-bold text-xs">
                   {institute?.instituteName?.charAt(0)?.toUpperCase() || "I"}
                 </span>
               )}
@@ -453,9 +478,9 @@ const InstituteDashboard = () => {
             top-0 md:top-16
             left-0
             h-[100dvh] md:h-[calc(100vh-4rem)]
-            w-[min(20rem,88vw)] xl:w-80
+            w-[min(20rem,88vw)] xl:w-[17.5rem]
             shrink-0
-            bg-[#1A1C22]
+            bg-[#0F172A]
             border-r border-white/10
             z-[10040]
             transform transition-transform duration-300 ease-out
@@ -466,32 +491,37 @@ const InstituteDashboard = () => {
             shadow-2xl md:shadow-none
           `}
         >
-          {/* MOBILE SIDEBAR HEADER */}
+          {/* BRAND + CLOSE */}
           <div
-            className="md:hidden flex-shrink-0 px-4 pb-2 flex items-center justify-between"
-            style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}
+            className="flex-shrink-0 px-4 pt-4 pb-3 flex items-center justify-between gap-2 border-b border-white/10"
+            style={{
+              paddingTop: "max(16px, env(safe-area-inset-top))",
+            }}
           >
-            <p className="text-white/60 text-xs font-semibold uppercase tracking-wider">
-              Menu
-            </p>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-white overflow-hidden flex items-center justify-center shrink-0">
+                <img
+                  src="/Kridana logo.png"
+                  alt="Kridana"
+                  className="w-full h-full object-contain p-0.5"
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="text-white font-bold text-sm tracking-wide">
+                  KRIDANA
+                </p>
+                <p className="text-[10px] text-orange-300/80 font-medium truncate">
+                  Academy console
+                </p>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => setSidebarOpen(false)}
               aria-label="Close sidebar"
-              className="
-                w-10 h-10
-                flex items-center justify-center
-                rounded-full
-                bg-red-50 text-red-600
-                border border-red-200
-                shadow-sm
-                transition-all duration-200
-                hover:bg-red-100 hover:text-red-700 hover:border-red-300
-                active:scale-95
-                focus:outline-none focus:ring-2 focus:ring-red-300
-              "
+              className="md:hidden w-9 h-9 flex items-center justify-center rounded-full bg-white/10 text-white active:scale-95"
             >
-              <FaChevronLeft size={18} />
+              <FaChevronLeft size={14} />
             </button>
           </div>
 
@@ -500,9 +530,8 @@ const InstituteDashboard = () => {
             className="
               flex-1 min-h-0
               overflow-y-auto overflow-x-hidden
-              px-3 sm:px-4
-              pb-[calc(var(--bottom-navbar-height,64px)+24px)]
-              md:pb-6
+              px-3
+              pb-3
               overscroll-contain
               scrollbar-hide
             "
@@ -510,43 +539,12 @@ const InstituteDashboard = () => {
               WebkitOverflowScrolling: "touch",
             }}
           >
-            {/* ===== INSTITUTE CARD ===== */}
-            <div className="bg-black rounded-2xl px-4 sm:px-5 py-4 flex items-center gap-3 sm:gap-4 mb-4 shadow-lg animate-moreFadeUp">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-orange-400 shadow-md">
-                  {institute?.profileImageUrl ? (
-                    <img
-                      src={institute.profileImageUrl}
-                      alt="profile"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                      <span className="text-orange-400 font-bold text-lg sm:text-xl">
-                        {institute?.instituteName?.charAt(0)?.toUpperCase() ||
-                          "I"}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] uppercase tracking-wider text-white/40 mb-0.5">
-                  Institute
-                </p>
-                <h2 className="text-orange-500 font-bold text-sm sm:text-lg md:text-xl break-words leading-snug">
-                  {institute?.instituteName || "Institute Name"}
-                </h2>
-              </div>
-            </div>
-
-            {/* ===== MENU CARD ===== */}
-            <div className="bg-black rounded-2xl p-2 sm:p-3 mb-4 shadow-lg">
+            {/* ===== MENU ===== */}
+            <div className="mt-3 space-y-1">
               {sidebarSections.map((section, index) => (
                 <div
                   key={section.title}
-                  style={{ animationDelay: `${index * 40}ms` }}
+                  style={{ animationDelay: `${index * 30}ms` }}
                   className="animate-moreFadeUp"
                 >
                   <button
@@ -561,44 +559,37 @@ const InstituteDashboard = () => {
                     }}
                     className={`
                       w-full flex items-center justify-between
-                      px-3 sm:px-4 py-3 min-h-[48px]
-                      rounded-xl text-white
+                      px-3 py-2.5 min-h-[44px]
+                      rounded-xl text-sm font-medium
                       transition duration-200
                       active:scale-[0.99]
                       ${
                         (section.title === "Dashboard" &&
                           activeMenu === "Dashboard") ||
-                        openMenu === section.title
-                          ? "bg-white/10 text-orange-400"
-                          : "hover:bg-gray-800"
+                        openMenu === section.title ||
+                        section.items.includes(activeMenu)
+                          ? "bg-[#FF6A00] text-white shadow-lg shadow-orange-500/20"
+                          : "text-slate-300 hover:bg-white/5 hover:text-white"
                       }
                     `}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-orange-400 flex-shrink-0">
+                      <span className="flex-shrink-0 opacity-90">
                         {getIcon(section.icon)}
                       </span>
-                      <span className="font-medium text-sm sm:text-base truncate">
-                        {section.title}
-                      </span>
+                      <span className="truncate">{section.title}</span>
                     </div>
 
                     {section.items.length > 0 &&
                       (openMenu === section.title ? (
-                        <FaChevronDown
-                          size={12}
-                          className="flex-shrink-0 transition-transform duration-200"
-                        />
+                        <FaChevronDown size={11} className="flex-shrink-0" />
                       ) : (
-                        <FaChevronRight
-                          size={12}
-                          className="flex-shrink-0 transition-transform duration-200"
-                        />
+                        <FaChevronRight size={11} className="flex-shrink-0" />
                       ))}
                   </button>
 
                   {openMenu === section.title && (
-                    <div className="ml-4 sm:ml-8 mt-1 mb-2 space-y-1 animate-moreFadeUp">
+                    <div className="ml-2 mt-1 mb-2 space-y-0.5 pl-2 border-l border-white/10 animate-moreFadeUp">
                       {section.items.map((item) => (
                         <button
                           type="button"
@@ -610,17 +601,17 @@ const InstituteDashboard = () => {
                           }}
                           className={`
                             block w-full text-left
-                            px-3 py-2.5 min-h-[44px]
-                            rounded-lg text-sm
+                            px-3 py-2.5 min-h-[40px]
+                            rounded-lg text-[13px]
                             transition duration-200
                             ${
                               activeMenu === item
-                                ? "bg-orange-500/15 text-orange-400 font-semibold"
-                                : "text-gray-300 hover:bg-gray-800 hover:text-orange-500"
+                                ? "bg-white/10 text-[#FF6A00] font-semibold"
+                                : "text-slate-400 hover:bg-white/5 hover:text-white"
                             }
                           `}
                         >
-                          {item}
+                          {menuDisplayName(item)}
                         </button>
                       ))}
                     </div>
@@ -629,94 +620,85 @@ const InstituteDashboard = () => {
               ))}
             </div>
 
-            {/* ===== SETTINGS CARD ===== */}
-            <div className="bg-black rounded-2xl p-3 sm:p-4 shadow-lg">
-              <h3 className="text-white font-bold text-base sm:text-lg mb-2 px-1">
+            {/* ===== SETTINGS ===== */}
+            <div className="mt-4 pt-3 border-t border-white/10">
+              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                 Settings
-              </h3>
+              </p>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setSidebarOpen(false);
-
-                  setTimeout(() => {
-                    setActiveMenu("Terms & Conditions");
-                  }, 300);
-                }}
-                className={`block w-full text-left px-3 py-3 min-h-[44px] rounded-xl transition ${
-                  activeMenu === "Terms & Conditions"
-                    ? "text-orange-500 font-semibold bg-white/5"
-                    : "text-white hover:text-orange-400 hover:bg-white/5"
-                }`}
-              >
-                Terms & Conditions
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSidebarOpen(false);
-
-                  setTimeout(() => {
-                    setActiveMenu("Privacy Policy");
-                  }, 300);
-                }}
-                className={`block w-full text-left px-3 py-3 min-h-[44px] rounded-xl transition ${
-                  activeMenu === "Privacy Policy"
-                    ? "text-orange-500 font-semibold bg-white/5"
-                    : "text-white hover:text-orange-400 hover:bg-white/5"
-                }`}
-              >
-                Privacy Policy
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSidebarOpen(false);
-
-                  setTimeout(() => {
-                    setActiveMenu("ResetPassword");
-                  }, 300);
-                }}
-                className={`block w-full text-left px-3 py-3 min-h-[44px] rounded-xl transition ${
-                  activeMenu === "ResetPassword"
-                    ? "text-orange-500 font-semibold bg-white/5"
-                    : "text-white hover:text-orange-400 hover:bg-white/5"
-                }`}
-              >
-                Reset Password
-              </button>
+              {[
+                ["Terms & Conditions", "Terms & Conditions"],
+                ["Privacy Policy", "Privacy Policy"],
+                ["ResetPassword", "Reset Password"],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setSidebarOpen(false);
+                    setTimeout(() => setActiveMenu(key), 200);
+                  }}
+                  className={`block w-full text-left px-3 py-2.5 min-h-[40px] rounded-xl text-[13px] transition ${
+                    activeMenu === key
+                      ? "text-[#FF6A00] font-semibold bg-white/5"
+                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
 
               <button
                 type="button"
                 onClick={() => signOut(auth)}
-                className="block w-full text-left px-3 py-3 min-h-[44px] rounded-xl text-white hover:text-red-400 hover:bg-red-500/10 transition"
+                className="block w-full text-left px-3 py-2.5 min-h-[40px] rounded-xl text-[13px] text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
               >
                 Logout
               </button>
-            </div>
 
-            {/* DELETE ACCOUNT */}
-            <div className="bg-black rounded-xl p-3 sm:p-4 mt-3">
               <button
                 type="button"
                 onClick={() => {
                   setSidebarOpen(false);
-
-                  setTimeout(() => {
-                    setShowDeleteModal(true);
-                  }, 300);
+                  setTimeout(() => setShowDeleteModal(true), 200);
                 }}
-                className="w-full text-left text-red-500 hover:text-red-400 font-semibold flex items-center gap-2 px-2 py-2 min-h-[44px] rounded-xl hover:bg-red-500/10 transition"
+                className="w-full text-left text-red-400 hover:text-red-300 font-semibold flex items-center gap-2 px-3 py-2.5 min-h-[40px] rounded-xl hover:bg-red-500/10 transition text-[13px] mt-1"
               >
-                <img src="/delete-icon.png" alt="delete" className="w-5 h-5" />
+                <img src="/delete-icon.png" alt="" className="w-4 h-4" />
                 <span>Delete Account</span>
               </button>
             </div>
           </div>
+
+          {/* BOTTOM INSTITUTE CARD */}
+          <div className="flex-shrink-0 p-3 border-t border-white/10 bg-[#0B1220]">
+            <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 px-3 py-3 flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl overflow-hidden border border-[#FF6A00]/50 bg-slate-700 shrink-0">
+                {institute?.profileImageUrl ? (
+                  <img
+                    src={institute.profileImageUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[#FF6A00] font-bold">
+                    {institute?.instituteName?.charAt(0)?.toUpperCase() || "A"}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-white text-sm font-semibold truncate">
+                  {institute?.instituteName || "Your Academy"}
+                </p>
+                <p className="text-[11px] text-slate-400">Owner</p>
+              </div>
+            </div>
+            <p className="text-[10px] text-center text-slate-500 mt-2 font-medium tracking-wide">
+              Build · Train · Grow
+            </p>
+          </div>
         </aside>
+
         {/* MOBILE SIDEBAR OVERLAY */}
         {sidebarOpen && (
           <div
@@ -724,17 +706,18 @@ const InstituteDashboard = () => {
             onClick={() => setSidebarOpen(false)}
           />
         )}
+
         <main
           ref={mainContentRef}
-          className="flex-1 min-w-0 h-full dash-surface overflow-hidden"
+          className="flex-1 min-w-0 h-full bg-[#F4F6FB] overflow-hidden"
         >
           <div
             className={`
               h-full w-full max-w-[1600px] mx-auto
-              px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12
-              pt-[calc(2.5rem+env(safe-area-inset-top,0px))]
+              px-3 sm:px-5 md:px-6 lg:px-8
+              pt-[calc(3.25rem+env(safe-area-inset-top,0px))]
               pb-[calc(var(--bottom-navbar-height,64px)+8px)]
-              md:pt-8 md:pb-8
+              md:pt-6 md:pb-6
               ${
                 activeMenu === "Dashboard" ||
                 activeMenu === "Customers Attendance" ||
@@ -763,7 +746,7 @@ const InstituteDashboard = () => {
                 activeMenu === "Paid Recipets" ||
                 activeMenu === "Daily Bill"
                   ? "h-full min-h-0 flex flex-col overflow-hidden dash-page-in"
-                  : "dash-page-in md:pt-2"
+                  : "dash-page-in md:pt-1"
               }
             >
               {renderMainContent()}

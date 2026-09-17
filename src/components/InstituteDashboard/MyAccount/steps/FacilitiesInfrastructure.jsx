@@ -87,16 +87,18 @@ const FacilitiesInfrastructure = ({ setStep, onSaved }) => {
   }
 
   return (
-    <div className="w-full pb-6">
+    <div className="w-full pb-6 max-w-2xl mx-auto">
       <StepHeader
         title="Facilities"
+        subtitle="Section 6 of 8"
         onBack={() => setStep?.(0)}
         onSave={handleSave}
         saving={saving}
       />
 
-      <div className="flex flex-col items-center mb-5">
-        <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-500 flex items-center justify-center">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
+      <div className="flex flex-col items-center mb-5 pb-5 border-b border-slate-100">
+        <div className="w-16 h-16 rounded-2xl bg-orange-50 text-[#FF6A00] flex items-center justify-center">
           <Building2 size={28} />
         </div>
         <p className="text-sm font-semibold text-gray-900 mt-3">Facilities</p>
@@ -136,6 +138,7 @@ const FacilitiesInfrastructure = ({ setStep, onSaved }) => {
                    focus:outline-none focus:ring-2 focus:ring-orange-100
                    focus:border-orange-500 resize-none"
       />
+      </div>
     </div>
   );
 };
