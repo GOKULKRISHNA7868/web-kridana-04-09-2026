@@ -189,6 +189,57 @@ export default function TrainerPaymentSelection() {
           </div>
         </div>
 
+        {Array.isArray(items) && items.length > 0 ? (
+          <div className="mb-5 rounded-2xl border border-orange-100 bg-[#FFF8F3] p-4 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Amount to pay
+            </p>
+            {items.map((item, idx) => (
+              <div
+                key={`${item.category}-${item.subCategory}-${idx}`}
+                className="text-sm border-b border-orange-100/80 last:border-0 pb-2.5 last:pb-0"
+              >
+                <div className="flex justify-between gap-3 font-semibold text-slate-900">
+                  <span className="truncate">
+                    {item.category} · {item.subCategory}
+                  </span>
+                  <span className="shrink-0 text-[#FF6A00]">
+                    ₹{Number(item.amount || 0).toLocaleString("en-IN")}
+                  </span>
+                </div>
+                {item.baseFee != null ? (
+                  <div className="flex justify-between gap-3 text-xs text-slate-500 mt-1">
+                    <span>Monthly fee</span>
+                    <span>
+                      ₹{Number(item.baseFee || 0).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                ) : null}
+                {(item.extras || []).map((ex, xi) => (
+                  <div
+                    key={ex.id || xi}
+                    className="flex justify-between gap-3 text-xs text-slate-500 mt-0.5"
+                  >
+                    <span className="truncate">
+                      Extra
+                      {ex.note || ex.label ? ` · ${ex.note || ex.label}` : ""}
+                    </span>
+                    <span className="shrink-0 text-[#E85D04]">
+                      ₹{Number(ex.amount || 0).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+            <div className="flex justify-between items-center pt-1 border-t border-orange-100">
+              <span className="text-sm font-semibold text-slate-800">Total</span>
+              <span className="text-lg font-bold text-[#FF6A00]">
+                ₹{Number(totalAmount || 0).toLocaleString("en-IN")}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         {/* UPI */}
         <div
           onClick={() => setSelected("upi")}

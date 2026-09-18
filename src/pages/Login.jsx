@@ -7,6 +7,7 @@ import {
   sendPasswordResetEmail,
   setPersistence,
   browserLocalPersistence,
+  signOut,
 } from "firebase/auth";
 
 import { doc, getDoc } from "firebase/firestore";
@@ -25,25 +26,9 @@ import {
   User,
   Users,
   Building2,
+  GraduationCap,
   Sparkles,
 } from "lucide-react";
-
-/*
-=========================================================
-IMPORTANT
-=========================================================
-
-1. ADD YOUR POPUP IMAGE IN:
-   /src/assets/kridana-popup.png
-
-2. IMPORT IS ALREADY ADDED BELOW
-
-3. PLAN CHECK COMPLETELY REMOVED
-
-4. ALL ROUTING PRESERVED
-
-=========================================================
-*/
 
 const ROLE_META = {
   user: {
@@ -51,28 +36,70 @@ const ROLE_META = {
     hint: "Book sessions, shop & train",
     Icon: User,
     signup: "/signup",
+    signupLabel: "Create customer account",
+  },
+  staff: {
+    label: "Academy Trainer",
+    hint: "Staff account linked to an academy",
+    Icon: GraduationCap,
+    signup: null,
+    signupLabel: null,
   },
   trainer: {
     label: "Solo Coach",
-    hint: "Manage clients & coaching",
+    hint: "Manage your independent coaching",
     Icon: Users,
     signup: "/trainer-signup",
+    signupLabel: "Register as solo coach",
   },
   institute: {
     label: "Academy",
-    hint: "Run your institute",
+    hint: "Run your institute dashboard",
     Icon: Building2,
     signup: "/institute-signup",
+    signupLabel: "Register academy",
   },
 };
+
+const ROLE_LABELS = {
+  user: "Customer",
+  staff: "Academy Trainer",
+  trainer: "Solo Coach",
+  institute: "Academy",
+  family: "Family",
+};
+
+const ROLE_ORDER = ["user", "staff", "trainer", "institute"];
+
+async function detectAccountRole(uid) {
+  const [staffSnap, trainerSnap, instituteSnap, familySnap] = await Promise.all(
+    [
+      getDoc(doc(db, "InstituteTrainers", uid)),
+      getDoc(doc(db, "trainers", uid)),
+      getDoc(doc(db, "institutes", uid)),
+      getDoc(doc(db, "families", uid)),
+    ],
+  );
+
+  // Order matches AuthContext: academy staff first, then solo coach, then academy
+  if (staffSnap.exists()) return { role: "staff", data: staffSnap.data() };
+  if (trainerSnap.exists()) return { role: "trainer", data: trainerSnap.data() };
+  if (instituteSnap.exists())
+    return { role: "institute", data: instituteSnap.data() };
+  if (familySnap.exists()) return { role: "family", data: familySnap.data() };
+  return { role: null, data: null };
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const reduceMotion = useReducedMotion();
   const popupImage = "/Kridana pop Up.png";
-  const role = new URLSearchParams(location.search).get("role") || "user";
-  const roleMeta = ROLE_META[role] || ROLE_META.user;
+
+  const rawRole = new URLSearchParams(location.search).get("role") || "user";
+  // Back-compat: old links may still use trainer for both coach types
+  const role = ROLE_META[rawRole] ? rawRole : "user";
+  const roleMeta = ROLE_META[role];
   const RoleIcon = roleMeta.Icon;
 
   const [formData, setFormData] = useState({
@@ -90,6 +117,13 @@ export default function Login() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState("");
 
+  const switchRole = (nextRole) => {
+    if (nextRole === role) return;
+    setErrorMsg("");
+    setForgotSuccess("");
+    navigate(`/login?role=${nextRole}`, { replace: true });
+  };
+
   const handleChange = (e) => {
     setErrorMsg("");
     setFormData((p) => ({
@@ -99,19 +133,11 @@ export default function Login() {
   };
 
   const handleBack = () => {
-    // Always return to role picker — never dashboards while logged out
     navigate("/RoleSelection");
   };
 
-  /*
-  =========================================================
-  LOGIN
-  =========================================================
-  */
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (loading) return;
 
     setErrorMsg("");
@@ -127,93 +153,75 @@ export default function Login() {
       );
 
       const user = cred.user;
+      const { role: actualRole } = await detectAccountRole(user.uid);
 
-      /*
-      =========================================================
-      ROLE CHECK
-      =========================================================
-      */
-
-      const trainerSnap = await getDoc(doc(db, "trainers", user.uid));
-
-      const instituteSnap = await getDoc(doc(db, "institutes", user.uid));
-
-      const familySnap = await getDoc(doc(db, "families", user.uid));
-
-      let actualRole = null;
-
-      if (trainerSnap.exists()) actualRole = "trainer";
-
-      if (instituteSnap.exists()) actualRole = "institute";
-
-      if (familySnap.exists()) actualRole = "family";
-
-      if (!actualRole && role === "user") {
-        actualRole = "user";
+      // Customer path: only customers / families — never staff, coach, or academy
+      if (role === "user") {
+        if (
+          actualRole === "staff" ||
+          actualRole === "trainer" ||
+          actualRole === "institute"
+        ) {
+          await signOut(auth);
+          setErrorMsg(
+            `This email belongs to a ${ROLE_LABELS[actualRole]} account. Switch to “${ROLE_LABELS[actualRole]}” above and sign in there.`,
+          );
+          setLoading(false);
+          return;
+        }
+      } else if (role === "staff") {
+        if (actualRole !== "staff") {
+          await signOut(auth);
+          setErrorMsg(
+            actualRole
+              ? `This account is registered as ${ROLE_LABELS[actualRole]}. Choose that option to continue.`
+              : "No academy trainer account found for this email. Ask your academy to add you from Add Trainers.",
+          );
+          setLoading(false);
+          return;
+        }
+      } else if (role === "trainer") {
+        if (actualRole !== "trainer") {
+          await signOut(auth);
+          setErrorMsg(
+            actualRole === "staff"
+              ? "This is an Academy Trainer account. Choose “Academy Trainer” to sign in."
+              : actualRole
+                ? `This account is registered as ${ROLE_LABELS[actualRole]}. Choose that option to continue.`
+                : "No solo coach account found for this email.",
+          );
+          setLoading(false);
+          return;
+        }
+      } else if (role === "institute") {
+        if (actualRole !== "institute") {
+          await signOut(auth);
+          setErrorMsg(
+            actualRole
+              ? `This account is registered as ${ROLE_LABELS[actualRole]}. Choose that option to continue.`
+              : "No academy account found for this email.",
+          );
+          setLoading(false);
+          return;
+        }
       }
 
-      /*
-      =========================================================
-      ROLE MISMATCH
-      =========================================================
-      */
+      const resolvedRole = actualRole || (role === "user" ? "user" : actualRole);
 
-      if (role !== "user" && actualRole !== role && actualRole !== "family") {
-        setErrorMsg(
-          `This account is registered as ${actualRole || "another role"}. Please choose the matching role.`,
-        );
-        setLoading(false);
-        return;
-      }
-
-      /*
-      =========================================================
-      FAMILY
-      =========================================================
-      */
-
-      if (actualRole === "family") {
+      if (resolvedRole === "family") {
         setRedirectPath("/");
-
         setShowWelcomePopup(true);
-
         return;
       }
-
-      /*
-      =========================================================
-      RESET PASSWORD
-      =========================================================
-      */
 
       const studentSnap = await getDoc(doc(db, "students", user.uid));
-
       if (studentSnap.exists() && studentSnap.data().defaultPassword) {
         navigate("/reset-password");
-
         return;
       }
 
-      /*
-      =========================================================
-      ROUTING
-      =========================================================
-      */
-
-      if (actualRole === "trainer") {
-        setRedirectPath("/");
-      } else if (actualRole === "institute") {
-        setRedirectPath("/");
-      } else {
-        setRedirectPath("/");
-      }
-
-      /*
-      =========================================================
-      SHOW POPUP
-      =========================================================
-      */
-
+      // Dashboards resolve by AuthContext / UserDashboard role detection
+      setRedirectPath("/");
       setShowWelcomePopup(true);
     } catch (err) {
       console.error(err);
@@ -237,12 +245,6 @@ export default function Login() {
       setLoading(false);
     }
   };
-
-  /*
-  =========================================================
-  FORGOT PASSWORD
-  =========================================================
-  */
 
   const handleForgotPassword = async (e) => {
     e?.preventDefault?.();
@@ -275,12 +277,6 @@ export default function Login() {
     }
   };
 
-  /*
-  =========================================================
-  AUTO REDIRECT AFTER POPUP
-  =========================================================
-  */
-
   useEffect(() => {
     if (!showWelcomePopup) return;
 
@@ -302,61 +298,40 @@ export default function Login() {
 
   return (
     <>
-      {/* MAIN PAGE */}
-      <div className="min-h-screen relative overflow-hidden bg-[#1A0F08] flex flex-col">
-        {/* Ambient background */}
+      <div className="min-h-screen relative overflow-hidden bg-[#0F172A] flex flex-col">
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-0 bg-gradient-to-b from-[#2A1608] via-[#FF6A00]/25 to-[#1A0F08]" />
-          <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-[#FF6A00]/25 blur-3xl" />
-          <div className="absolute bottom-0 -left-20 w-80 h-80 rounded-full bg-[#FF9A3C]/15 blur-3xl" />
-          <div
-            className="absolute inset-0 opacity-[0.04]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 1px 1px, #fff 1px, transparent 0)",
-              backgroundSize: "22px 22px",
-            }}
-          />
+          <div className="absolute inset-0 bg-gradient-to-br from-[#0F172A] via-[#1e293b] to-[#0F172A]" />
+          <div className="absolute -top-24 -right-16 w-72 h-72 rounded-full bg-[#FF6A00]/20 blur-3xl" />
+          <div className="absolute bottom-0 -left-20 w-80 h-80 rounded-full bg-orange-400/10 blur-3xl" />
         </div>
 
-        {/* BACK BUTTON — returns to role selection */}
         <motion.button
           type="button"
           onClick={handleBack}
           {...fade}
           className="
-            relative z-40
-            self-start
+            relative z-40 self-start
             mt-[calc(0.75rem+env(safe-area-inset-top,0px))]
-            ml-4
-            flex items-center gap-2
-            text-white/95
-            bg-white/10
-            hover:bg-white/15
-            border border-white/15
-            px-3.5 py-2
-            rounded-xl
-            backdrop-blur-md
-            active:scale-[0.97]
-            transition
+            ml-4 sm:ml-6
+            flex items-center gap-2 text-white/90
+            bg-white/10 hover:bg-white/15 border border-white/15
+            px-3.5 py-2 rounded-xl backdrop-blur-md transition
           "
         >
           <ArrowLeft size={18} />
-          <span className="text-sm font-medium">Back</span>
+          <span className="text-sm font-medium">Account types</span>
         </motion.button>
 
-        <div className="relative z-10 flex-1 flex items-center justify-center px-4 py-6 sm:py-10 lg:py-16">
-          {/* LOGIN CARD */}
+        <div className="relative z-10 flex-1 flex items-center justify-center px-4 py-6 sm:py-10">
           <motion.div
             initial={reduceMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.24, ease: "easeOut" }}
             className="
               w-full max-w-md lg:max-w-lg
-              bg-white
-              rounded-[28px]
+              bg-white rounded-[28px]
               shadow-[0_20px_60px_rgba(0,0,0,0.35)]
-              border border-orange-50
+              border border-slate-100
               p-5 sm:p-8
             "
           >
@@ -366,34 +341,77 @@ export default function Login() {
                 Secure sign in
               </div>
 
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#2D1400] tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                 Welcome back
               </h2>
-
-              <p className="text-center text-gray-500 mt-2 text-sm sm:text-[15px]">
-                Sign in to continue to Kridana
+              <p className="text-slate-500 mt-2 text-sm sm:text-[15px]">
+                Select your account type, then sign in
               </p>
-
-              {/* Role chip */}
-              <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#FFF7F0] border border-orange-100">
-                <span className="w-8 h-8 rounded-lg bg-[#FF6A00] text-white flex items-center justify-center">
-                  <RoleIcon size={16} />
-                </span>
-                <div className="text-left">
-                  <p className="text-xs text-gray-500 leading-none">
-                    Signing in as
-                  </p>
-                  <p className="text-sm font-semibold text-gray-900 mt-0.5">
-                    {roleMeta.label}
-                  </p>
-                </div>
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1.5">{roleMeta.hint}</p>
             </div>
 
-            {/* FORM */}
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-              {/* EMAIL */}
+            {/* Role switcher — prevents customer / staff confusion */}
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              {ROLE_ORDER.map((id) => {
+                const meta = ROLE_META[id];
+                const Icon = meta.Icon;
+                const active = role === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => switchRole(id)}
+                    className={`
+                      flex items-center gap-2 rounded-xl border px-2.5 py-2.5 text-left transition
+                      ${
+                        active
+                          ? "bg-[#FF6A00] border-[#FF6A00] text-white shadow-md shadow-orange-200"
+                          : "bg-slate-50 border-slate-200 text-slate-700 hover:border-orange-200 hover:bg-orange-50/50"
+                      }
+                    `}
+                  >
+                    <span
+                      className={`
+                        w-8 h-8 rounded-lg flex items-center justify-center shrink-0
+                        ${active ? "bg-white/20" : "bg-white text-[#FF6A00]"}
+                      `}
+                    >
+                      <Icon size={15} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[12px] sm:text-[13px] font-semibold leading-tight truncate">
+                        {meta.label}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-[#FFF7F0] border border-orange-100 px-3 py-2.5">
+              <span className="w-9 h-9 rounded-lg bg-[#FF6A00] text-white flex items-center justify-center shrink-0">
+                <RoleIcon size={16} />
+              </span>
+              <div className="min-w-0 text-left">
+                <p className="text-[11px] text-slate-500 leading-none">
+                  Signing in as
+                </p>
+                <p className="text-sm font-semibold text-slate-900 mt-0.5">
+                  {roleMeta.label}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  {roleMeta.hint}
+                </p>
+              </div>
+            </div>
+
+            {role === "staff" ? (
+              <p className="mt-3 text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 leading-relaxed">
+                Use the email and password your academy shared when they added
+                you as a trainer.
+              </p>
+            ) : null}
+
+            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
               <div>
                 <label className="text-[#FF6A00] font-medium text-sm">
                   Email
@@ -401,7 +419,7 @@ export default function Login() {
                 <div className="relative mt-1.5">
                   <Mail
                     size={18}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
                   />
                   <input
                     type="email"
@@ -414,7 +432,7 @@ export default function Login() {
                     placeholder="you@example.com"
                     className="
                       w-full pl-11 pr-4 py-3
-                      rounded-2xl border border-gray-200 bg-gray-50/80
+                      rounded-2xl border border-slate-200 bg-slate-50/80
                       focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/35
                       focus:border-[#FF6A00] focus:bg-white
                       transition text-sm sm:text-base
@@ -423,7 +441,6 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* PASSWORD */}
               <div>
                 <label className="text-[#FF6A00] font-medium text-sm">
                   Password
@@ -431,7 +448,7 @@ export default function Login() {
                 <div className="relative mt-1.5">
                   <Lock
                     size={18}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
                   />
                   <input
                     type={showPassword ? "text" : "password"}
@@ -443,7 +460,7 @@ export default function Login() {
                     placeholder="Enter password"
                     className="
                       w-full pl-11 pr-12 py-3
-                      rounded-2xl border border-gray-200 bg-gray-50/80
+                      rounded-2xl border border-slate-200 bg-slate-50/80
                       focus:outline-none focus:ring-2 focus:ring-[#FF6A00]/35
                       focus:border-[#FF6A00] focus:bg-white
                       transition text-sm sm:text-base
@@ -451,11 +468,13 @@ export default function Login() {
                   />
                   <button
                     type="button"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
                     onClick={() => setShowPassword(!showPassword)}
                     className="
                       absolute right-3 top-1/2 -translate-y-1/2
-                      text-gray-500 hover:text-gray-700 p-1 rounded-lg
+                      text-slate-500 hover:text-slate-700 p-1 rounded-lg
                       active:scale-95 transition
                     "
                   >
@@ -479,7 +498,6 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* Inline forgot password */}
               <AnimatePresence initial={false}>
                 {showForgot && (
                   <motion.div
@@ -494,7 +512,7 @@ export default function Login() {
                     className="overflow-hidden"
                   >
                     <div className="rounded-2xl border border-orange-100 bg-[#FFF8F3] p-3.5 space-y-2.5">
-                      <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                      <p className="text-xs text-slate-600 flex items-center gap-1.5">
                         <ShieldCheck size={14} className="text-[#FF6A00]" />
                         We&apos;ll email you a secure reset link
                       </p>
@@ -508,7 +526,7 @@ export default function Login() {
                         }}
                         placeholder="Registered email"
                         className="
-                          w-full px-3.5 py-2.5 rounded-xl border border-gray-200
+                          w-full px-3.5 py-2.5 rounded-xl border border-slate-200
                           bg-white text-sm focus:outline-none focus:ring-2
                           focus:ring-[#FF6A00]/30
                         "
@@ -539,13 +557,12 @@ export default function Login() {
                 <motion.div
                   initial={reduceMotion ? false : { opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="rounded-xl bg-red-50 border border-red-100 px-3.5 py-2.5 text-sm text-red-600"
+                  className="rounded-xl bg-red-50 border border-red-100 px-3.5 py-2.5 text-sm text-red-600 leading-relaxed"
                 >
                   {errorMsg}
                 </motion.div>
               )}
 
-              {/* LOGIN BUTTON */}
               <button
                 type="submit"
                 disabled={loading}
@@ -564,37 +581,40 @@ export default function Login() {
                     Signing in...
                   </>
                 ) : (
-                  "Sign in"
+                  `Sign in as ${roleMeta.label}`
                 )}
               </button>
             </form>
 
-            {/* FOOTER */}
-            <p className="text-center mt-6 text-sm text-[#2D1400]">
-              Don&apos;t have an account?{" "}
-              <button
-                type="button"
-                onClick={() => navigate(roleMeta.signup)}
-                className="text-[#FF6A00] font-bold hover:underline"
-              >
-                Sign up
-              </button>
-            </p>
+            <div className="mt-6 text-center text-sm text-slate-700">
+              {roleMeta.signup ? (
+                <p>
+                  Don&apos;t have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => navigate(roleMeta.signup)}
+                    className="text-[#FF6A00] font-bold hover:underline"
+                  >
+                    {roleMeta.signupLabel || "Sign up"}
+                  </button>
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Academy trainers are added by the institute — no self sign-up.
+                </p>
+              )}
+            </div>
 
             <button
               type="button"
               onClick={() => navigate("/RoleSelection")}
-              className="mt-3 w-full text-center text-xs text-gray-400 hover:text-[#FF6A00] transition"
+              className="mt-3 w-full text-center text-xs text-slate-400 hover:text-[#FF6A00] transition"
             >
-              Change account type
+              Compare account types
             </button>
           </motion.div>
         </div>
       </div>
-
-      {/* ===================================================== */}
-      {/* WELCOME POPUP */}
-      {/* ===================================================== */}
 
       <AnimatePresence>
         {showWelcomePopup && (

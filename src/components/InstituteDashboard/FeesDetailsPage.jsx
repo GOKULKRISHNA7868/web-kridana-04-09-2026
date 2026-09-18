@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   collection,
   query,
@@ -11,8 +12,21 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../../firebase";
 import { logStaffAction } from "../../utils/trainerAccess";
-import { ChevronDown } from "lucide-react";
-import { Filter, X } from "lucide-react";
+import { ChevronDown, Filter, X, Plus, Trash2 } from "lucide-react";
+
+const newExtraId = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `ex_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+const sumExtras = (extras = []) =>
+  (Array.isArray(extras) ? extras : []).reduce(
+    (sum, row) => sum + Number(row?.amount || 0),
+    0,
+  );
+
+const computeMonthTotal = (baseFee, extras = []) =>
+  Number(baseFee || 0) + sumExtras(extras);
 const MONTHS = [
   { label: "January", value: "01" },
   { label: "February", value: "02" },
@@ -48,6 +62,8 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
 
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
   const monthRef = useRef(null);
+  const listScrollRef = useRef(null);
+  const listScrollTopRef = useRef(0);
   const [selectedSport, setSelectedSport] = useState(null);
   const [showYearDropdown, setShowYearDropdown] = useState(false);
   const yearRef = useRef(null);
@@ -57,6 +73,8 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedSubCategory, setSelectedSubCategory] = useState("");
   const [editData, setEditData] = useState({
+    baseFee: "",
+    extras: [],
     totalFee: "",
     paidAmount: "",
     paidDate: "",
@@ -220,6 +238,11 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
       return;
     }
 
+    // Keep list scroll position — popup must not jump the page
+    if (listScrollRef.current) {
+      listScrollTopRef.current = listScrollRef.current.scrollTop;
+    }
+
     setSelectedStudent(student);
     setSelectedSport(sport);
 
@@ -231,8 +254,27 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
         f.month === `${selectedYear}-${selectedMonth}`,
     );
 
+    const extras = Array.isArray(existingFee?.extras)
+      ? existingFee.extras.map((e) => ({
+          id: e.id || newExtraId(),
+          note: e.note || e.label || "",
+          amount: String(e.amount ?? ""),
+        }))
+      : [];
+    const baseFee = String(
+      existingFee?.baseFee ??
+        (existingFee?.totalAmount != null && extras.length
+          ? Number(existingFee.totalAmount) - sumExtras(extras)
+          : sport.fee ?? 0),
+    );
+    const totalFee = String(
+      existingFee?.totalAmount ?? computeMonthTotal(baseFee, extras),
+    );
+
     setEditData({
-      totalFee: existingFee?.totalAmount ?? sport.fee ?? 0,
+      baseFee,
+      extras,
+      totalFee,
       paidAmount: existingFee?.paidAmount ?? "",
       paidDate: existingFee?.paidDate ?? "",
       feeWaived: existingFee?.feeWaived ?? false,
@@ -242,10 +284,32 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
     setShowEditModal(true);
   };
 
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setSelectedStudent(null);
+    setSelectedSport(null);
+    requestAnimationFrame(() => {
+      if (listScrollRef.current) {
+        listScrollRef.current.scrollTop = listScrollTopRef.current;
+      }
+    });
+  };
+
   const updatePayment = async () => {
     if (!selectedStudent || !selectedSport) return;
 
-    const { totalFee, paidAmount, paidDate } = editData;
+    const extrasClean = (editData.extras || [])
+      .map((e) => ({
+        id: e.id || newExtraId(),
+        note: String(e.note || "").trim(),
+        amount: Number(e.amount || 0),
+      }))
+      .filter((e) => e.amount > 0 || e.note);
+
+    const baseFee = Number(editData.baseFee || 0);
+    const totalFee = computeMonthTotal(baseFee, extrasClean);
+    const paidAmount = Number(editData.paidAmount || 0);
+    const paidDate = editData.paidDate || "";
 
     try {
       const existingFee = fees.find(
@@ -256,32 +320,31 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
           f.month === `${selectedYear}-${selectedMonth}`,
       );
 
+      const payload = {
+        baseFee,
+        extras: extrasClean,
+        totalAmount: totalFee,
+        paidAmount,
+        paidDate,
+        feeWaived: editData.feeWaived || false,
+        waiveReason: editData.waiveReason || "",
+        updatedAt: serverTimestamp(),
+        lastEditedBy: actor?.trainerUid || instituteId,
+        lastEditedByName: actor?.name || "Academy",
+        lastEditedByRole: actor?.role || "institute",
+      };
+
       if (existingFee) {
-        await updateDoc(doc(db, "studentFees", existingFee.id), {
-          totalAmount: Number(totalFee),
-          paidAmount: Number(paidAmount),
-          paidDate,
-          updatedAt: serverTimestamp(),
-          lastEditedBy: actor?.trainerUid || instituteId,
-          lastEditedByName: actor?.name || "Academy",
-          lastEditedByRole: actor?.role || "institute",
-        });
+        await updateDoc(doc(db, "studentFees", existingFee.id), payload);
       } else {
         await setDoc(doc(collection(db, "studentFees")), {
           studentId: selectedStudent.id,
           instituteId,
           category: selectedSport.category,
           subCategory: selectedSport.subCategory,
-          totalAmount: Number(totalFee),
-          paidAmount: Number(paidAmount),
-          paidDate,
-          feeWaived: editData.feeWaived || false,
-          waiveReason: editData.waiveReason || "",
           month: `${selectedYear}-${selectedMonth}`,
           createdAt: serverTimestamp(),
-          lastEditedBy: actor?.trainerUid || instituteId,
-          lastEditedByName: actor?.name || "Academy",
-          lastEditedByRole: actor?.role || "institute",
+          ...payload,
         });
       }
 
@@ -298,9 +361,7 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
 
       alert("Payment saved successfully ✅");
 
-      setShowEditModal(false);
-      setSelectedStudent(null);
-      setSelectedSport(null);
+      closeEditModal();
     } catch (error) {
       console.error(error);
       alert("Error saving payment ❌");
@@ -351,12 +412,29 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
       };
     }
 
-    const total = Number(feeRecord?.totalAmount ?? sport.fee ?? 0);
+    const total = Number(
+      feeRecord?.totalAmount ??
+        computeMonthTotal(
+          feeRecord?.baseFee ?? sport.fee ?? 0,
+          feeRecord?.extras || [],
+        ),
+    );
     const paid = Number(feeRecord?.paidAmount || 0);
     const pending = total - paid;
     const paidDate = feeRecord?.paidDate || "-";
+    const extras = Array.isArray(feeRecord?.extras) ? feeRecord.extras : [];
+    const extraTotal = sumExtras(extras);
 
-    return { total, paid, pending, paidDate, reason: "", lastEditedByName: feeRecord?.lastEditedByName || "" };
+    return {
+      total,
+      paid,
+      pending,
+      paidDate,
+      reason: "",
+      extras,
+      extraTotal,
+      lastEditedByName: feeRecord?.lastEditedByName || "",
+    };
   };
 
   const StatCard = ({ title, value }) => (
@@ -541,6 +619,7 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
       {/* ================= TABLE / MOBILE RESPONSIVE ================= */}
       <div className="flex-1 overflow-hidden">
         <div
+          ref={listScrollRef}
           className="h-full overflow-y-auto px-4 pb-28"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
@@ -565,35 +644,59 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
                 return (
                   <div
                     key={`${student.id}-${sport.subCategory}`}
-                    className="grid grid-cols-8 px-6 py-4 border-t items-center text-sm hover:bg-gray-50"
+                    className="grid grid-cols-8 px-6 py-4 border-t items-center text-sm hover:bg-orange-50/40 transition-colors"
                   >
-                    <div className="font-medium">
+                    <button
+                      type="button"
+                      onClick={() => handleEditPayment(student, sport)}
+                      className="font-medium text-left text-slate-900 hover:text-[#FF6A00] truncate pr-2"
+                    >
                       {index + 1}. {student.firstName} {student.lastName}
-                    </div>
+                    </button>
 
-                    <div>{sport.category}</div>
-                    <div>{sport.subCategory}</div>
+                    <div className="truncate">{sport.category}</div>
+                    <div className="truncate">{sport.subCategory}</div>
                     <div className="text-center">{student.sessions || "-"}</div>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => handleEditPayment(student, sport)}
-                      className="text-center cursor-pointer"
+                      className="text-center font-semibold text-slate-800 hover:text-[#FF6A00]"
                     >
                       ₹ {data.total}
-                    </div>
+                    </button>
 
-                    <div
+                    <button
+                      type="button"
                       onClick={() => handleEditPayment(student, sport)}
-                      className="text-center text-green-600 font-semibold cursor-pointer"
+                      className="text-center text-green-600 font-semibold hover:underline"
                     >
                       ₹ {data.paid}
-                    </div>
+                    </button>
 
                     <div className="text-center text-red-600 font-semibold">
                       ₹ {data.pending}
                     </div>
 
-                    <div className="text-center">{data.reason || "-"}</div>
+                    <div className="text-center flex items-center justify-center gap-2">
+                      <div className="min-w-0 text-left">
+                        <span className="truncate text-xs text-slate-500 block">
+                          {data.reason || "—"}
+                        </span>
+                        {data.extraTotal > 0 ? (
+                          <span className="text-[10px] font-semibold text-[#FF6A00]">
+                            +₹{data.extraTotal} extras
+                          </span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleEditPayment(student, sport)}
+                        className="shrink-0 min-h-[32px] px-2.5 rounded-lg bg-[#FF6A00] text-white text-[11px] font-semibold"
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -611,8 +714,8 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
                     className="p-4"
                   >
                     <div className="flex justify-between gap-3">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-sm">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-sm text-slate-900">
                           {index + 1}. {student.firstName} {student.lastName}
                         </h3>
 
@@ -621,53 +724,60 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
                         </p>
                       </div>
 
-                      <span className="text-xs  text-orange-600 px-2 py-1 rounded-full">
-                        {student.sessions || 0}
+                      <span className="text-xs text-orange-600 px-2 py-1 rounded-full bg-orange-50 shrink-0 h-fit">
+                        {student.sessions || 0} sess
                       </span>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 mt-4">
-                      <button
-                        onClick={() => handleEditPayment(student, sport)}
-                        className="bg-gray-50 rounded-lg p-2 text-center"
-                      >
+                      <div className="bg-gray-50 rounded-xl p-2.5 text-center border border-slate-100">
                         <p className="text-[11px] text-gray-500">Total</p>
-                        <p className="font-semibold">₹ {data.total}</p>
-                      </button>
+                        <p className="font-semibold text-sm">₹ {data.total}</p>
+                      </div>
 
-                      <button
-                        onClick={() => handleEditPayment(student, sport)}
-                        className="bg-green-50 rounded-lg p-2 text-center"
-                      >
+                      <div className="bg-green-50 rounded-xl p-2.5 text-center border border-green-100">
                         <p className="text-[11px] text-green-600">Paid</p>
-                        <p className="font-semibold text-green-700">
+                        <p className="font-semibold text-sm text-green-700">
                           ₹ {data.paid}
                         </p>
-                      </button>
+                      </div>
 
-                      <div className="bg-red-50 rounded-lg p-2 text-center">
+                      <div className="bg-red-50 rounded-xl p-2.5 text-center border border-red-100">
                         <p className="text-[11px] text-red-500">Pending</p>
-                        <p className="font-semibold text-red-600">
+                        <p className="font-semibold text-sm text-red-600">
                           ₹ {data.pending}
                         </p>
                       </div>
-                      <div className="flex justify-between items-center mt-3 text-xs">
-                        <span className="text-gray-500">
-                          {data.paidDate !== "-"
-                            ? `Paid: ${data.paidDate}`
-                            : "Not Paid"}
-                          {data.lastEditedByName
-                            ? ` · ${data.lastEditedByName}`
-                            : ""}
-                        </span>
-
-                        {data.reason && (
-                          <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                            {data.reason}
-                          </span>
-                        )}
-                      </div>
                     </div>
+
+                    <div className="flex justify-between items-center mt-3 text-xs gap-2">
+                      <span className="text-gray-500 truncate">
+                        {data.paidDate !== "-"
+                          ? `Paid: ${data.paidDate}`
+                          : "Not paid yet"}
+                        {data.lastEditedByName
+                          ? ` · ${data.lastEditedByName}`
+                          : ""}
+                      </span>
+
+                      {data.extraTotal > 0 ? (
+                        <span className="bg-orange-100 text-[#E85D04] px-2 py-1 rounded-full shrink-0 font-semibold">
+                          +₹{data.extraTotal} extras
+                        </span>
+                      ) : data.reason ? (
+                        <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full shrink-0">
+                          {data.reason}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleEditPayment(student, sport)}
+                      className="mt-3 w-full min-h-[44px] rounded-xl bg-[#FF6A00] text-white text-sm font-semibold"
+                    >
+                      Update payment
+                    </button>
                   </div>
                 );
               })}
@@ -676,14 +786,21 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
         </div>
       </div>
 
-      {/* MODAL */}
-      {showEditModal && (
+      {/* Payment modal — portaled above page scroll */}
+      {showEditModal && selectedStudent && selectedSport && (
         <ModalForm
-          title="Update Payment"
+          title="Update payment"
+          studentName={`${selectedStudent.firstName || ""} ${selectedStudent.lastName || ""}`.trim()}
+          sportLabel={`${selectedSport.category || ""} · ${selectedSport.subCategory || ""}`}
+          monthLabel={
+            selectedMonth
+              ? `${MONTHS.find((m) => m.value === selectedMonth)?.label || selectedMonth} ${selectedYear}`
+              : selectedYear
+          }
           data={editData}
           setData={setEditData}
           onSave={updatePayment}
-          onClose={() => setShowEditModal(false)}
+          onClose={closeEditModal}
         />
       )}
       {/* ===== MOBILE FILTER POPUP (BOTTOM NAV SAFE) ===== */}
@@ -852,105 +969,397 @@ const StatCard = ({ title, value }) => (
   </div>
 );
 
-const ModalForm = ({ title, data, setData, onSave, onClose }) => {
+const ModalForm = ({
+  title,
+  studentName,
+  sportLabel,
+  monthLabel,
+  data,
+  setData,
+  onSave,
+  onClose,
+}) => {
   const [showWaiveConfirm, setShowWaiveConfirm] = useState(false);
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-xl w-[90%] sm:w-96 space-y-4">
-        <h2 className="font-semibold">{title}</h2>
+  const [saving, setSaving] = useState(false);
 
-        <input
-          type="number"
-          className="border w-full p-2 rounded"
-          placeholder="Total Fee"
-          value={data.totalFee}
-          onChange={(e) => setData({ ...data, totalFee: e.target.value })}
-        />
+  useEffect(() => {
+    const scrollY = window.scrollY || window.pageYOffset;
+    const prev = {
+      overflow: document.body.style.overflow,
+      paddingRight: document.body.style.paddingRight,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+      htmlOverflow: document.documentElement.style.overflow,
+    };
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
 
-        <input
-          type="number"
-          className="border w-full p-2 rounded"
-          placeholder="Paid Amount"
-          value={data.paidAmount}
-          onChange={(e) => setData({ ...data, paidAmount: e.target.value })}
-        />
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    if (scrollbar > 0) {
+      document.body.style.paddingRight = `${scrollbar}px`;
+    }
 
-        <input
-          type="date"
-          className="border w-full p-2 rounded"
-          placeholder="Paid Date"
-          value={data.paidDate}
-          onChange={(e) => setData({ ...data, paidDate: e.target.value })}
-        />
-        {data.feeWaived && (
-          <input
-            type="text"
-            className="border w-full p-2 rounded"
-            placeholder="Reason (Medical Leave / Vacation)"
-            value={data.waiveReason}
-            onChange={(e) => setData({ ...data, waiveReason: e.target.value })}
-          />
-        )}
-        <div className="flex justify-end gap-3">
-          <button onClick={onClose}>Cancel</button>
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.documentElement.style.overflow = prev.htmlOverflow;
+      document.body.style.overflow = prev.overflow;
+      document.body.style.paddingRight = prev.paddingRight;
+      document.body.style.position = prev.position;
+      document.body.style.top = prev.top;
+      document.body.style.width = prev.width;
+      window.scrollTo(0, scrollY);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lock once while modal is mounted
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await onSave();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const modal = (
+    <div
+      className="fixed inset-0 z-[12000] flex items-end sm:items-center justify-center p-0 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="fee-modal-title"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-slate-900/55 backdrop-blur-[2px] cursor-default"
+        aria-label="Close"
+        onClick={onClose}
+      />
+
+      <div
+        className="
+          relative z-10 w-full sm:w-full sm:max-w-md
+          max-h-[min(92dvh,720px)]
+          bg-white
+          rounded-t-3xl sm:rounded-2xl
+          shadow-2xl
+          flex flex-col
+          animate-slideUp
+        "
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sm:hidden w-10 h-1 rounded-full bg-slate-200 mx-auto mt-3 shrink-0" />
+
+        <div className="px-5 pt-4 pb-3 border-b border-slate-100 shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2
+                id="fee-modal-title"
+                className="text-lg font-bold text-slate-900"
+              >
+                {title}
+              </h2>
+              {studentName ? (
+                <p className="text-sm font-semibold text-slate-800 mt-1 truncate">
+                  {studentName}
+                </p>
+              ) : null}
+              {sportLabel ? (
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
+                  {sportLabel}
+                </p>
+              ) : null}
+              {monthLabel ? (
+                <p className="text-xs text-[#FF6A00] font-medium mt-1">
+                  Period: {monthLabel}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 hover:bg-slate-200"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+              Monthly fee (₹)
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00] focus:ring-2 focus:ring-orange-100"
+              placeholder="0"
+              value={data.baseFee}
+              onChange={(e) => {
+                const baseFee = e.target.value.replace(/[^\d]/g, "");
+                setData({
+                  ...data,
+                  baseFee,
+                  totalFee: String(
+                    computeMonthTotal(baseFee, data.extras || []),
+                  ),
+                });
+              }}
+            />
+          </label>
+
+          {/* Extra fees for this month */}
+          <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3.5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  Extra fees
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  e.g. Game kit ₹200 — shown to student when paying
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const extras = [
+                    ...(data.extras || []),
+                    { id: newExtraId(), note: "", amount: "" },
+                  ];
+                  setData({
+                    ...data,
+                    extras,
+                    totalFee: String(
+                      computeMonthTotal(data.baseFee, extras),
+                    ),
+                  });
+                }}
+                className="shrink-0 min-h-[36px] px-3 rounded-lg bg-[#FF6A00] text-white text-xs font-semibold inline-flex items-center gap-1"
+              >
+                <Plus size={14} />
+                Add
+              </button>
+            </div>
+
+            {(data.extras || []).length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-2">
+                No extra fees for this month
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {(data.extras || []).map((row, idx) => (
+                  <div
+                    key={row.id || idx}
+                    className="rounded-xl bg-white border border-slate-200 p-2.5 space-y-2"
+                  >
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="flex-1 min-h-[42px] rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#FF6A00]"
+                        placeholder="Note (e.g. Game kit)"
+                        value={row.note || ""}
+                        onChange={(e) => {
+                          const extras = (data.extras || []).map((ex, i) =>
+                            i === idx ? { ...ex, note: e.target.value } : ex,
+                          );
+                          setData({ ...data, extras });
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const extras = (data.extras || []).filter(
+                            (_, i) => i !== idx,
+                          );
+                          setData({
+                            ...data,
+                            extras,
+                            totalFee: String(
+                              computeMonthTotal(data.baseFee, extras),
+                            ),
+                          });
+                        }}
+                        className="w-10 h-[42px] rounded-lg border border-red-100 text-red-500 flex items-center justify-center hover:bg-red-50"
+                        aria-label="Remove extra"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="w-full min-h-[42px] rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#FF6A00]"
+                      placeholder="Amount ₹"
+                      value={row.amount ?? ""}
+                      onChange={(e) => {
+                        const amount = e.target.value.replace(/[^\d]/g, "");
+                        const extras = (data.extras || []).map((ex, i) =>
+                          i === idx ? { ...ex, amount } : ex,
+                        );
+                        setData({
+                          ...data,
+                          extras,
+                          totalFee: String(
+                            computeMonthTotal(data.baseFee, extras),
+                          ),
+                        });
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1 border-t border-orange-100/80">
+              <span className="text-xs font-medium text-slate-600">
+                Month total
+              </span>
+              <span className="text-base font-bold text-[#FF6A00]">
+                ₹
+                {Number(
+                  data.totalFee ||
+                    computeMonthTotal(data.baseFee, data.extras || []),
+                ).toLocaleString("en-IN")}
+              </span>
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+              Paid amount (₹)
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00] focus:ring-2 focus:ring-orange-100"
+              placeholder="0"
+              value={data.paidAmount}
+              onChange={(e) =>
+                setData({
+                  ...data,
+                  paidAmount: e.target.value.replace(/[^\d]/g, ""),
+                })
+              }
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+              Paid date
+            </span>
+            <input
+              type="date"
+              className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00] focus:ring-2 focus:ring-orange-100"
+              value={data.paidDate}
+              onChange={(e) => setData({ ...data, paidDate: e.target.value })}
+            />
+          </label>
+
+          {data.feeWaived ? (
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+                Waiver reason
+              </span>
+              <input
+                type="text"
+                className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00] focus:ring-2 focus:ring-orange-100"
+                placeholder="Medical leave / vacation / other"
+                value={data.waiveReason}
+                onChange={(e) =>
+                  setData({ ...data, waiveReason: e.target.value })
+                }
+              />
+            </label>
+          ) : null}
+        </div>
+
+        <div
+          className="
+            px-5 pt-3 shrink-0 border-t border-slate-100 bg-white
+            pb-[max(1rem,env(safe-area-inset-bottom))]
+            space-y-2
+          "
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-[48px] rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="min-h-[48px] rounded-xl bg-[#FF6A00] text-white text-sm font-semibold disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save payment"}
+            </button>
+          </div>
           <button
-            onClick={onSave}
-            className="bg-orange-500 text-white px-4 py-2 rounded"
-          >
-            Save
-          </button>
-          <button
+            type="button"
             onClick={() => setShowWaiveConfirm(true)}
-            className="bg-red-500 text-white px-4 py-2 rounded"
+            className="w-full min-h-[44px] rounded-xl border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50"
           >
-            Waive Fee
+            Waive fee
           </button>
         </div>
       </div>
-      {showWaiveConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[999] p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl animate-scaleIn">
-            <h3 className="text-lg font-bold text-gray-800">
-              Confirm Fee Waiver
+
+      {showWaiveConfirm ? (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-slate-900/40">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-xl">
+            <h3 className="text-lg font-bold text-slate-900">
+              Confirm fee waiver
             </h3>
-
-            <p className="text-gray-600 mt-3">
-              Are you sure you want to waive this student's fee?
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+              This will set total and paid amounts to ₹0 for this student.
             </p>
-
-            <p className="mt-2 font-semibold text-red-600">
-              This will set the fee amount to ₹0.
-            </p>
-
-            <div className="flex gap-3 mt-6">
+            <div className="grid grid-cols-2 gap-2 mt-5">
               <button
+                type="button"
                 onClick={() => setShowWaiveConfirm(false)}
-                className="flex-1 border border-gray-300 py-3 rounded-xl font-medium"
+                className="min-h-[48px] rounded-xl border border-slate-200 text-sm font-semibold"
               >
                 Cancel
               </button>
-
               <button
+                type="button"
                 onClick={() => {
                   setData({
                     ...data,
                     feeWaived: true,
+                    baseFee: 0,
+                    extras: [],
                     totalFee: 0,
                     paidAmount: 0,
                   });
-
                   setShowWaiveConfirm(false);
                 }}
-                className="flex-1 bg-red-500 text-white py-3 rounded-xl font-medium"
+                className="min-h-[48px] rounded-xl bg-red-500 text-white text-sm font-semibold"
               >
-                Yes, Waive
+                Yes, waive
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(modal, document.body);
 };
 
 export default FeesDetailsPage;

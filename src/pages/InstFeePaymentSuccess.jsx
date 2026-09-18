@@ -11,6 +11,7 @@ import {
   query,
   where,
   getDocs,
+  updateDoc,
 } from "firebase/firestore";
 
 const FeePaymentSuccess = () => {
@@ -139,51 +140,63 @@ const FeePaymentSuccess = () => {
 
         const existingFee = await getDocs(feeQuery);
 
-        // ✅ Already exists
+        // ✅ Already exists — update paid amount; keep extras / total from academy
         if (!existingFee.empty) {
+          const feeDoc = existingFee.docs[0];
+          const prev = feeDoc.data();
+          const prevPaid = Number(prev.paidAmount || 0);
+          const payNow = Number(item.amount || 0);
+          const nextPaid = prevPaid + payNow;
+          const keptTotal = Number(
+            prev.totalAmount ??
+              item.totalAmount ??
+              Number(prev.baseFee || 0) +
+                (Array.isArray(prev.extras)
+                  ? prev.extras.reduce((s, e) => s + Number(e.amount || 0), 0)
+                  : 0) ??
+              payNow,
+          );
+
+          await updateDoc(feeDoc.ref, {
+            paidAmount: nextPaid,
+            totalAmount: keptTotal,
+            baseFee: prev.baseFee ?? item.baseFee ?? keptTotal,
+            extras: Array.isArray(prev.extras)
+              ? prev.extras
+              : item.extras || [],
+            paidDate: state.date || prev.paidDate || "",
+            paymentId: state.paymentId || prev.paymentId || "",
+            orderId: state.orderId || prev.orderId || "",
+            signature: state.signature || prev.signature || "",
+            utrNumber: state.utrNumber || prev.utrNumber || "",
+            paymentMethod: state.paymentMethod || prev.paymentMethod || "",
+            paymentStatus: nextPaid >= keptTotal ? "paid" : "partial",
+            updatedAt: serverTimestamp(),
+          });
           continue;
         }
 
-        // ✅ SAVE
+        // ✅ SAVE new
         await addDoc(collection(db, "studentFees"), {
-          // STUDENT
           studentId: state.studentId,
-
           studentName: state.studentName || "",
-
           instituteId,
-
-          // SPORTS
           category: item.category || "",
-
           subCategory: item.subCategory || "",
-
-          // PAYMENT
           month: state.month || "",
-
-          paidAmount: item.amount || 0,
-
-          totalAmount: item.amount || 0,
-
+          baseFee: Number(item.baseFee ?? item.amount ?? 0),
+          extras: Array.isArray(item.extras) ? item.extras : [],
+          paidAmount: Number(item.amount || 0),
+          totalAmount: Number(item.totalAmount ?? item.amount ?? 0),
           paidDate: state.date || "",
-
           paymentId: state.paymentId || "",
-
           orderId: state.orderId || "",
-
           signature: state.signature || "",
-
           utrNumber: state.utrNumber || "",
-
           paymentMethod: state.paymentMethod || "",
-
-          paymentStatus: state.status || "paid",
-
-          // EXTRA
+          paymentStatus: "paid",
           feeWaived: false,
-
           waiveReason: "",
-
           createdAt: serverTimestamp(),
         });
       }

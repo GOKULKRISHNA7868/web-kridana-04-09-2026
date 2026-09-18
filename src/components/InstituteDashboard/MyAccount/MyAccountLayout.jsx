@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
+  where,
   setDoc,
   serverTimestamp,
   updateDoc,
@@ -233,10 +237,13 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
   const [uploading, setUploading] = useState("");
   const [openSportKey, setOpenSportKey] = useState("");
   const [addSportOpen, setAddSportOpen] = useState(false);
+  const [linkedTrainers, setLinkedTrainers] = useState([]);
+  const linkedTrainerIdsRef = useRef([]);
   const [newSportCategory, setNewSportCategory] = useState(CATEGORIES[0]);
   const [newSportName, setNewSportName] = useState("");
   const logoInputRef = useRef(null);
   const founderInputRef = useRef(null);
+  const coverInputRef = useRef(null);
 
   const [form, setForm] = useState({
     instituteName: "",
@@ -330,11 +337,7 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
           locationName: d.locationName || "",
           categories: d.categories || {},
           sportDetails: d.sportDetails || {},
-          trainers: Array.isArray(d.trainers)
-            ? d.trainers
-            : Array.isArray(d.trainerList)
-              ? d.trainerList
-              : [],
+          trainers: [],
           facilityTags: d.facilityTags || [],
           facilitiesInfrastructure: d.facilitiesInfrastructure || "",
           achievementHighlights: d.achievementHighlights || [],
@@ -361,6 +364,109 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
         }));
         const flat = flattenSports(d.categories || {}, d.sportDetails || {});
         if (flat[0]) setOpenSportKey(flat[0].key);
+
+        // Resolve trainers from InstituteTrainers (Add Trainers page source of truth)
+        const rawTrainers = Array.isArray(d.trainers)
+          ? d.trainers
+          : Array.isArray(d.trainerList)
+            ? d.trainerList
+            : [];
+        const looksLikeUid = (v) =>
+          typeof v === "string" &&
+          v.trim().length >= 20 &&
+          !/\s/.test(v.trim()) &&
+          !v.includes("@");
+        const uidList = rawTrainers.filter(looksLikeUid);
+        linkedTrainerIdsRef.current = uidList;
+
+        const formatTrainer = (data, id) => {
+          const fullName = [data.firstName, data.middleName, data.lastName]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+          const sports = Array.isArray(data.subCategory)
+            ? data.subCategory
+            : data.subCategory
+              ? [String(data.subCategory)]
+              : [];
+          return {
+            id,
+            name: fullName || data.name || data.trainerName || "Trainer",
+            photo: data.profileImageUrl || data.photo || "",
+            role:
+              (data.role && data.role !== "trainer" ? data.role : "") ||
+              (data.experience ? `${data.experience} yrs experience` : "") ||
+              sports.slice(0, 2).join(", "),
+            sports,
+            email: data.email || "",
+          };
+        };
+
+        const byId = new Map();
+        try {
+          const tq = query(
+            collection(db, "InstituteTrainers"),
+            where("instituteId", "==", instituteId),
+          );
+          const tsnap = await getDocs(tq);
+          tsnap.forEach((td) => {
+            byId.set(td.id, formatTrainer(td.data(), td.id));
+          });
+        } catch (err) {
+          console.error("Trainer load failed", err);
+        }
+
+        const resolved = [];
+        const seen = new Set();
+        for (const uid of uidList) {
+          if (seen.has(uid)) continue;
+          seen.add(uid);
+          if (byId.has(uid)) {
+            resolved.push(byId.get(uid));
+          } else {
+            try {
+              const one = await getDoc(doc(db, "InstituteTrainers", uid));
+              if (one.exists()) {
+                const built = formatTrainer(one.data(), one.id);
+                byId.set(uid, built);
+                resolved.push(built);
+              }
+            } catch (_) {
+              /* skip */
+            }
+          }
+        }
+        byId.forEach((t, tid) => {
+          if (!seen.has(tid)) {
+            seen.add(tid);
+            resolved.push(t);
+            if (!linkedTrainerIdsRef.current.includes(tid)) {
+              linkedTrainerIdsRef.current.push(tid);
+            }
+          }
+        });
+        // Also keep any profile-style object trainers for display only
+        rawTrainers
+          .filter((t) => t && typeof t === "object")
+          .forEach((t) => {
+            const id = t.trainerUid || t.id || t.name;
+            if (id && seen.has(id)) return;
+            if (id) seen.add(id);
+            resolved.push(
+              formatTrainer(
+                {
+                  ...t,
+                  firstName: t.firstName || t.name?.split?.(" ")?.[0],
+                  lastName:
+                    t.lastName ||
+                    t.name?.split?.(" ")?.slice(1).join(" ") ||
+                    "",
+                },
+                id || `obj_${resolved.length}`,
+              ),
+            );
+          });
+        setLinkedTrainers(resolved);
       } catch (e) {
         console.error(e);
       }
@@ -445,6 +551,7 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
       const url = await uploadToCloudinary(file, "image");
       if (target === "logo") setField("profileImageUrl", url);
       if (target === "founder") setField("founderPhotoUrl", url);
+      if (target === "cover") setField("coverImageUrl", url);
       if (target === "sport" && sportRef) {
         updateSportMeta(sportRef.category, sportRef.name, { image: url });
       }
@@ -563,7 +670,8 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
           locationName: form.locationName || form.street,
           categories: form.categories,
           sportDetails: form.sportDetails,
-          trainers: form.trainers,
+          // Keep UID list from Add Trainers — never overwrite with display objects
+          trainers: linkedTrainerIdsRef.current,
           facilityTags: form.facilityTags,
           facilitiesInfrastructure: form.facilitiesInfrastructure,
           achievementHighlights: form.achievementHighlights,
@@ -767,6 +875,9 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
                     >
                       {uploading === "logo" ? "Uploading..." : "Upload logo"}
                     </button>
+                    <p className="text-[11px] text-slate-400 mt-1.5">
+                      Square · 400 × 400 px or larger
+                    </p>
                     <input
                       ref={logoInputRef}
                       type="file"
@@ -801,6 +912,9 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
                     >
                       {uploading === "founder" ? "Uploading..." : "Upload photo"}
                     </button>
+                    <p className="text-[11px] text-slate-400 mt-1.5">
+                      Square · 400 × 400 px recommended
+                    </p>
                     <input
                       ref={founderInputRef}
                       type="file"
@@ -811,6 +925,89 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
                       }
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Banner / cover — shows on Institute Details hero */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">
+                      Profile banner
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Shown as the top banner on the public academy page
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {form.coverImageUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setField("coverImageUrl", "")}
+                        className="min-h-[40px] px-3 rounded-xl border border-slate-200 text-xs font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => coverInputRef.current?.click()}
+                      className="min-h-[40px] px-3.5 rounded-xl bg-[#FF6A00] text-white text-sm font-semibold"
+                    >
+                      {uploading === "cover"
+                        ? "Uploading..."
+                        : form.coverImageUrl
+                          ? "Change banner"
+                          : "Upload banner"}
+                    </button>
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleUpload(e.target.files?.[0], "cover")
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="w-full aspect-[8/3] rounded-xl overflow-hidden border border-slate-200 bg-slate-200">
+                  {form.coverImageUrl ? (
+                    <img
+                      src={form.coverImageUrl}
+                      alt="Academy banner"
+                      className="w-full h-full object-cover object-center"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 via-slate-700 to-[#FF6A00]/70 text-white/90 px-4 text-center">
+                      <Camera size={28} className="opacity-80" />
+                      <p className="text-xs font-medium">
+                        Banner preview (same crop as customer page)
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl bg-white border border-slate-200 px-3.5 py-3 text-xs text-slate-600 space-y-1">
+                  <p className="font-semibold text-slate-800">
+                    Recommended size for a sharp banner
+                  </p>
+                  <p>
+                    Width:{" "}
+                    <span className="font-semibold text-slate-900">
+                      1600 px
+                    </span>{" "}
+                    · Height:{" "}
+                    <span className="font-semibold text-slate-900">
+                      600 px
+                    </span>{" "}
+                    (ratio 8:3 landscape)
+                  </p>
+                  <p>
+                    Format: JPG / PNG / WebP · Keep important content in the
+                    center · Avoid tall portrait images
+                  </p>
                 </div>
               </div>
 
@@ -1326,102 +1523,67 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
               id="section-trainers"
               number={4}
               title="Trainers"
-              subtitle="People who teach at your academy"
-              done={(form.trainers || []).length > 0}
+              subtitle="Linked from Add Trainers — names shown on customer page"
+              done={linkedTrainers.length > 0}
             >
-              <div className="space-y-3">
-                {(form.trainers || []).map((t, idx) => (
-                  <div
-                    key={t.id || idx}
-                    className="rounded-2xl border border-slate-200 p-4 space-y-3"
-                  >
-                    <div className="flex items-center gap-3">
+              {linkedTrainers.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+                  <p className="text-sm text-slate-600">
+                    No trainers linked yet.
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Add trainers from the dashboard{" "}
+                    <span className="font-semibold text-slate-700">
+                      Add Trainers
+                    </span>{" "}
+                    page. Their names will appear here and on the public
+                    academy profile.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {linkedTrainers.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center gap-3 rounded-2xl border border-slate-200 p-3.5"
+                    >
                       <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 shrink-0">
                         {t.photo ? (
                           <img
                             src={t.photo}
-                            alt=""
+                            alt={t.name}
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[#FF6A00] font-bold">
-                            {(t.name || "T").charAt(0)}
+                          <div className="w-full h-full flex items-center justify-center text-[#FF6A00] font-bold text-lg">
+                            {String(t.name || "T")
+                              .charAt(0)
+                              .toUpperCase()}
                           </div>
                         )}
                       </div>
-                      <div className="flex-1 space-y-2 min-w-0">
-                        <input
-                          className={inputCls}
-                          value={t.name || ""}
-                          onChange={(e) => {
-                            const next = [...form.trainers];
-                            next[idx] = { ...t, name: e.target.value };
-                            setField("trainers", next);
-                          }}
-                          placeholder="Trainer name"
-                        />
-                        <input
-                          className={inputCls}
-                          value={t.role || ""}
-                          onChange={(e) => {
-                            const next = [...form.trainers];
-                            next[idx] = { ...t, role: e.target.value };
-                            setField("trainers", next);
-                          }}
-                          placeholder="Role / experience (e.g. Black Belt, 5+ years)"
-                        />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-sm text-slate-900 truncate">
+                          {t.name}
+                        </p>
+                        {t.role ? (
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">
+                            {t.role}
+                          </p>
+                        ) : null}
+                        {t.sports?.length > 0 ? (
+                          <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                            {t.sports.join(" · ")}
+                          </p>
+                        ) : null}
                       </div>
+                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">
+                        Linked
+                      </span>
                     </div>
-                    <div className="flex gap-3">
-                      <label className="text-sm font-semibold text-[#FF6A00] cursor-pointer">
-                        {uploading === "trainer" ? "Uploading..." : "Change photo"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            setUploading("trainer");
-                            try {
-                              const url = await uploadToCloudinary(file);
-                              const next = [...form.trainers];
-                              next[idx] = { ...t, photo: url };
-                              setField("trainers", next);
-                            } finally {
-                              setUploading("");
-                            }
-                          }}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setField(
-                            "trainers",
-                            form.trainers.filter((_, i) => i !== idx),
-                          )
-                        }
-                        className="text-sm font-semibold text-red-600"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setField("trainers", [
-                    ...form.trainers,
-                    { id: uid(), name: "", role: "", photo: "" },
-                  ])
-                }
-                className="w-full min-h-[48px] rounded-xl border border-dashed border-slate-300 text-sm font-semibold text-slate-600"
-              >
-                + Add trainer
-              </button>
+                  ))}
+                </div>
+              )}
             </Section>
 
             {/* 5 Facilities */}
@@ -1765,12 +1927,18 @@ const AcademyProfileWorkspace = ({ instituteId, actor = null }) => {
                     Customer preview
                   </p>
                 </div>
-                <div className="h-32 bg-slate-200">
-                  {cover ? (
+                <div className="aspect-[8/3] bg-slate-200">
+                  {form.coverImageUrl ? (
+                    <img
+                      src={form.coverImageUrl}
+                      alt=""
+                      className="w-full h-full object-cover object-center"
+                    />
+                  ) : cover ? (
                     <img
                       src={cover}
                       alt=""
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover object-center opacity-80"
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-slate-800 to-orange-600" />

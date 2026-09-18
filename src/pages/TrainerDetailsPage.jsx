@@ -13,13 +13,15 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
+  getDoc,
 } from "firebase/firestore";
-import { getDoc } from "firebase/firestore";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Heart,
   MessageCircle,
+  Eye,
+  Share2,
   Phone,
   Mail,
   MapPin,
@@ -27,13 +29,13 @@ import {
   Trophy,
   Award,
   Briefcase,
-  Eye,
-  Share2,
-  X,
   Globe,
   UserRound,
+  IndianRupee,
+  Clock,
+  CalendarDays,
+  BadgeCheck,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 
 export default function TrainerDetailsPage() {
   const { id } = useParams();
@@ -60,6 +62,7 @@ export default function TrainerDetailsPage() {
           title,
           text: "Check out this trainer on Kridana",
           url: profileUrl,
+          dialogTitle: "Share Trainer",
         });
         return;
       }
@@ -87,78 +90,93 @@ export default function TrainerDetailsPage() {
 
         const snap = await getDoc(doc(db, "trainers", id));
 
-        if (snap.exists()) {
-          const data = { id: snap.id, ...snap.data() };
-
-          if (
-            !Array.isArray(data.trainingPrograms) ||
-            data.trainingPrograms.length === 0
-          ) {
-            try {
-              const activitySnap = await getDoc(doc(db, "myactivity", id));
-              if (activitySnap.exists() && activitySnap.data()?.programName) {
-                data.trainingPrograms = [activitySnap.data()];
-              }
-            } catch (err) {
-              console.log(err);
-            }
-          }
-
-          setTrainer(data);
-
-          const posts = [];
-          const trainingImages = data.trainingImages || [];
-          const mediaTraining = data.mediaGallery?.trainingImages || [];
-          const extraGallery = [
-            ...(data.mediaGallery?.facilityImages || []),
-            ...(data.mediaGallery?.equipmentImages || []),
-            ...(data.mediaGallery?.uniformImages || []),
-          ];
-          const allImages = [
-            ...trainingImages,
-            ...mediaTraining,
-            ...extraGallery,
-          ];
-          const seenMediaUrls = new Set();
-
-          allImages.forEach((item, i) => {
-            const url = typeof item === "string" ? item : item?.url;
-            const about = typeof item === "string" ? "" : item?.about || "";
-            if (!url) return;
-            const urlKey = String(url).split("?")[0].trim();
-            if (seenMediaUrls.has(urlKey)) return;
-            seenMediaUrls.add(urlKey);
-
-            posts.push({
-              id: `post_${id}_img_${i}`,
-              type: "image",
-              url,
-              title: about || "Training Photo",
-            });
-          });
-
-          const reels = data.reels || [];
-          reels.forEach((item, i) => {
-            const url = typeof item === "string" ? item : item?.url;
-            const about = typeof item === "string" ? "" : item?.about || "";
-            if (!url) return;
-            const urlKey = String(url).split("?")[0].trim();
-            if (seenMediaUrls.has(urlKey)) return;
-            seenMediaUrls.add(urlKey);
-
-            posts.push({
-              id: `trainer_${id}_${i}`,
-              type: "video",
-              url,
-              title: about || "Trainer Reel",
-            });
-          });
-
-          setMediaPosts(posts);
-        } else {
+        if (!snap.exists()) {
           setTrainer({});
           setMediaPosts([]);
+          return;
         }
+
+        const data = { id: snap.id, ...snap.data() };
+
+        if (
+          !Array.isArray(data.trainingPrograms) ||
+          data.trainingPrograms.length === 0
+        ) {
+          try {
+            const activitySnap = await getDoc(doc(db, "myactivity", id));
+            if (activitySnap.exists() && activitySnap.data()?.programName) {
+              data.trainingPrograms = [activitySnap.data()];
+            }
+          } catch (err) {
+            console.log(err);
+          }
+        }
+
+        setTrainer(data);
+
+        const posts = [];
+        const seenMediaUrls = new Set();
+
+        const pushImage = (item, i, fallbackTitle) => {
+          const url = typeof item === "string" ? item : item?.url;
+          const about = typeof item === "string" ? "" : item?.about || "";
+          if (!url) return;
+          const urlKey = String(url).split("?")[0].trim();
+          if (seenMediaUrls.has(urlKey)) return;
+          seenMediaUrls.add(urlKey);
+          posts.push({
+            id: `post_${id}_img_${i}_${posts.length}`,
+            postId: `post_${id}_img_${i}_${posts.length}`,
+            ownerId: id,
+            ownerType: "trainer",
+            type: "image",
+            url,
+            title: about || fallbackTitle,
+          });
+        };
+
+        const trainingImages = data.trainingImages || [];
+        const mediaTraining = data.mediaGallery?.trainingImages || [];
+        const extraGallery = [
+          ...(data.mediaGallery?.facilityImages || []),
+          ...(data.mediaGallery?.equipmentImages || []),
+          ...(data.mediaGallery?.uniformImages || []),
+        ];
+        const awardsImages = data.awardsImages || [];
+        const plainImages = data.images || [];
+
+        [
+          ...trainingImages,
+          ...mediaTraining,
+          ...extraGallery,
+          ...awardsImages,
+          ...plainImages,
+        ].forEach((item, i) => pushImage(item, i, "Training Photo"));
+
+        if (data.coverImageUrl) {
+          pushImage(data.coverImageUrl, "cover", "Cover Photo");
+        }
+
+        const reels = data.reels || [];
+        reels.forEach((item, i) => {
+          const url = typeof item === "string" ? item : item?.url;
+          const about = typeof item === "string" ? "" : item?.about || "";
+          if (!url) return;
+          const urlKey = String(url).split("?")[0].trim();
+          if (seenMediaUrls.has(urlKey)) return;
+          seenMediaUrls.add(urlKey);
+          posts.push({
+            id: `trainer_${id}_${i}`,
+            reelId: `trainer_${id}_${i}`,
+            ownerId: id,
+            ownerType: "trainer",
+            type: "video",
+            url,
+            title: about || "Trainer Reel",
+          });
+        });
+
+        setMediaPosts(posts);
       } catch (error) {
         console.log(error);
         setTrainer({});
@@ -168,10 +186,12 @@ export default function TrainerDetailsPage() {
       }
     };
 
-    loadTrainer();
+    if (id) loadTrainer();
   }, [id]);
 
   useEffect(() => {
+    if (!id) return;
+
     const q = query(collection(db, "followers"), where("profileId", "==", id));
 
     const unsub = onSnapshot(q, (snap) => {
@@ -182,6 +202,11 @@ export default function TrainerDetailsPage() {
   }, [id]);
 
   const startTrainerChat = async () => {
+    if (trainer?.chatEnabled === false) {
+      alert("Chat is disabled by this trainer");
+      return;
+    }
+
     const user = auth.currentUser;
 
     if (!user) {
@@ -220,45 +245,39 @@ export default function TrainerDetailsPage() {
     );
   }
 
+  const displayName =
+    trainer.trainerName ||
+    `${trainer.firstName || ""} ${trainer.lastName || ""}`.trim() ||
+    "Trainer";
+
+  const chatEnabled = trainer.chatEnabled !== false;
+
+  const mapQuery =
+    trainer.latitude && trainer.longitude
+      ? `${trainer.latitude},${trainer.longitude}`
+      : [
+          trainer.street,
+          trainer.landmark,
+          trainer.locationAccessibility?.fullAddress,
+          trainer.city,
+          trainer.state,
+        ]
+          .filter(Boolean)
+          .join(", ") ||
+        [trainer.city, trainer.state].filter(Boolean).join(", ") ||
+        trainer.locationName ||
+        "India";
+
   const mapSrc = `https://www.google.com/maps?q=${encodeURIComponent(
-    `${trainer.city || "Bengaluru"}, ${trainer.state || "Karnataka"}`,
+    mapQuery,
   )}&output=embed`;
 
-  function AboutSection({ text }) {
-    const [expanded, setExpanded] = useState(false);
-    const shouldTrim = text?.length > 180;
-
-  return (
-      <div className="bg-orange-50 rounded-2xl p-4">
-        <p
-          className={`text-sm text-gray-700 leading-7 whitespace-pre-wrap break-words transition-all duration-300 ${
-            expanded ? "" : "line-clamp-4"
-          }`}
-        >
-          {text || "No description available"}
-        </p>
-        {shouldTrim && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="mt-3 text-[#FF6B00] font-semibold text-sm active:scale-95 transition"
-          >
-            {expanded ? "Read Less" : "Read More"}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  function Info({ title, value }) {
-    return (
-      <div className="bg-white rounded-xl border p-3">
-        <p className="text-[11px] text-gray-500">{title}</p>
-        <p className="font-semibold text-gray-800 break-words">
-          {value || "-"}
-        </p>
-      </div>
-    );
-  }
+  const directionsUrl =
+    trainer.latitude && trainer.longitude
+      ? `https://www.google.com/maps/dir/?api=1&destination=${trainer.latitude},${trainer.longitude}`
+      : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+          mapQuery,
+        )}`;
 
   const achievements = trainer.achievements || {};
   const totalAwards = Object.values(achievements).reduce((sum, level) => {
@@ -269,90 +288,27 @@ export default function TrainerDetailsPage() {
       Number(level?.bronze || 0)
     );
   }, 0);
+
   const experienceYears = trainer.yearFounded
     ? Math.max(0, new Date().getFullYear() - Number(trainer.yearFounded))
     : 0;
-  const experienceLabel = trainer.experience
-    ? trainer.experience
-    : experienceYears
-      ? `${experienceYears} Years`
-      : "0 Years";
 
-  const availableSports = [];
-  const seenSports = new Set();
-  const categoriesMap = trainer.categories || {};
-  const detailsMap = trainer.sportDetails || {};
-
-  Object.entries(categoriesMap).forEach(([category, subs]) => {
-    const names = Array.isArray(subs)
-      ? subs
-      : subs && typeof subs === "object"
-        ? Object.keys(subs)
-        : [];
-    names.forEach((name) => {
-      const key = `${category}__${name}`;
-      if (seenSports.has(key)) return;
-      seenSports.add(key);
-      availableSports.push({
-        category,
-        name,
-        shortDescription: detailsMap?.[category]?.[name]?.shortDescription || "",
-      });
-    });
-  });
-
-  Object.entries(detailsMap).forEach(([category, sportsMap]) => {
-    Object.keys(sportsMap || {}).forEach((name) => {
-      const key = `${category}__${name}`;
-      if (seenSports.has(key)) return;
-      seenSports.add(key);
-      availableSports.push({
-        category,
-        name,
-        shortDescription: sportsMap?.[name]?.shortDescription || "",
-      });
-    });
-  });
-
-  if (availableSports.length === 0 && trainer.subCategory) {
-    availableSports.push({
-      category: trainer.category || "Sport",
-      name: trainer.subCategory,
-      shortDescription: "",
-    });
-  }
-
-  const displayName =
-    trainer.trainerName ||
-    `${trainer.firstName || ""} ${trainer.lastName || ""}`.trim() ||
-    "Trainer";
-  const heroImage =
-    mediaPosts.find((p) => p.type === "image")?.url ||
-    trainer.profileImageUrl ||
+  const coachName =
+    trainer.founderName ||
+    trainer.headCoach ||
+    displayName;
+  const coachBg = trainer.founderBackground || trainer.designation || "";
+  const websiteUrl =
+    trainer.websiteLink ||
+    trainer.website ||
+    trainer.locationAccessibility?.website ||
     "";
-  const locationLabel = [trainer.city, trainer.state].filter(Boolean).join(", ");
-  const programs = trainer.trainingPrograms || [];
-  const normText = (value) => String(value || "").trim().toLowerCase();
-  const matchesSport = (item, sport) => {
-    if (!item || !sport) return false;
-    const sportName = normText(sport.name);
-    const sportCat = normText(sport.category);
-    const itemSport = normText(
-      item.subCategory || item.name || item.programName,
-    );
-    const itemCat = normText(item.category);
-    if (itemSport && sportName && itemSport === sportName) return true;
-    if (itemCat && sportCat && itemCat === sportCat && !itemSport) return true;
-    if (
-      itemSport &&
-      sportName &&
-      (itemSport.includes(sportName) || sportName.includes(itemSport))
-    ) {
-      return true;
-    }
-    return false;
-  };
-  const isGeneralFee = (pkg) => !normText(pkg?.subCategory);
+  const facilityList = Array.isArray(trainer.facilityTags)
+    ? trainer.facilityTags
+    : [];
+  const highlightList = Array.isArray(trainer.achievementHighlights)
+    ? trainer.achievementHighlights.filter((item) => item?.title)
+    : [];
 
   const savedPackages =
     Array.isArray(trainer.pricing?.packages) && trainer.pricing.packages.length
@@ -369,6 +325,10 @@ export default function TrainerDetailsPage() {
             },
           ]
         : [];
+
+  const programs = Array.isArray(trainer.trainingPrograms)
+    ? trainer.trainingPrograms
+    : [];
 
   const programFeePackages = programs
     .filter((program) => program.fees)
@@ -387,33 +347,94 @@ export default function TrainerDetailsPage() {
     }));
 
   const pricingPackages =
-    savedPackages.length > 0 ? savedPackages : programFeePackages;
+    savedPackages.length > 0
+      ? savedPackages
+      : programFeePackages.length > 0
+        ? programFeePackages
+        : [];
 
-  const selectedPrograms = selectedSport
-    ? programs.filter((program) => matchesSport(program, selectedSport))
-    : [];
-  const selectedFees = selectedSport
-    ? [
-        ...pricingPackages.filter(
-          (pkg) => matchesSport(pkg, selectedSport) || isGeneralFee(pkg),
-        ),
-        ...(!savedPackages.length
-          ? []
-          : programFeePackages.filter((pkg) =>
-              matchesSport(pkg, selectedSport),
-            )),
-      ]
-    : [];
-  const facilityList = trainer.facilityTags || [];
-  const websiteUrl =
-    trainer.websiteLink ||
-    trainer.website ||
-    trainer.locationAccessibility?.website ||
-    "";
-  const coachName = trainer.founderName || trainer.headCoach || "";
-  const highlightList = Array.isArray(trainer.achievementHighlights)
-    ? trainer.achievementHighlights.filter((item) => item?.title)
-    : [];
+  const availableSports = [];
+  const seenSports = new Set();
+  const categoriesMap = trainer.categories || {};
+  const detailsMap = trainer.sportDetails || {};
+
+  const pushSport = (category, name, meta = {}) => {
+    if (!name) return;
+    const cat = category || "Sport";
+    const key = `${cat}__${name}`;
+    if (seenSports.has(key)) return;
+    seenSports.add(key);
+    const detail = detailsMap?.[cat]?.[name] || meta || {};
+    const relatedPrograms = programs.filter(
+      (p) =>
+        p.subCategory === name ||
+        p.programName === name ||
+        (p.category === cat &&
+          (p.subCategory === name || p.programName === name)),
+    );
+    const relatedPackages = pricingPackages.filter(
+      (p) =>
+        (p.subCategory === name || p.name === name) &&
+        (!p.category || p.category === cat),
+    );
+    const pkg = relatedPackages[0] || {};
+    availableSports.push({
+      key,
+      category: cat,
+      name,
+      shortDescription: detail.shortDescription || "",
+      ageGroups: detail.ageGroups || [],
+      trainingLevels: detail.trainingLevels || [],
+      specialPrograms: detail.specialPrograms || [],
+      monthlyFee: detail.monthlyFee || pkg.monthlyFee || "",
+      yearlyFee: detail.yearlyFee || pkg.yearlyFee || "",
+      registrationFee: detail.registrationFee || pkg.registrationFee || "",
+      uniformFee: detail.uniformFee || pkg.uniformFee || "",
+      otherFee: detail.otherFee || pkg.otherFee || "",
+      otherFeeName: detail.otherFeeName || pkg.otherFeeName || "Other fee",
+      billingCycle: detail.billingCycle || pkg.billingCycle || "",
+      feeNotes:
+        detail.feeNotes ||
+        detail.notes ||
+        (pkg.notes && !detail.monthlyFee && !detail.yearlyFee
+          ? pkg.notes
+          : "") ||
+        "",
+      courseDuration: detail.courseDuration || "",
+      classesPerWeek: detail.classesPerWeek || "",
+      classDuration: detail.classDuration || "",
+      image: detail.image || "",
+      programs: relatedPrograms,
+    });
+  };
+
+  Object.entries(categoriesMap).forEach(([category, subs]) => {
+    const names = Array.isArray(subs)
+      ? subs
+      : subs && typeof subs === "object"
+        ? Object.keys(subs)
+        : [];
+    names.forEach((name) => pushSport(category, name));
+  });
+
+  Object.entries(detailsMap).forEach(([category, sportsMap]) => {
+    Object.keys(sportsMap || {}).forEach((name) => pushSport(category, name));
+  });
+
+  programs.forEach((program) => {
+    const name = program.subCategory || program.programName;
+    if (name) pushSport(program.category || "Sport", name);
+  });
+
+  pricingPackages.forEach((pkg) => {
+    const name = pkg.subCategory || pkg.name;
+    if (name) pushSport(pkg.category || "Sport", name);
+  });
+
+  if (availableSports.length === 0 && trainer.subCategory) {
+    pushSport(trainer.category || "Sport", trainer.subCategory);
+  }
+
   const uniqueMediaPosts = [];
   const seenDisplayUrls = new Set();
   mediaPosts.forEach((post) => {
@@ -424,118 +445,197 @@ export default function TrainerDetailsPage() {
     seenDisplayUrls.add(key);
     uniqueMediaPosts.push(post);
   });
-  const MEDIA_LIMIT = 2;
-  const visibleMedia = showAllMedia
-    ? uniqueMediaPosts
-    : uniqueMediaPosts.slice(0, MEDIA_LIMIT);
+
+  const heroImage = trainer.coverImageUrl || "";
+  const heroFallback =
+    uniqueMediaPosts.find((p) => p.type === "image")?.url ||
+    trainer.profileImageUrl ||
+    "";
+  const bannerSrc = heroImage || heroFallback;
+  const galleryImages = uniqueMediaPosts.filter((p) => p.type === "image");
+  const galleryVideos = uniqueMediaPosts.filter((p) => p.type === "video");
+
+  const locationParts = [
+    trainer.street,
+    trainer.landmark,
+    trainer.locationAccessibility?.fullAddress,
+    trainer.city,
+    trainer.state,
+  ].filter(Boolean);
+  const locationLabel =
+    locationParts.join(", ") ||
+    trainer.locationName ||
+    "Location not listed";
+  const shortLocation =
+    [trainer.city, trainer.state].filter(Boolean).join(", ") ||
+    trainer.landmark ||
+    trainer.street ||
+    "India";
+
+  const yearsShown =
+    Number(trainer.yearsInOperation) ||
+    Number(trainer.experience) ||
+    (experienceYears > 0 ? experienceYears : 0);
+  const studentsShown =
+    Number(trainer.totalStudentsTrained) ||
+    (Array.isArray(trainer.students) ? trainer.students.length : 0) ||
+    0;
+  const rating = Number(trainer.rating || 0);
+  const reviewCount = Number(trainer.reviewCount || 0);
+
+  const selected =
+    availableSports.find((s) => s.key === selectedSport?.key) ||
+    availableSports[0] ||
+    null;
+
+  const formatFee = (v) => {
+    if (v === undefined || v === null || v === "") return null;
+    const num = Number(v);
+    if (Number.isNaN(num)) return String(v);
+    return `₹${num.toLocaleString("en-IN")}`;
+  };
+
+  const selectedHasFees = Boolean(
+    selected &&
+      (selected.monthlyFee ||
+        selected.yearlyFee ||
+        selected.registrationFee ||
+        selected.uniformFee ||
+        selected.otherFee ||
+        selected.programs?.some((p) => p.fees)),
+  );
+
+  const orphanPackages = pricingPackages.filter((pkg) => {
+    const sportName = pkg.subCategory || pkg.name || "";
+    const match = availableSports.find(
+      (s) =>
+        s.name === sportName &&
+        (!pkg.category || pkg.category === s.category),
+    );
+    if (!match) return true;
+    const sportAlreadyShows =
+      match.monthlyFee ||
+      match.yearlyFee ||
+      match.registrationFee ||
+      match.uniformFee ||
+      match.otherFee;
+    return !sportAlreadyShows;
+  });
+
+  const showFeesOverview =
+    orphanPackages.length > 0 ||
+    ((trainer.pricing?.paymentMethods || trainer.pricing?.refundPolicy) &&
+      availableSports.length === 0);
+
   const aboutText =
     trainer.description || trainer.about || trainer.designation || "";
 
   return (
-    <div className="page-content min-h-screen bg-[#F4F5F7] flex justify-center">
-      <div className="w-full max-w-lg md:max-w-4xl lg:max-w-5xl relative">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="relative overflow-hidden"
-        >
-          {heroImage ? (
-            <img
-              src={heroImage}
-              alt=""
-              className="w-full h-48 sm:h-64 object-cover"
-            />
-          ) : (
-            <div className="w-full h-48 sm:h-64 bg-gradient-to-br from-orange-400 via-orange-500 to-orange-700" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
-        <button
-          onClick={() => navigate(-1)}
-            className="absolute top-3 left-3 sm:top-4 sm:left-4 w-10 h-10 rounded-full bg-white/95 backdrop-blur flex items-center justify-center text-gray-900 shadow-md active:scale-95 transition"
-        >
-          <ArrowLeft size={18} />
-        </button>
+    <div className="page-content min-h-screen bg-[#F5F6F8] pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-10">
+      {/* Top bar */}
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-3 sm:px-5 h-12 flex items-center justify-between gap-2">
           <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-slate-800"
+            aria-label="Back"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <p className="flex-1 text-center text-sm font-semibold text-slate-900 truncate px-2">
+            {displayName}
+          </p>
+          <button
+            type="button"
             onClick={handleShare}
-            className="absolute top-3 right-3 sm:top-4 sm:right-4 w-10 h-10 rounded-full bg-white/95 backdrop-blur flex items-center justify-center text-gray-900 shadow-md active:scale-95 transition"
+            className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center text-slate-800"
+            aria-label="Share"
           >
             <Share2 size={16} />
           </button>
-        </motion.div>
+        </div>
+      </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-          className="relative -mt-12 sm:-mt-16 mx-3 sm:mx-4 bg-white rounded-3xl shadow-[0_10px_32px_rgba(15,23,42,0.10)] p-4 sm:p-5"
-        >
-          <div className="flex items-start gap-3">
+      <div className="max-w-6xl mx-auto px-3 sm:px-5 lg:px-6 pt-4 sm:pt-6">
+        {/* Hero banner */}
+        <div className="rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-200 border border-slate-200">
+          {bannerSrc ? (
             <img
-              src={
-                trainer.profileImageUrl ||
-                "https://via.placeholder.com/100x100.png?text=Profile"
-              }
-              className="w-16 h-16 rounded-full object-cover border-2 border-white shadow"
-              alt=""
+              src={bannerSrc}
+              alt={`${displayName} banner`}
+              className="w-full aspect-[8/3] object-cover object-center"
             />
+          ) : (
+            <div className="w-full aspect-[8/3] bg-gradient-to-br from-slate-800 via-slate-700 to-[#FF6A00]" />
+          )}
+        </div>
+
+        {/* Identity card */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 mt-4">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shrink-0">
+              {trainer.profileImageUrl ? (
+                <img
+                  src={trainer.profileImageUrl}
+                  alt={`${displayName} profile`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-[#FF6A00]">
+                  {displayName.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-bold text-gray-900 leading-tight">
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 leading-tight">
                 {displayName}
               </h1>
-              <p className="text-sm text-gray-500 mt-0.5">
+              <p className="text-sm text-slate-500 mt-1">
                 {trainer.organizationType ||
                   trainer.designation ||
                   trainer.type ||
-                  "Trainer"}
+                  "Solo Trainer"}
               </p>
-              {(locationLabel || trainer.locationName) && (
-                <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                  <MapPin size={12} className="text-[#FF6B00]" />
-                  <span className="truncate">
-                    {locationLabel ||
-                      trainer.locationName ||
-                      trainer.locationAccessibility?.fullAddress}
+              <p className="text-sm text-slate-600 mt-2 flex items-start gap-1.5">
+                <MapPin size={15} className="text-[#FF6A00] mt-0.5 shrink-0" />
+                <span>{locationLabel}</span>
+              </p>
+              {coachName ? (
+                <p className="text-sm text-slate-600 mt-1.5 flex items-center gap-1.5">
+                  <UserRound size={15} className="text-[#FF6A00] shrink-0" />
+                  <span>
+                    Coach:{" "}
+                    <span className="font-semibold text-slate-800">
+                      {coachName}
+                    </span>
                   </span>
                 </p>
-              )}
-              {coachName ? (
-                <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                  <UserRound size={12} className="text-[#FF6B00]" />
-                  <span className="truncate">Coach: {coachName}</span>
-                </p>
               ) : null}
+              {(rating > 0 || reviewCount > 0) && (
+                <p className="text-sm text-slate-700 mt-1.5">
+                  <span className="text-[#FF6A00] font-bold">★</span>{" "}
+                  <span className="font-semibold">
+                    {rating ? rating.toFixed(1) : "New"}
+                  </span>
+                  {reviewCount > 0 ? (
+                    <span className="text-slate-400">
+                      {" "}
+                      · {reviewCount} reviews
+                    </span>
+                  ) : null}
+                </p>
+              )}
             </div>
-            </div>
+          </div>
 
-          {trainer.designation ? (
-            <p className="text-sm text-gray-600 mt-3 leading-relaxed">
-              {trainer.designation}
-            </p>
-          ) : null}
-
-          {availableSports.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto mt-3 pb-0.5 scrollbar-hide">
-              {availableSports.map((sport) => (
-                <button
-                  key={`top-${sport.category}-${sport.name}`}
-                  type="button"
-                  onClick={() => setSelectedSport(sport)}
-                  className="shrink-0 px-3 py-1.5 rounded-full bg-orange-50 text-[#E85D04] text-xs font-semibold border border-orange-100"
-                >
-                  {sport.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="grid grid-cols-3 gap-2 mt-4">
-            <button
-              onClick={startTrainerChat}
-              className="min-h-[44px] bg-[#FF6B00] text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition"
-            >
-              <MessageCircle size={16} />
-              Chat
-            </button>
+          {/* Desktop CTAs */}
+          <div
+            className={`hidden md:grid gap-2 mt-5 ${
+              chatEnabled ? "grid-cols-3" : "grid-cols-2"
+            }`}
+          >
             <a
               href={trainer.phoneNumber ? `tel:${trainer.phoneNumber}` : undefined}
               onClick={(e) => {
@@ -544,611 +644,1036 @@ export default function TrainerDetailsPage() {
                   alert("Phone number not available");
                 }
               }}
-              className="min-h-[44px] border border-[#FF6B00] text-[#FF6B00] rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition"
+              className="min-h-[48px] rounded-xl bg-[#FF6A00] text-white font-semibold text-sm flex items-center justify-center gap-2"
             >
               <Phone size={16} />
-              Call
+              Call Trainer
             </a>
+            {chatEnabled ? (
+              <button
+                type="button"
+                onClick={startTrainerChat}
+                className="min-h-[48px] rounded-xl border border-[#FF6A00] text-[#FF6A00] font-semibold text-sm flex items-center justify-center gap-2"
+              >
+                <MessageCircle size={16} />
+                Chat
+              </button>
+            ) : null}
             <a
-              href={trainer.email ? `mailto:${trainer.email}` : undefined}
-              onClick={(e) => {
-                if (!trainer.email) {
-                  e.preventDefault();
-                  alert("Email not available");
-                }
-              }}
-              className="min-h-[44px] border border-[#FF6B00] text-[#FF6B00] rounded-xl text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition"
+              href={directionsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="min-h-[48px] rounded-xl border border-slate-200 text-slate-800 font-semibold text-sm flex items-center justify-center gap-2"
             >
-              <Mail size={16} />
-              Email
+              <MapPin size={16} />
+              Directions
             </a>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 mt-4">
-            <StatCard
-              icon={Users}
-              label="Students"
-              value={`${trainer.students?.length || 0}+`}
-            />
-            <StatCard
-              icon={Heart}
-              label="Followers"
-              value={`${followersCount}+`}
-            />
-            <StatCard icon={Trophy} label="Awards" value={totalAwards || 0} />
-            <StatCard icon={Briefcase} label="Exp" value={experienceLabel} />
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5">
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+              <Users size={16} className="mx-auto text-[#FF6A00] mb-1" />
+              <p className="text-sm font-bold text-slate-900">
+                {studentsShown || "—"}
+              </p>
+              <p className="text-[11px] text-slate-500">Students</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+              <Heart size={16} className="mx-auto text-[#FF6A00] mb-1" />
+              <p className="text-sm font-bold text-slate-900">{followersCount}</p>
+              <p className="text-[11px] text-slate-500">Followers</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+              <Trophy size={16} className="mx-auto text-[#FF6A00] mb-1" />
+              <p className="text-sm font-bold text-slate-900">
+                {totalAwards || highlightList.length || "—"}
+              </p>
+              <p className="text-[11px] text-slate-500">Awards</p>
+            </div>
+            <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
+              <Briefcase size={16} className="mx-auto text-[#FF6A00] mb-1" />
+              <p className="text-sm font-bold text-slate-900">
+                {yearsShown ? `${yearsShown}+` : "—"}
+              </p>
+              <p className="text-[11px] text-slate-500">Years</p>
+            </div>
           </div>
-        </motion.div>
+        </div>
 
-        <div className="px-3 sm:px-4 pb-4">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-          >
-        <Section title="Location">
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                {trainer.locationAccessibility?.landmark ||
-                trainer.locationAccessibility?.fullAddress ? (
-                  <p className="text-xs text-gray-600 px-3 pt-3">
-                    {[
-                      trainer.locationAccessibility?.fullAddress,
-                      trainer.locationAccessibility?.landmark,
-                    ]
-                      .filter(Boolean)
-                      .join(", ")}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+          <div className="space-y-6 min-w-0">
+            {/* About */}
+            <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+              <h2 className="text-base font-bold text-slate-900 mb-3">
+                About {displayName}
+              </h2>
+              <AboutBlock
+                text={aboutText}
+                emptyText="This trainer has not added a description yet."
+              />
+              {coachName && coachBg && coachBg !== aboutText ? (
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <p className="text-sm font-semibold text-slate-900 mb-1">
+                    About the coach
                   </p>
-                ) : null}
-            <iframe
-              title="map"
-              src={mapSrc}
-                  className="w-full h-44 sm:h-52 border-0 mt-2"
-              loading="lazy"
-            />
-          </div>
-        </Section>
-          </motion.div>
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    <span className="font-medium text-slate-800">
+                      {coachName}
+                    </span>
+                    {" — "}
+                    {coachBg}
+                  </p>
+                </div>
+              ) : null}
+            </section>
 
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12 }}
-          >
-        <Section title="About">
-              <AboutSection text={aboutText} />
-            </Section>
-          </motion.div>
+            {/* Sports & Programs */}
+            <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+              <div className="flex items-end justify-between gap-2 mb-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Sports & Programs
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    Tap a sport to see fees, age groups and schedule
+                  </p>
+                </div>
+              </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.16 }}
-          >
-            <Section title="Training Programs">
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                {programs.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 font-medium">
-                      No Training Programs Available
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-4">
-                      {(showAllPrograms ? programs : programs.slice(0, 2)).map(
+              {availableSports.length === 0 && programs.length === 0 ? (
+                <p className="text-sm text-slate-400 py-6 text-center">
+                  No sports or programs listed yet.
+                </p>
+              ) : (
+                <>
+                  {availableSports.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {availableSports.map((sport) => {
+                        const active = selected?.key === sport.key;
+                        return (
+                          <button
+                            key={sport.key}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSport(sport);
+                              setShowAllPrograms(false);
+                            }}
+                            className={`min-h-[40px] px-3.5 rounded-xl text-sm font-semibold border transition ${
+                              active
+                                ? "bg-[#FF6A00] text-white border-[#FF6A00]"
+                                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+                            }`}
+                          >
+                            {sport.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {selected ? (
+                    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4 sm:px-5 py-4 text-white">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                          {selected.image ? (
+                            <img
+                              src={selected.image}
+                              alt={selected.name}
+                              className="w-full sm:w-28 h-28 rounded-xl object-cover border border-white/20 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-full sm:w-28 h-28 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+                              <Trophy className="text-[#FF6A00]" size={32} />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-300">
+                              {selected.category}
+                            </p>
+                            <h3 className="text-xl font-bold mt-0.5">
+                              {selected.name}
+                            </h3>
+                            {selected.shortDescription ? (
+                              <p className="text-sm text-slate-300 mt-2 leading-relaxed">
+                                {selected.shortDescription}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-slate-400 mt-2">
+                                Program details will appear when the trainer
+                                adds them.
+                              </p>
+                            )}
+                            {selected.billingCycle ? (
+                              <p className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold bg-white/10 text-orange-200 px-2.5 py-1 rounded-lg">
+                                <BadgeCheck size={14} />
+                                Billed {selected.billingCycle}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-4 sm:p-5 space-y-5">
+                        {(selected.ageGroups?.length > 0 ||
+                          selected.trainingLevels?.length > 0 ||
+                          selected.specialPrograms?.length > 0) && (
+                          <div className="space-y-3">
+                            {selected.ageGroups?.length > 0 ? (
+                              <ChipGroup
+                                title="Age groups"
+                                items={selected.ageGroups}
+                              />
+                            ) : null}
+                            {selected.trainingLevels?.length > 0 ? (
+                              <ChipGroup
+                                title="Training levels"
+                                items={selected.trainingLevels}
+                              />
+                            ) : null}
+                            {selected.specialPrograms?.length > 0 ? (
+                              <ChipGroup
+                                title="Special programs"
+                                items={selected.specialPrograms}
+                              />
+                            ) : null}
+                          </div>
+                        )}
+
+                        <div className="rounded-2xl border border-orange-100 bg-orange-50/40 overflow-hidden">
+                          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-orange-100/80 bg-orange-50">
+                            <span className="w-9 h-9 rounded-xl bg-[#FF6A00] text-white flex items-center justify-center shrink-0">
+                              <IndianRupee size={18} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-900">
+                                Fee details — {selected.name}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                Transparent pricing for this sport
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="p-4 space-y-3">
+                            {selectedHasFees ? (
+                              <>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                  {selected.monthlyFee ? (
+                                    <FeeHighlight
+                                      label="Monthly fee"
+                                      value={formatFee(selected.monthlyFee)}
+                                      accent
+                                    />
+                                  ) : null}
+                                  {selected.yearlyFee ? (
+                                    <FeeHighlight
+                                      label="Yearly fee"
+                                      value={formatFee(selected.yearlyFee)}
+                                      accent
+                                    />
+                                  ) : null}
+                                  {selected.registrationFee ? (
+                                    <FeeHighlight
+                                      label="Registration"
+                                      value={formatFee(
+                                        selected.registrationFee,
+                                      )}
+                                    />
+                                  ) : null}
+                                  {selected.uniformFee ? (
+                                    <FeeHighlight
+                                      label="Kit / Uniform"
+                                      value={formatFee(selected.uniformFee)}
+                                    />
+                                  ) : null}
+                                  {selected.otherFee ? (
+                                    <FeeHighlight
+                                      label={
+                                        selected.otherFeeName || "Other fee"
+                                      }
+                                      value={formatFee(selected.otherFee)}
+                                    />
+                                  ) : null}
+                                </div>
+
+                                {selected.feeNotes ? (
+                                  <p className="text-xs text-slate-600 bg-white border border-slate-200 rounded-xl px-3 py-2.5 leading-relaxed">
+                                    <span className="font-semibold text-slate-800">
+                                      Note:{" "}
+                                    </span>
+                                    {selected.feeNotes}
+                                  </p>
+                                ) : null}
+                              </>
+                            ) : (
+                              <p className="text-sm text-slate-500 text-center py-4">
+                                Fees for this sport will show here when the
+                                trainer adds them.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {(selected.courseDuration ||
+                          selected.classesPerWeek ||
+                          selected.classDuration) && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-2.5">
+                              <Clock size={16} className="text-[#FF6A00]" />
+                              <p className="text-sm font-bold text-slate-900">
+                                Schedule & structure
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                              {selected.courseDuration ? (
+                                <InfoTile
+                                  icon={CalendarDays}
+                                  label="Course duration"
+                                  value={selected.courseDuration}
+                                />
+                              ) : null}
+                              {selected.classesPerWeek ? (
+                                <InfoTile
+                                  icon={CalendarDays}
+                                  label="Classes / week"
+                                  value={`${selected.classesPerWeek}`}
+                                />
+                              ) : null}
+                              {selected.classDuration ? (
+                                <InfoTile
+                                  icon={Clock}
+                                  label="Class length"
+                                  value={`${selected.classDuration} mins`}
+                                />
+                              ) : null}
+                            </div>
+                          </div>
+                        )}
+
+                        {(trainer.pricing?.paymentMethods ||
+                          trainer.pricing?.refundPolicy) && (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                              Payment & policies
+                            </p>
+                            {trainer.pricing.paymentMethods ? (
+                              <p className="text-sm text-slate-700">
+                                <span className="font-semibold text-slate-900">
+                                  Payments:{" "}
+                                </span>
+                                {trainer.pricing.paymentMethods}
+                              </p>
+                            ) : null}
+                            {trainer.pricing.refundPolicy ? (
+                              <p className="text-sm text-slate-700 leading-relaxed">
+                                <span className="font-semibold text-slate-900">
+                                  Refund:{" "}
+                                </span>
+                                {trainer.pricing.refundPolicy}
+                              </p>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {selected.programs.length > 0 ? (
+                          <div>
+                            <p className="text-sm font-bold text-slate-900 mb-2.5">
+                              Class batches
+                            </p>
+                            <div className="space-y-2.5">
+                              {(showAllPrograms
+                                ? selected.programs
+                                : selected.programs.slice(0, 3)
+                              ).map((program, index) => (
+                                <div
+                                  key={program.id || index}
+                                  className="rounded-xl bg-slate-50 border border-slate-200 p-3.5"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="font-semibold text-sm text-slate-900">
+                                        {program.programName || selected.name}
+                                      </p>
+                                      <p className="text-xs text-slate-500 mt-1">
+                                        {[
+                                          program.ageGroup,
+                                          program.batchTimings,
+                                          program.duration,
+                                          program.skillLevel,
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" · ") ||
+                                          "Schedule details coming soon"}
+                                      </p>
+                                    </div>
+                                    {program.fees &&
+                                    String(program.fees) !==
+                                      String(selected.monthlyFee || "") ? (
+                                      <div className="text-right shrink-0">
+                                        <p className="text-sm font-bold text-[#FF6A00]">
+                                          {formatFee(program.fees)}
+                                        </p>
+                                        {program.feeCycle ? (
+                                          <p className="text-[11px] text-slate-500">
+                                            / {program.feeCycle}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                                    {program.ageGroup ? (
+                                      <FeeTile
+                                        label="Age"
+                                        value={program.ageGroup}
+                                      />
+                                    ) : null}
+                                    {program.batchTimings ? (
+                                      <FeeTile
+                                        label="Timings"
+                                        value={program.batchTimings}
+                                      />
+                                    ) : null}
+                                    {program.duration ? (
+                                      <FeeTile
+                                        label="Duration"
+                                        value={program.duration}
+                                      />
+                                    ) : null}
+                                    {program.skillLevel ? (
+                                      <FeeTile
+                                        label="Level"
+                                        value={program.skillLevel}
+                                      />
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            {selected.programs.length > 3 ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowAllPrograms((v) => !v)
+                                }
+                                className="mt-2.5 text-sm font-semibold text-[#FF6A00]"
+                              >
+                                {showAllPrograms
+                                  ? "Show less"
+                                  : `View all ${selected.programs.length} batches`}
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {availableSports.length === 0 && programs.length > 0 ? (
+                    <div className="space-y-3">
+                      {(showAllPrograms ? programs : programs.slice(0, 4)).map(
                         (program, index) => (
                           <div
                             key={program.id || index}
-                            className="border border-orange-100 rounded-2xl p-4 bg-orange-50"
+                            className="rounded-xl border border-orange-100 bg-orange-50/50 p-4"
                           >
-                            <div className="flex items-center justify-between mb-3">
-                              <div className="min-w-0">
-                                <h3 className="font-bold text-gray-800 text-base">
-                                  {program.programName || program.subCategory}
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h3 className="font-bold text-slate-900">
+                                  {program.programName ||
+                                    program.subCategory ||
+                                    "Program"}
                                 </h3>
-                                {(program.category || program.subCategory) && (
-                                  <p className="text-xs text-gray-500 mt-0.5">
-                                    {[program.category, program.subCategory]
-                                      .filter(Boolean)
-                                      .join(" · ")}
-                                  </p>
-                                )}
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  {[program.category, program.subCategory]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </p>
                               </div>
                               {program.skillLevel ? (
-                                <span className="bg-[#FF6B00] text-white text-xs px-3 py-1 rounded-full">
+                                <span className="text-xs font-semibold bg-[#FF6A00] text-white px-2.5 py-1 rounded-full">
                                   {program.skillLevel}
                                 </span>
                               ) : null}
                             </div>
-                            <div className="grid grid-cols-2 gap-3 text-sm">
-                              <Info title="Age Group" value={program.ageGroup} />
-                              <Info title="Duration" value={program.duration} />
-                              <Info title="Batch" value={program.batchTimings} />
-                              <Info
-                                title={
+                            <div className="grid grid-cols-2 gap-2 mt-3">
+                              <FeeTile
+                                label="Age group"
+                                value={program.ageGroup}
+                              />
+                              <FeeTile
+                                label="Schedule"
+                                value={program.batchTimings}
+                              />
+                              <FeeTile
+                                label="Duration"
+                                value={program.duration}
+                              />
+                              <FeeTile
+                                label={
                                   program.feeCycle
-                                    ? `Fees / ${program.feeCycle}`
-                                    : "Fees"
+                                    ? `Fee / ${program.feeCycle}`
+                                    : "Fee"
                                 }
-                                value={program.fees ? `₹${program.fees}` : "-"}
+                                value={
+                                  program.fees ? `₹${program.fees}` : null
+                                }
                               />
-                              <Info
-                                title="Seats"
-                                value={program.seatsAvailable}
-                              />
-                              <Info title="Trial" value={program.trialSessions} />
                             </div>
                           </div>
                         ),
                       )}
-                    </div>
-                    {programs.length > 2 && (
-                      <button
-                        onClick={() => setShowAllPrograms(!showAllPrograms)}
-                        className="w-full mt-5 bg-[#FF6B00] text-white rounded-xl py-3 font-semibold active:scale-95 transition"
-                      >
-                        {showAllPrograms
-                          ? "See less"
-                          : `See more (${programs.length} programs)`}
-                      </button>
-                    )}
-                  </>
-                )}
-          </div>
-        </Section>
-          </motion.div>
-
-          <Section title="Achievements">
-            <div className="bg-white rounded-2xl border border-gray-100 p-4">
-              {highlightList.length > 0 && (
-                <div className="space-y-2 mb-3">
-                  {highlightList.map((item, index) => (
-                    <div
-                      key={item.id || index}
-                      className="flex items-start gap-2 rounded-xl bg-orange-50 px-3 py-2"
-                    >
-                      <Award
-                        size={14}
-                        className="text-[#FF6B00] mt-0.5 shrink-0"
-                      />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">
-                          {item.title}
-                        </p>
-                        {item.year || item.summary || item.description ? (
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            {[item.year, item.summary || item.description]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {trainer?.achievements ? (
-                Object.entries(trainer.achievements).map(([level, medals]) => (
-                  <AchievementRow
-                    key={level}
-                    title={level}
-                    g={medals?.gold || 0}
-                    s={medals?.silver || 0}
-                    b={medals?.bronze || 0}
-                  />
-                ))
-              ) : (
-                <p className="text-sm text-gray-400 text-center">
-                  No achievements available
-                </p>
-              )}
-            </div>
-          </Section>
-
-          {pricingPackages.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              <Section title="Fees & Packages">
-                <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
-                  {pricingPackages.map((pkg, i) => (
-                    <div
-                      key={pkg.id || i}
-                      className="border border-orange-100 rounded-xl p-3 bg-orange-50/60"
-                    >
-                      <p className="font-semibold text-gray-900">
-                        {pkg.subCategory || pkg.name || "Class fees"}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {[pkg.category, pkg.billingCycle]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                      <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                        {pkg.monthlyFee ? (
-                          <Info title="Monthly" value={`₹${pkg.monthlyFee}`} />
-                        ) : null}
-                        {pkg.yearlyFee ? (
-                          <Info title="Yearly" value={`₹${pkg.yearlyFee}`} />
-                        ) : null}
-                        {pkg.registrationFee ? (
-                          <Info
-                            title="Registration"
-                            value={`₹${pkg.registrationFee}`}
-                          />
-                        ) : null}
-                        {pkg.uniformFee ? (
-                          <Info
-                            title="Kit / Uniform"
-                            value={`₹${pkg.uniformFee}`}
-                          />
-                        ) : null}
-                        {pkg.otherFee ? (
-                          <Info
-                            title={pkg.otherFeeName || "Other fee"}
-                            value={`₹${pkg.otherFee}`}
-                          />
-                        ) : null}
-                      </div>
-                      {pkg.notes ? (
-                        <p className="text-xs text-gray-600 mt-2">{pkg.notes}</p>
+                      {programs.length > 4 ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllPrograms((v) => !v)}
+                          className="w-full min-h-[44px] rounded-xl bg-[#FF6A00] text-white font-semibold text-sm"
+                        >
+                          {showAllPrograms
+                            ? "Show less"
+                            : `View all programs (${programs.length})`}
+                        </button>
                       ) : null}
                     </div>
-                  ))}
-                  {trainer.pricing?.paymentMethods ? (
-                    <p className="text-xs text-gray-500 px-1">
-                      Payments accepted: {trainer.pricing.paymentMethods}
-                    </p>
                   ) : null}
-                  {trainer.pricing?.refundPolicy ? (
-                    <p className="text-xs text-gray-500 px-1">
-                      Refund: {trainer.pricing.refundPolicy}
-                    </p>
-                  ) : null}
-          </div>
-        </Section>
-            </motion.div>
-          )}
+                </>
+              )}
+            </section>
 
-          {(trainer.email || trainer.phoneNumber || websiteUrl) && (
-            <Section title="Contact">
-              <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
-                {trainer.phoneNumber ? (
-                  <a
-                    href={`tel:${trainer.phoneNumber}`}
-                    className="flex items-center gap-3 text-sm text-gray-700"
-                  >
-                    <span className="w-9 h-9 rounded-full bg-orange-50 text-[#FF6B00] flex items-center justify-center">
-                      <Phone size={15} />
-                    </span>
-                    {trainer.phoneNumber}
-                  </a>
-                ) : null}
-                {trainer.email ? (
-                  <a
-                    href={`mailto:${trainer.email}`}
-                    className="flex items-center gap-3 text-sm text-gray-700"
-                  >
-                    <span className="w-9 h-9 rounded-full bg-orange-50 text-[#FF6B00] flex items-center justify-center">
-                      <Mail size={15} />
-                    </span>
-                    {trainer.email}
-                  </a>
-                ) : null}
-                {websiteUrl ? (
-                  <a
-                    href={
-                      websiteUrl.startsWith("http")
-                        ? websiteUrl
-                        : `https://${websiteUrl}`
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-3 text-sm text-[#FF6B00] font-medium"
-                  >
-                    <span className="w-9 h-9 rounded-full bg-orange-50 text-[#FF6B00] flex items-center justify-center">
-                      <Globe size={15} />
-                    </span>
-                    Visit website
-                  </a>
-                ) : null}
-              </div>
-            </Section>
-          )}
-
-          {facilityList.length > 0 || trainer.facilitiesInfrastructure ? (
-            <Section title="Facilities">
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                {facilityList.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-2">
+            {/* Facilities */}
+            {(facilityList.length > 0 || trainer.facilitiesInfrastructure) && (
+              <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                <h2 className="text-base font-bold text-slate-900 mb-3">
+                  Facilities
+                </h2>
+                {facilityList.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {facilityList.map((tag) => (
                       <span
                         key={tag}
-                        className="px-3 py-1.5 rounded-full bg-orange-50 text-orange-600 text-xs font-medium"
+                        className="px-3 py-1.5 rounded-xl bg-orange-50 text-[#E85D04] text-xs font-semibold border border-orange-100"
                       >
                         {tag}
                       </span>
                     ))}
                   </div>
-                )}
+                ) : null}
                 {trainer.facilitiesInfrastructure ? (
-                  <p className="text-sm text-gray-600 leading-relaxed">
+                  <p className="text-sm text-slate-600 leading-relaxed">
                     {trainer.facilitiesInfrastructure}
                   </p>
                 ) : null}
-              </div>
-            </Section>
-          ) : null}
+              </section>
+            )}
 
-        <Section title="Media & Gallery">
-            {uniqueMediaPosts.length === 0 ? (
-            <div className="bg-white p-6 rounded-2xl text-center text-gray-400">
-              No Media Available
-            </div>
-          ) : (
-              <div className="space-y-3">
-                {!showAllMedia ? (
-                  <div className="grid grid-cols-2 gap-2">
-                    {uniqueMediaPosts.slice(0, 4).map((post, idx) => (
-                      <button
-                        key={post.id}
-                        type="button"
-                        onClick={() => setShowAllMedia(true)}
-                        className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100"
+            {/* Achievements */}
+            {(highlightList.length > 0 || totalAwards > 0) && (
+              <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                <h2 className="text-base font-bold text-slate-900 mb-3">
+                  Achievements
+                </h2>
+                {highlightList.length > 0 ? (
+                  <div className="space-y-2 mb-4">
+                    {highlightList.map((item, index) => (
+                      <div
+                        key={item.id || index}
+                        className="flex items-start gap-2.5 rounded-xl bg-orange-50/80 border border-orange-100 px-3 py-2.5"
                       >
-                        {post.type === "video" ? (
-                          <video
-                            src={post.url}
-                            muted
-                            playsInline
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <img
-                            src={post.url}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        )}
-                        {idx === 3 && uniqueMediaPosts.length > 4 ? (
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-semibold text-sm">
-                            +{uniqueMediaPosts.length - 4} more
-                          </div>
-                        ) : null}
-                      </button>
+                        <Award
+                          size={16}
+                          className="text-[#FF6A00] mt-0.5 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {item.title}
+                          </p>
+                          {(item.year || item.description || item.summary) && (
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {[item.year, item.description || item.summary]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                ) : (
-                  visibleMedia.map((post) => (
-                    <MediaCard key={post.id} post={post} />
-                  ))
-                )}
-                {(uniqueMediaPosts.length > MEDIA_LIMIT || showAllMedia) && (
+                ) : null}
+                {trainer.achievements ? (
+                  <div className="rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="grid grid-cols-4 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500">
+                      <span>Level</span>
+                      <span>Gold</span>
+                      <span>Silver</span>
+                      <span>Bronze</span>
+                    </div>
+                    {Object.entries(trainer.achievements).map(
+                      ([level, medals]) => (
+                        <div
+                          key={level}
+                          className="grid grid-cols-4 px-3 py-2.5 text-sm border-t border-slate-100"
+                        >
+                          <span className="font-medium text-slate-800 capitalize">
+                            {level}
+                          </span>
+                          <span>{medals?.gold || 0}</span>
+                          <span>{medals?.silver || 0}</span>
+                          <span>{medals?.bronze || 0}</span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                ) : null}
+              </section>
+            )}
+
+            {/* Fees overview — orphan packages only */}
+            {showFeesOverview ? (
+              <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                <h2 className="text-base font-bold text-slate-900 mb-1">
+                  Fees & Packages
+                </h2>
+                <p className="text-sm text-slate-500 mb-4">
+                  Additional fee packages
+                </p>
+                {orphanPackages.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {orphanPackages.map((pkg, i) => (
+                      <div
+                        key={pkg.id || i}
+                        className="rounded-xl border border-slate-200 p-4"
+                      >
+                        <p className="font-semibold text-slate-900">
+                          {pkg.subCategory || pkg.name || "Class fees"}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {[pkg.category, pkg.billingCycle]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 mt-3">
+                          {pkg.monthlyFee ? (
+                            <FeeTile
+                              label="Monthly"
+                              value={formatFee(pkg.monthlyFee)}
+                            />
+                          ) : null}
+                          {pkg.yearlyFee ? (
+                            <FeeTile
+                              label="Yearly"
+                              value={formatFee(pkg.yearlyFee)}
+                            />
+                          ) : null}
+                          {pkg.registrationFee ? (
+                            <FeeTile
+                              label="Registration"
+                              value={formatFee(pkg.registrationFee)}
+                            />
+                          ) : null}
+                          {pkg.uniformFee ? (
+                            <FeeTile
+                              label="Kit / Uniform"
+                              value={formatFee(pkg.uniformFee)}
+                            />
+                          ) : null}
+                          {pkg.otherFee ? (
+                            <FeeTile
+                              label={pkg.otherFeeName || "Other"}
+                              value={formatFee(pkg.otherFee)}
+                            />
+                          ) : null}
+                        </div>
+                        {pkg.notes ? (
+                          <p className="text-xs text-slate-500 mt-2">
+                            {pkg.notes}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {(trainer.pricing?.paymentMethods ||
+                  trainer.pricing?.refundPolicy) &&
+                availableSports.length === 0 ? (
+                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-1.5 text-sm text-slate-600">
+                    {trainer.pricing.paymentMethods ? (
+                      <p>
+                        <span className="font-semibold text-slate-800">
+                          Payments:
+                        </span>{" "}
+                        {trainer.pricing.paymentMethods}
+                      </p>
+                    ) : null}
+                    {trainer.pricing.refundPolicy ? (
+                      <p>
+                        <span className="font-semibold text-slate-800">
+                          Refund:
+                        </span>{" "}
+                        {trainer.pricing.refundPolicy}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {/* Gallery */}
+            <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h2 className="text-base font-bold text-slate-900">
+                  Gallery & Videos
+                </h2>
+                {uniqueMediaPosts.length > 0 ? (
                   <button
                     type="button"
                     onClick={() => setShowAllMedia((v) => !v)}
-                    className="w-full min-h-[44px] rounded-xl border border-[#FF6B00] text-[#FF6B00] font-semibold text-sm bg-white active:scale-95 transition"
+                    className="text-sm font-semibold text-[#FF6A00]"
                   >
-                    {showAllMedia
-                      ? "See less"
-                      : `See more (${uniqueMediaPosts.length} photos & videos)`}
+                    {showAllMedia ? "Show less" : "View all"}
                   </button>
-                )}
-            </div>
-          )}
-        </Section>
-
-          {availableSports.length > 0 && (
-            <Section title="Sports available">
-              <div className="bg-white rounded-2xl shadow-sm p-4">
-                <p className="text-xs text-gray-500 mb-3">
-                  Tap a sport to see description, fees and class details
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {availableSports.map((sport) => {
-                    const active =
-                      selectedSport?.name === sport.name &&
-                      selectedSport?.category === sport.category;
-                    return (
-                      <motion.button
-                        key={`${sport.category}-${sport.name}`}
-                        type="button"
-                        whileTap={{ scale: 0.96 }}
-                        onClick={() => setSelectedSport(sport)}
-                        className={`min-h-[38px] px-4 rounded-full text-sm font-semibold border transition ${
-                          active
-                            ? "bg-[#FF6B00] text-white border-[#FF6B00]"
-                            : "bg-orange-50 text-gray-800 border-orange-100"
-                        }`}
-                      >
-                        {sport.name}
-                      </motion.button>
-                    );
-                  })}
-                </div>
+                ) : null}
               </div>
-            </Section>
-          )}
-        </div>
 
-        <AnimatePresence>
-          {selectedSport && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed left-0 right-0 top-0 z-[80] bg-black/45 backdrop-blur-[2px]"
-              style={{
-                bottom:
-                  "calc(var(--bottom-navbar-height, 64px) + env(safe-area-inset-bottom, 0px))",
-              }}
-              onClick={() => setSelectedSport(null)}
-            >
-              <motion.div
-                initial={{ y: 90, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 90, opacity: 0 }}
-                transition={{ type: "spring", damping: 24, stiffness: 280 }}
-                onClick={(e) => e.stopPropagation()}
-                className="absolute left-0 right-0 bottom-0 bg-white rounded-t-3xl max-h-[75vh] overflow-y-auto px-4 pt-3 pb-5 shadow-[0_-12px_40px_rgba(0,0,0,0.15)]"
+              {uniqueMediaPosts.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">
+                  No photos or videos yet.
+                </p>
+              ) : !showAllMedia ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {uniqueMediaPosts.slice(0, 6).map((post, idx) => (
+                    <button
+                      key={post.id}
+                      type="button"
+                      onClick={() => setShowAllMedia(true)}
+                      className="relative aspect-[4/3] rounded-xl overflow-hidden bg-slate-100"
+                    >
+                      {post.type === "video" ? (
+                        <video
+                          src={post.url}
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={post.url}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                      {idx === 5 && uniqueMediaPosts.length > 6 ? (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-sm font-semibold">
+                          +{uniqueMediaPosts.length - 6} more
+                        </div>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {uniqueMediaPosts.map((post) => (
+                    <MediaCard key={post.id} post={post} />
+                  ))}
+                </div>
+              )}
+              {(galleryImages.length > 0 || galleryVideos.length > 0) && (
+                <p className="text-xs text-slate-400 mt-3">
+                  {galleryImages.length} photos
+                  {galleryVideos.length
+                    ? ` · ${galleryVideos.length} videos`
+                    : ""}
+                </p>
+              )}
+            </section>
+
+            {/* Contact */}
+            {(trainer.phoneNumber || trainer.email || websiteUrl) && (
+              <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+                <h2 className="text-base font-bold text-slate-900 mb-3">
+                  Contact
+                </h2>
+                <div className="space-y-3">
+                  {trainer.phoneNumber ? (
+                    <a
+                      href={`tel:${trainer.phoneNumber}`}
+                      className="flex items-center gap-3 text-sm text-slate-700"
+                    >
+                      <span className="w-10 h-10 rounded-xl bg-orange-50 text-[#FF6A00] flex items-center justify-center">
+                        <Phone size={16} />
+                      </span>
+                      <div>
+                        <p className="text-xs text-slate-400">Phone</p>
+                        <p className="font-semibold">
+                          {trainer.countryCode ? `${trainer.countryCode} ` : ""}
+                          {trainer.phoneNumber}
+                        </p>
+                      </div>
+                    </a>
+                  ) : null}
+                  {trainer.email ? (
+                    <a
+                      href={`mailto:${trainer.email}`}
+                      className="flex items-center gap-3 text-sm text-slate-700"
+                    >
+                      <span className="w-10 h-10 rounded-xl bg-orange-50 text-[#FF6A00] flex items-center justify-center">
+                        <Mail size={16} />
+                      </span>
+                      <div>
+                        <p className="text-xs text-slate-400">Email</p>
+                        <p className="font-semibold break-all">
+                          {trainer.email}
+                        </p>
+                      </div>
+                    </a>
+                  ) : null}
+                  {websiteUrl ? (
+                    <a
+                      href={
+                        websiteUrl.startsWith("http")
+                          ? websiteUrl
+                          : `https://${websiteUrl}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-3 text-sm text-[#FF6A00] font-medium"
+                    >
+                      <span className="w-10 h-10 rounded-xl bg-orange-50 text-[#FF6A00] flex items-center justify-center">
+                        <Globe size={16} />
+                      </span>
+                      <div>
+                        <p className="text-xs text-slate-400">Website</p>
+                        <p className="font-semibold break-all">{websiteUrl}</p>
+                      </div>
+                    </a>
+                  ) : null}
+                </div>
+              </section>
+            )}
+          </div>
+
+          {/* Desktop sidebar */}
+          <aside className="hidden lg:block space-y-4 sticky top-16">
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100">
+                <h3 className="font-semibold text-slate-900 text-sm">
+                  Location
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">{shortLocation}</p>
+              </div>
+              <iframe
+                title="map"
+                src={mapSrc}
+                className="w-full h-48 border-0"
+                loading="lazy"
+              />
+              <a
+                href={directionsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block text-center text-sm font-semibold text-[#FF6A00] py-3 border-t border-slate-100 hover:bg-orange-50"
               >
-                <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4" />
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-900">
-                      {selectedSport.name}
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {selectedSport.category}
-                    </p>
-                  </div>
+                Get directions
+              </a>
+            </div>
+
+            <div className="bg-slate-900 rounded-2xl p-4 text-white">
+              <p className="font-semibold">Interested in training?</p>
+              <p className="text-xs text-white/70 mt-1 mb-3">
+                Reach out to {displayName} for a trial or more details.
+              </p>
+              <div className="space-y-2">
+                <a
+                  href={
+                    trainer.phoneNumber ? `tel:${trainer.phoneNumber}` : undefined
+                  }
+                  onClick={(e) => {
+                    if (!trainer.phoneNumber) {
+                      e.preventDefault();
+                      alert("Phone number not available");
+                    }
+                  }}
+                  className="w-full min-h-[44px] rounded-xl bg-[#FF6A00] flex items-center justify-center gap-2 text-sm font-semibold"
+                >
+                  <Phone size={15} /> Call now
+                </a>
+                {chatEnabled ? (
                   <button
                     type="button"
-                    onClick={() => setSelectedSport(null)}
-                    className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center active:scale-95"
+                    onClick={startTrainerChat}
+                    className="w-full min-h-[44px] rounded-xl bg-white/10 border border-white/20 flex items-center justify-center gap-2 text-sm font-semibold"
                   >
-                    <X size={16} />
+                    <MessageCircle size={15} /> Start chat
                   </button>
-                </div>
-
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  {selectedSport.shortDescription ||
-                    "Description will appear here once the trainer adds it."}
-                </p>
-
-                {selectedFees.length > 0 && (
-                  <div className="mt-4">
-                    <p className="text-sm font-semibold text-gray-900 mb-2">
-                      Related fees
-                    </p>
-                    <div className="space-y-2">
-                      {selectedFees.map((pkg, i) => (
-                        <div
-                          key={pkg.id || i}
-                          className="rounded-2xl border border-orange-100 bg-orange-50 p-3"
-                        >
-                          <p className="text-xs text-gray-500">
-                            {pkg.billingCycle || "Package"}
-                          </p>
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                            {pkg.monthlyFee ? (
-                              <Info title="Monthly" value={`₹${pkg.monthlyFee}`} />
-                            ) : null}
-                            {pkg.yearlyFee ? (
-                              <Info title="Yearly" value={`₹${pkg.yearlyFee}`} />
-                            ) : null}
-                            {pkg.registrationFee ? (
-                              <Info
-                                title="Registration"
-                                value={`₹${pkg.registrationFee}`}
-                              />
-                            ) : null}
-                            {pkg.uniformFee ? (
-                              <Info
-                                title="Kit / Uniform"
-                                value={`₹${pkg.uniformFee}`}
-                              />
-                            ) : null}
-                            {pkg.otherFee ? (
-                              <Info
-                                title={pkg.otherFeeName || "Other fee"}
-                                value={`₹${pkg.otherFee}`}
-                              />
-                            ) : null}
-                          </div>
-                          {pkg.notes ? (
-                            <p className="text-xs text-gray-600 mt-2">
-                              {pkg.notes}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {selectedPrograms.length > 0 && (
-                  <div className="mt-4">
-                    <p className="text-sm font-semibold text-gray-900 mb-2">
-                      Related classes
-                    </p>
-                    <div className="space-y-2">
-                      {selectedPrograms.map((program, index) => (
-                        <div
-                          key={program.id || index}
-                          className="rounded-2xl border border-gray-100 p-3"
-                        >
-                          <p className="font-semibold text-sm">
-                            {program.programName || selectedSport.name}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {[
-                              program.ageGroup,
-                              program.batchTimings,
-                              program.duration,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                          {program.fees ? (
-                            <p className="text-sm font-semibold text-[#FF6B00] mt-2">
-                              ₹{program.fees}
-                              {program.feeCycle ? ` / ${program.feeCycle}` : ""}
-                            </p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {selectedFees.length === 0 && selectedPrograms.length === 0 && (
-                  <p className="text-xs text-gray-400 mt-4">
-                    Fees and class timings will show here when the trainer adds
-                    them.
+                ) : (
+                  <p className="text-[11px] text-white/50 text-center py-1">
+                    Chat is currently disabled by this trainer
                   </p>
                 )}
+              </div>
+            </div>
+          </aside>
+        </div>
 
-                <div className="grid grid-cols-3 gap-2 mt-5">
-                  <button
-                    onClick={startTrainerChat}
-                    className="min-h-[44px] rounded-xl bg-[#FF6B00] text-white text-sm font-semibold active:scale-95 transition"
-                  >
-                    Chat
-                  </button>
-                  <a
-                    href={
-                      trainer.phoneNumber ? `tel:${trainer.phoneNumber}` : undefined
-                    }
-                    onClick={(e) => {
-                      if (!trainer.phoneNumber) {
-                        e.preventDefault();
-                        alert("Phone number not available");
-                      }
-                    }}
-                    className="min-h-[44px] rounded-xl border border-[#FF6B00] text-[#FF6B00] text-sm font-semibold flex items-center justify-center active:scale-95 transition"
-                  >
-                    Call
-                  </a>
-                  <a
-                    href={trainer.email ? `mailto:${trainer.email}` : undefined}
-                    onClick={(e) => {
-                      if (!trainer.email) {
-                        e.preventDefault();
-                        alert("Email not available");
-                      }
-                    }}
-                    className="min-h-[44px] rounded-xl border border-[#FF6B00] text-[#FF6B00] text-sm font-semibold flex items-center justify-center active:scale-95 transition"
-                  >
-                    Email
-                  </a>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Mobile map */}
+        <section className="lg:hidden mt-6 bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3">
+            <h2 className="text-base font-bold text-slate-900">Location</h2>
+            <p className="text-sm text-slate-500 mt-1">{locationLabel}</p>
+          </div>
+          <iframe
+            title="map-mobile"
+            src={mapSrc}
+            className="w-full h-48 border-0"
+            loading="lazy"
+          />
+        </section>
+      </div>
+
+      {/* Mobile sticky CTA */}
+      <div
+        className="md:hidden fixed left-0 right-0 z-[70] bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2.5"
+        style={{
+          bottom:
+            "calc(var(--bottom-navbar-height, 64px) + env(safe-area-inset-bottom, 0px))",
+        }}
+      >
+        <div
+          className={`grid gap-2 ${
+            chatEnabled ? "grid-cols-3" : "grid-cols-2"
+          }`}
+        >
+          <a
+            href={trainer.phoneNumber ? `tel:${trainer.phoneNumber}` : undefined}
+            onClick={(e) => {
+              if (!trainer.phoneNumber) {
+                e.preventDefault();
+                alert("Phone number not available");
+              }
+            }}
+            className="min-h-[44px] rounded-xl bg-[#FF6A00] text-white text-sm font-semibold flex items-center justify-center gap-1.5"
+          >
+            <Phone size={15} /> Call
+          </a>
+          {chatEnabled ? (
+            <button
+              type="button"
+              onClick={startTrainerChat}
+              className="min-h-[44px] rounded-xl border border-[#FF6A00] text-[#FF6A00] text-sm font-semibold flex items-center justify-center gap-1.5"
+            >
+              <MessageCircle size={15} /> Chat
+            </button>
+          ) : null}
+          <a
+            href={directionsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="min-h-[44px] rounded-xl border border-slate-200 text-slate-800 text-sm font-semibold flex items-center justify-center gap-1.5"
+          >
+            <MapPin size={15} /> Map
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AboutBlock({ text, emptyText }) {
+  const [expanded, setExpanded] = useState(false);
+  const shouldTrim = (text || "").length > 220;
+  if (!text) {
+    return <p className="text-sm text-slate-400">{emptyText}</p>;
+  }
+  return (
+    <div>
+      <p
+        className={`text-sm text-slate-700 leading-7 whitespace-pre-wrap break-words ${
+          expanded ? "" : "line-clamp-5"
+        }`}
+      >
+        {text}
+      </p>
+      {shouldTrim ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 text-[#FF6A00] font-semibold text-sm"
+        >
+          {expanded ? "Read less" : "Read more"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function FeeTile({ label, value }) {
+  return (
+    <div className="rounded-xl bg-white border border-slate-200 px-3 py-2.5">
+      <p className="text-[11px] text-slate-500">{label}</p>
+      <p className="text-sm font-semibold text-slate-900 mt-0.5 break-words">
+        {value || "—"}
+      </p>
+    </div>
+  );
+}
+
+function FeeHighlight({ label, value, accent = false }) {
+  return (
+    <div
+      className={`rounded-xl border px-3.5 py-3 ${
+        accent
+          ? "bg-white border-orange-200 shadow-sm"
+          : "bg-white border-slate-200"
+      }`}
+    >
+      <p className="text-[11px] font-medium text-slate-500">{label}</p>
+      <p
+        className={`text-base font-bold mt-1 break-words ${
+          value
+            ? accent
+              ? "text-[#FF6A00]"
+              : "text-slate-900"
+            : "text-slate-400"
+        }`}
+      >
+        {value || "Not listed"}
+      </p>
+    </div>
+  );
+}
+
+function InfoTile({ icon: Icon, label, value }) {
+  return (
+    <div className="rounded-xl bg-white border border-slate-200 px-3.5 py-3 flex gap-3 items-start">
+      {Icon ? (
+        <span className="w-9 h-9 rounded-lg bg-orange-50 text-[#FF6A00] flex items-center justify-center shrink-0">
+          <Icon size={16} />
+        </span>
+      ) : null}
+      <div className="min-w-0">
+        <p className="text-[11px] text-slate-500">{label}</p>
+        <p className="text-sm font-semibold text-slate-900 mt-0.5 break-words">
+          {value || "—"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ChipGroup({ title, items = [] }) {
+  if (!items.length) return null;
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-500 mb-1.5">{title}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <span
+            key={item}
+            className="px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700"
+          >
+            {item}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -1156,13 +1681,13 @@ export default function TrainerDetailsPage() {
 
 function MediaCard({ post }) {
   const isReel = post.type === "video";
-  const [openImage, setOpenImage] = useState(false);
+  const [openPreview, setOpenPreview] = useState(false);
   const [likes, setLikes] = useState(0);
   const [views, setViews] = useState(0);
   const [comments, setComments] = useState(0);
   const [liked, setLiked] = useState(false);
 
-  const [showComments, setShowComments] = useState(false);
+  const [showCommentBox, setShowCommentBox] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [commentList, setCommentList] = useState([]);
 
@@ -1177,7 +1702,6 @@ function MediaCard({ post }) {
         query(collection(db, "reelLikes"), where("reelId", "==", itemId)),
         (snap) => {
           setLikes(snap.size);
-
           if (user) {
             setLiked(snap.docs.some((d) => d.data().userId === user.uid));
           }
@@ -1193,7 +1717,6 @@ function MediaCard({ post }) {
         collection(db, "reelComments", itemId, "comments"),
         (snap) => {
           setComments(snap.size);
-
           setCommentList(
             snap.docs.map((d) => ({
               id: d.id,
@@ -1207,7 +1730,6 @@ function MediaCard({ post }) {
         query(collection(db, "postlikes"), where("postId", "==", itemId)),
         (snap) => {
           setLikes(snap.size);
-
           if (user) {
             setLiked(snap.docs.some((d) => d.data().userId === user.uid));
           }
@@ -1223,7 +1745,6 @@ function MediaCard({ post }) {
         query(collection(db, "postcomments"), where("postId", "==", itemId)),
         (snap) => {
           setComments(snap.size);
-
           setCommentList(
             snap.docs.map((d) => ({
               id: d.id,
@@ -1239,7 +1760,7 @@ function MediaCard({ post }) {
       unsub2 && unsub2();
       unsub3 && unsub3();
     };
-  }, [itemId]);
+  }, [itemId, isReel, user]);
 
   const handleLike = async () => {
     if (!user) {
@@ -1251,7 +1772,6 @@ function MediaCard({ post }) {
 
     if (isReel) {
       const ref = doc(db, "reelLikes", docId);
-
       if (liked) {
         await deleteDoc(ref);
       } else {
@@ -1262,7 +1782,6 @@ function MediaCard({ post }) {
       }
     } else {
       const ref = doc(db, "postlikes", docId);
-
       if (liked) {
         await deleteDoc(ref);
       } else {
@@ -1331,141 +1850,119 @@ function MediaCard({ post }) {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      {isReel ? (
-        <video
-          src={post.url}
-          controls
-          onPlay={handleView}
-          className="w-full max-h-[280px] sm:max-h-[380px] object-cover"
-        />
-      ) : (
-        <>
+    <>
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        {isReel ? (
+          <video
+            src={post.url}
+            controls
+            onPlay={handleView}
+            onClick={handleView}
+            className="w-full max-h-[280px] sm:max-h-[380px] object-cover cursor-pointer"
+          />
+        ) : (
           <img
             src={post.url}
+            alt=""
             onClick={() => {
               handleView();
-              setOpenImage(true);
+              setOpenPreview(true);
             }}
-            className="w-full max-h-[280px] sm:max-h-[380px] object-cover bg-gray-100 cursor-pointer"
-            alt=""
+            className="w-full max-h-[280px] sm:max-h-[380px] object-cover cursor-pointer"
           />
+        )}
 
-          {openImage && (
-            <div className="fixed inset-0 z-[99999] bg-white flex items-center justify-center">
-              <button
-                onClick={() => setOpenImage(false)}
-                className="absolute top-4 right-4 z-50 bg-black/70 text-white w-10 h-10 rounded-full flex items-center justify-center text-lg"
-              >
-                ✕
-              </button>
+        {post.title && (
+          <div className="px-4 pt-3">
+            <p className="text-sm sm:text-base text-gray-800 leading-6 break-words whitespace-pre-wrap">
+              {post.title}
+            </p>
+          </div>
+        )}
 
+        <div className="p-4">
+          <div className="flex justify-between text-sm text-gray-500">
+            <button
+              onClick={handleLike}
+              className={`flex gap-1 items-center ${
+                liked ? "text-red-500" : ""
+              }`}
+            >
+              <Heart size={17} fill={liked ? "currentColor" : "none"} />
+              {likes}
+            </button>
+
+            <div className="flex gap-1 items-center">
+              <Eye size={17} />
+              {views}
+            </div>
+
+            <button
+              onClick={() => setShowCommentBox(!showCommentBox)}
+              className="flex gap-1 items-center"
+            >
+              <MessageCircle size={17} />
+              {comments}
+            </button>
+          </div>
+
+          {showCommentBox && (
+            <div className="mt-3">
+              <div className="flex gap-2">
+                <input
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  className="flex-1 border px-3 py-2 rounded-lg text-sm"
+                  placeholder="Write comment..."
+                />
+                <button
+                  onClick={sendComment}
+                  className="bg-[#FF6B00] text-white px-4 rounded-lg"
+                >
+                  Send
+                </button>
+              </div>
+
+              <div className="mt-3 max-h-40 overflow-y-auto space-y-2">
+                {commentList.map((c) => (
+                  <div key={c.id} className="bg-gray-100 px-3 py-2 rounded-lg">
+                    <p className="text-xs font-semibold">{c.userName}</p>
+                    <p className="text-sm">{c.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {openPreview && (
+        <div className="fixed inset-0 z-[999] bg-black">
+          <button
+            onClick={() => setOpenPreview(false)}
+            className="absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md flex items-center justify-center text-white text-2xl"
+          >
+            ✕
+          </button>
+          <div className="w-full h-full flex items-center justify-center overflow-hidden">
+            {isReel ? (
+              <video
+                src={post.url}
+                controls
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain bg-black"
+              />
+            ) : (
               <img
                 src={post.url}
                 alt=""
-                className="max-w-full max-h-full object-contain"
+                className="w-full h-full object-contain bg-black select-none"
               />
-            </div>
-          )}
-        </>
-      )}
-
-      <div className="p-4">
-        {post.title && (
-          <p className="text-sm text-gray-800 leading-6 break-words whitespace-pre-wrap mb-3">
-            {post.title}
-          </p>
-        )}
-
-        <div className="flex justify-between text-sm text-gray-500">
-          <button
-            onClick={handleLike}
-            className={`flex gap-1 items-center ${liked ? "text-red-500" : ""}`}
-          >
-            <Heart size={17} fill={liked ? "currentColor" : "none"} />
-            {likes}
-          </button>
-
-          <div className="flex gap-1 items-center">
-            <Eye size={17} />
-            {views}
+            )}
           </div>
-
-          <button
-            onClick={() => setShowComments(!showComments)}
-            className="flex gap-1 items-center"
-          >
-            <MessageCircle size={17} />
-            {comments}
-          </button>
         </div>
-
-        {showComments && (
-          <div className="mt-4 border-t pt-3">
-            <div className="flex gap-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Write comment..."
-                className="flex-1 border rounded-lg px-3 py-2 text-sm"
-              />
-
-              <button
-                onClick={sendComment}
-                className="bg-[#FF6B00] text-white px-4 rounded-lg text-sm"
-              >
-                Send
-              </button>
-            </div>
-
-            <div className="mt-3 max-h-40 overflow-y-auto space-y-2">
-              {commentList.map((c) => (
-                <div key={c.id} className="bg-gray-100 px-3 py-2 rounded-lg">
-                  <p className="text-xs font-semibold">{c.userName}</p>
-                  <p className="text-sm">{c.text}</p>
-                </div>
-              ))}
-
-              {commentList.length === 0 && (
-                <p className="text-xs text-gray-400">No comments yet</p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children }) {
-  return (
-    <div className="mt-5">
-      <h2 className="text-sm font-bold text-gray-800 mb-3 px-1">{title}</h2>
-      {children}
-    </div>
-  );
-}
-
-function StatCard({ icon: Icon, label, value }) {
-  return (
-    <div className="bg-gray-50 rounded-xl p-2 text-center border border-gray-100">
-      <Icon size={16} className="mx-auto text-[#FF6B00] mb-1" />
-      <p className="text-xs font-semibold text-gray-800">{value}</p>
-      <p className="text-[10px] text-gray-500">{label}</p>
-    </div>
-  );
-}
-
-function AchievementRow({ title, g, s, b }) {
-  const formattedTitle =
-    title?.charAt(0).toUpperCase() + title?.slice(1).toLowerCase();
-
-  return (
-    <div className="grid grid-cols-4 py-2 border-b last:border-none text-sm">
-      <div className="font-medium text-gray-700">{formattedTitle}</div>
-      <div className="text-yellow-500">Gold {g}</div>
-      <div className="text-gray-500">Silver {s}</div>
-      <div className="text-orange-700">Bronze {b}</div>
-    </div>
+      )}
+    </>
   );
 }

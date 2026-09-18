@@ -11,7 +11,21 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../../firebase";
 
-import { ChevronDown, Filter, X } from "lucide-react";
+import { ChevronDown, Filter, X, Plus, Trash2 } from "lucide-react";
+
+const newExtraId = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `ex_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+const sumExtras = (extras = []) =>
+  (Array.isArray(extras) ? extras : []).reduce(
+    (sum, row) => sum + Number(row?.amount || 0),
+    0,
+  );
+
+const computeMonthTotal = (baseFee, extras = []) =>
+  Number(baseFee || 0) + sumExtras(extras);
 const MONTHS = [
   { label: "January", value: "01" },
   { label: "February", value: "02" },
@@ -54,6 +68,8 @@ const FeesDetailsPage = () => {
   const [selectedSport, setSelectedSport] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editData, setEditData] = useState({
+    baseFee: "",
+    extras: [],
     totalFee: "",
     paidAmount: "",
     paidDate: "",
@@ -196,6 +212,11 @@ const FeesDetailsPage = () => {
   }, []);
   /* ================= EDIT STUDENT ================= */
   const handleEditStudent = (student, sport) => {
+    if (!selectedMonth || !selectedYear) {
+      alert("Please select month and year first!");
+      return;
+    }
+
     setSelectedStudent(student);
     setSelectedSport(sport);
 
@@ -208,10 +229,27 @@ const FeesDetailsPage = () => {
       );
     });
 
-    setEditData({
-      totalFee:
-        existingFee?.totalAmount ?? student.monthlyFee ?? sport.fee ?? 0,
+    const extras = Array.isArray(existingFee?.extras)
+      ? existingFee.extras.map((e) => ({
+          id: e.id || newExtraId(),
+          note: e.note || e.label || "",
+          amount: String(e.amount ?? ""),
+        }))
+      : [];
+    const baseFee = String(
+      existingFee?.baseFee ??
+        (existingFee?.totalAmount != null && extras.length
+          ? Number(existingFee.totalAmount) - sumExtras(extras)
+          : sport.fee ?? student.monthlyFee ?? 0),
+    );
+    const totalFee = String(
+      existingFee?.totalAmount ?? computeMonthTotal(baseFee, extras),
+    );
 
+    setEditData({
+      baseFee,
+      extras,
+      totalFee,
       paidAmount: existingFee?.paidAmount ?? "",
       paidDate: existingFee?.paidDate ?? "",
       feeWaived: existingFee?.feeWaived ?? false,
@@ -219,6 +257,7 @@ const FeesDetailsPage = () => {
     });
     setShowEditModal(true);
   };
+
   const updateStudentPayment = async () => {
     if (!selectedStudent || !selectedSport) return;
 
@@ -227,18 +266,27 @@ const FeesDetailsPage = () => {
       return;
     }
 
-    const { totalFee, paidAmount, paidDate, feeWaived, waiveReason } = editData;
-    const finalTotal = feeWaived ? 0 : Number(totalFee);
-    const finalPaid = feeWaived ? 0 : Number(paidAmount);
+    const extrasClean = (editData.extras || [])
+      .map((e) => ({
+        id: e.id || newExtraId(),
+        note: String(e.note || "").trim(),
+        amount: Number(e.amount || 0),
+      }))
+      .filter((e) => e.amount > 0 || e.note);
+
+    const baseFee = Number(editData.baseFee || 0);
+    const feeWaived = Boolean(editData.feeWaived);
+    const finalTotal = feeWaived ? 0 : computeMonthTotal(baseFee, extrasClean);
+    const finalPaid = feeWaived ? 0 : Number(editData.paidAmount || 0);
+    const paidDate = feeWaived ? "" : editData.paidDate || "";
+
     try {
-      /* update student monthly fee */
       await updateDoc(doc(db, "trainerstudents", selectedStudent.id), {
-        monthlyFee: Number(totalFee),
+        monthlyFee: baseFee,
       });
 
       const monthKey = `${selectedYear}-${selectedMonth}`;
 
-      /* check existing fee record */
       const existingFee = institutesFees.find(
         (f) =>
           f.studentId === selectedStudent.id &&
@@ -247,28 +295,28 @@ const FeesDetailsPage = () => {
           f.month === monthKey,
       );
 
+      const payload = {
+        baseFee: feeWaived ? 0 : baseFee,
+        extras: feeWaived ? [] : extrasClean,
+        totalAmount: finalTotal,
+        paidAmount: finalPaid,
+        paidDate,
+        feeWaived,
+        waiveReason: feeWaived ? editData.waiveReason || "" : "",
+        updatedAt: serverTimestamp(),
+      };
+
       if (existingFee) {
-        await updateDoc(doc(db, "institutesFees", existingFee.id), {
-          totalAmount: finalTotal,
-          paidAmount: finalPaid,
-          paidDate: feeWaived ? "" : paidDate,
-          feeWaived,
-          waiveReason: feeWaived ? waiveReason : "",
-          updatedAt: serverTimestamp(),
-        });
+        await updateDoc(doc(db, "institutesFees", existingFee.id), payload);
       } else {
         await setDoc(doc(collection(db, "institutesFees")), {
           studentId: selectedStudent.id,
           trainerId: instituteId,
           category: selectedSport.category,
           subCategory: selectedSport.subCategory,
-          totalAmount: finalTotal,
-          paidAmount: finalPaid,
-          paidDate: feeWaived ? "" : paidDate,
-          feeWaived,
-          waiveReason: feeWaived ? waiveReason : "",
           month: monthKey,
           createdAt: serverTimestamp(),
+          ...payload,
         });
       }
 
@@ -310,13 +358,6 @@ const FeesDetailsPage = () => {
   const totalPending = totalAmount - totalPaid;
 
   const getFeeData = (student, sport) => {
-    console.log(
-      "CHECK",
-      student.id,
-      sport.category,
-      sport.subCategory,
-      `${selectedYear}-${selectedMonth}`,
-    );
     const feeRecord = institutesFees.find(
       (f) =>
         f.studentId === student.id &&
@@ -332,15 +373,22 @@ const FeesDetailsPage = () => {
         pending: 0,
         paidDate: "-",
         reason: feeRecord.waiveReason || "Fee Waived",
+        extras: [],
+        extraTotal: 0,
       };
     }
 
-    const total = Number(feeRecord?.totalAmount ?? sport.fee ?? 0);
+    const extras = Array.isArray(feeRecord?.extras) ? feeRecord.extras : [];
+    const extraTotal = sumExtras(extras);
+    const total = Number(
+      feeRecord?.totalAmount ??
+        computeMonthTotal(feeRecord?.baseFee ?? sport.fee ?? 0, extras),
+    );
     const paid = Number(feeRecord?.paidAmount || 0);
     const pending = total - paid;
     const paidDate = feeRecord?.paidDate || "-";
 
-    return { total, paid, pending, paidDate, reason: "" };
+    return { total, paid, pending, paidDate, reason: "", extras, extraTotal };
   };
   /* ================= MAIN ROOT DIV ================= */
   return (
@@ -499,6 +547,11 @@ const FeesDetailsPage = () => {
                   </div>
 
                   <div className="text-center">
+                    {data.extraTotal > 0 ? (
+                      <span className="block text-[10px] font-semibold text-[#FF6A00] mb-0.5">
+                        +₹{data.extraTotal} extras
+                      </span>
+                    ) : null}
                     {data.pending === 0 ? (
                       <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
                         Paid
@@ -564,20 +617,27 @@ const FeesDetailsPage = () => {
                   </div>
                 </div>
 
-                <div className="mt-3 flex justify-between items-center">
+                <div className="mt-3 flex justify-between items-center gap-2">
                   <span className="text-xs text-gray-500">
                     {data.paidDate !== "-" ? data.paidDate : "Not Paid"}
                   </span>
 
-                  {data.pending === 0 ? (
-                    <span className="text-[11px] px-2 py-1 rounded-full bg-green-100 text-green-700">
-                      Paid
-                    </span>
-                  ) : (
-                    <span className="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-600">
-                      Pending
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {data.extraTotal > 0 ? (
+                      <span className="text-[11px] px-2 py-1 rounded-full bg-orange-100 text-[#E85D04] font-semibold">
+                        +₹{data.extraTotal} extras
+                      </span>
+                    ) : null}
+                    {data.pending === 0 ? (
+                      <span className="text-[11px] px-2 py-1 rounded-full bg-green-100 text-green-700">
+                        Paid
+                      </span>
+                    ) : (
+                      <span className="text-[11px] px-2 py-1 rounded-full bg-red-100 text-red-600">
+                        Pending
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -654,11 +714,22 @@ const FeesDetailsPage = () => {
       </div>
       {showEditModal && (
         <ModalForm
-          title="Update Fee Details"
+          title="Update fee details"
+          studentName={`${selectedStudent?.firstName || ""} ${selectedStudent?.lastName || ""}`.trim()}
+          sportLabel={`${selectedSport?.category || ""} · ${selectedSport?.subCategory || ""}`}
+          monthLabel={
+            selectedMonth
+              ? `${MONTHS.find((m) => m.value === selectedMonth)?.label || selectedMonth} ${selectedYear}`
+              : selectedYear
+          }
           data={editData}
           setData={setEditData}
           onSave={updateStudentPayment}
-          onClose={() => setShowEditModal(false)}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedStudent(null);
+            setSelectedSport(null);
+          }}
         />
       )}
     </div>
@@ -675,73 +746,270 @@ const StatCard = ({ title, value }) => (
   </div>
 );
 
-const ModalForm = ({ title, data, setData, onSave, onClose }) => (
+const ModalForm = ({
+  title,
+  studentName,
+  sportLabel,
+  monthLabel,
+  data,
+  setData,
+  onSave,
+  onClose,
+}) => (
   <div
-    className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center p-4"
+    className="fixed inset-0 z-[9999] bg-black/45 flex items-end sm:items-center justify-center p-0 sm:p-4"
     onClick={onClose}
   >
     <div
-      className="bg-white p-6 rounded-xl w-full max-w-md space-y-4 shadow-2xl"
+      className="bg-white w-full sm:max-w-md max-h-[min(92dvh,720px)] rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col"
       onClick={(e) => e.stopPropagation()}
     >
-      <h2 className="text-xl font-semibold">{title}</h2>
+      <div className="px-5 pt-4 pb-3 border-b border-slate-100 shrink-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+            {studentName ? (
+              <p className="text-sm font-semibold text-slate-800 mt-1 truncate">
+                {studentName}
+              </p>
+            ) : null}
+            {sportLabel ? (
+              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                {sportLabel}
+              </p>
+            ) : null}
+            {monthLabel ? (
+              <p className="text-xs text-[#FF6A00] font-medium mt-1">
+                Period: {monthLabel}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+      </div>
 
-      <input
-        type="number"
-        placeholder="Total Fee"
-        value={data.totalFee}
-        onChange={(e) => setData({ ...data, totalFee: e.target.value })}
-        className="border w-full p-2 rounded"
-      />
+      <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1 min-h-0">
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+            Monthly fee (₹)
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="0"
+            value={data.baseFee}
+            onChange={(e) => {
+              const baseFee = e.target.value.replace(/[^\d]/g, "");
+              setData({
+                ...data,
+                baseFee,
+                totalFee: String(computeMonthTotal(baseFee, data.extras || [])),
+              });
+            }}
+            className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00]"
+          />
+        </label>
 
-      <input
-        type="number"
-        placeholder="Paid Amount"
-        value={data.paidAmount}
-        onChange={(e) => setData({ ...data, paidAmount: e.target.value })}
-        className="border w-full p-2 rounded"
-      />
+        <div className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3.5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Extra fees</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                e.g. Game kit ₹200 — shown when student pays
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const extras = [
+                  ...(data.extras || []),
+                  { id: newExtraId(), note: "", amount: "" },
+                ];
+                setData({
+                  ...data,
+                  extras,
+                  totalFee: String(computeMonthTotal(data.baseFee, extras)),
+                });
+              }}
+              className="shrink-0 min-h-[36px] px-3 rounded-lg bg-[#FF6A00] text-white text-xs font-semibold inline-flex items-center gap-1"
+            >
+              <Plus size={14} />
+              Add
+            </button>
+          </div>
 
-      {data.feeWaived && (
-        <input
-          type="text"
-          placeholder="Reason (Medical Leave / Vacation)"
-          value={data.waiveReason}
-          onChange={(e) => setData({ ...data, waiveReason: e.target.value })}
-          className="border w-full p-2 rounded"
-        />
-      )}
+          {(data.extras || []).length === 0 ? (
+            <p className="text-xs text-slate-500 text-center py-2">
+              No extra fees for this month
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {(data.extras || []).map((row, idx) => (
+                <div
+                  key={row.id || idx}
+                  className="rounded-xl bg-white border border-slate-200 p-2.5 space-y-2"
+                >
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 min-h-[42px] rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#FF6A00]"
+                      placeholder="Note (e.g. Game kit)"
+                      value={row.note || ""}
+                      onChange={(e) => {
+                        const extras = (data.extras || []).map((ex, i) =>
+                          i === idx ? { ...ex, note: e.target.value } : ex,
+                        );
+                        setData({ ...data, extras });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const extras = (data.extras || []).filter(
+                          (_, i) => i !== idx,
+                        );
+                        setData({
+                          ...data,
+                          extras,
+                          totalFee: String(
+                            computeMonthTotal(data.baseFee, extras),
+                          ),
+                        });
+                      }}
+                      className="w-10 h-[42px] rounded-lg border border-red-100 text-red-500 flex items-center justify-center"
+                      aria-label="Remove"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="w-full min-h-[42px] rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#FF6A00]"
+                    placeholder="Amount ₹"
+                    value={row.amount ?? ""}
+                    onChange={(e) => {
+                      const amount = e.target.value.replace(/[^\d]/g, "");
+                      const extras = (data.extras || []).map((ex, i) =>
+                        i === idx ? { ...ex, amount } : ex,
+                      );
+                      setData({
+                        ...data,
+                        extras,
+                        totalFee: String(
+                          computeMonthTotal(data.baseFee, extras),
+                        ),
+                      });
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
-      <input
-        type="date"
-        value={data.paidDate}
-        onChange={(e) => setData({ ...data, paidDate: e.target.value })}
-        className="border w-full p-2 rounded"
-      />
+          <div className="flex items-center justify-between pt-1 border-t border-orange-100/80">
+            <span className="text-xs font-medium text-slate-600">
+              Month total
+            </span>
+            <span className="text-base font-bold text-[#FF6A00]">
+              ₹
+              {Number(
+                data.totalFee ||
+                  computeMonthTotal(data.baseFee, data.extras || []),
+              ).toLocaleString("en-IN")}
+            </span>
+          </div>
+        </div>
 
-      <button
-        onClick={() =>
-          setData({
-            ...data,
-            feeWaived: true,
-            totalFee: 0,
-            paidAmount: 0,
-            paidDate: "",
-          })
-        }
-        className="bg-gray-200 px-3 py-1 rounded text-sm"
-      >
-        Fee Waived
-      </button>
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+            Paid amount (₹)
+          </span>
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="0"
+            value={data.paidAmount}
+            onChange={(e) =>
+              setData({
+                ...data,
+                paidAmount: e.target.value.replace(/[^\d]/g, ""),
+              })
+            }
+            className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00]"
+          />
+        </label>
 
-      <div className="flex justify-end gap-3">
-        <button onClick={onClose}>Cancel</button>
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+            Paid date
+          </span>
+          <input
+            type="date"
+            value={data.paidDate}
+            onChange={(e) => setData({ ...data, paidDate: e.target.value })}
+            className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00]"
+          />
+        </label>
 
+        {data.feeWaived ? (
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700 mb-1.5 block">
+              Waiver reason
+            </span>
+            <input
+              type="text"
+              placeholder="Medical leave / vacation / other"
+              value={data.waiveReason}
+              onChange={(e) =>
+                setData({ ...data, waiveReason: e.target.value })
+              }
+              className="w-full min-h-[48px] rounded-xl border border-slate-200 px-4 text-[15px] outline-none focus:border-[#FF6A00]"
+            />
+          </label>
+        ) : null}
+      </div>
+
+      <div className="px-5 pt-3 pb-5 border-t border-slate-100 space-y-2 shrink-0">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[48px] rounded-xl border border-slate-200 text-sm font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="min-h-[48px] rounded-xl bg-[#FF6A00] text-white text-sm font-semibold"
+          >
+            Save payment
+          </button>
+        </div>
         <button
-          onClick={onSave}
-          className="bg-orange-500 text-white px-4 py-2 rounded"
+          type="button"
+          onClick={() =>
+            setData({
+              ...data,
+              feeWaived: true,
+              baseFee: 0,
+              extras: [],
+              totalFee: 0,
+              paidAmount: 0,
+              paidDate: "",
+            })
+          }
+          className="w-full min-h-[44px] rounded-xl border border-red-200 text-red-600 text-sm font-semibold"
         >
-          Save
+          Waive fee
         </button>
       </div>
     </div>

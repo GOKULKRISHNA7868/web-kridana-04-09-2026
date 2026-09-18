@@ -9,6 +9,10 @@ import {
   addDoc,
   serverTimestamp,
   getDoc,
+  query,
+  where,
+  getDocs,
+  updateDoc,
 } from "firebase/firestore";
 
 const PaymentSuccess = () => {
@@ -81,6 +85,11 @@ const PaymentSuccess = () => {
       }
 
       for (const item of state.items) {
+        const payNow = Number(item.amount || 0);
+        const itemTotal = Number(item.totalAmount ?? item.amount ?? 0);
+        const extras = Array.isArray(item.extras) ? item.extras : [];
+        const baseFee = Number(item.baseFee ?? item.amount ?? 0);
+
         let data = {
           category: item.category || "",
           subCategory: item.subCategory || "",
@@ -88,8 +97,10 @@ const PaymentSuccess = () => {
           trainerId,
           trainerName,
           month: state.month || "",
-          paidAmount: item.amount || 0,
-          totalAmount: state.totalAmount || 0,
+          baseFee,
+          extras,
+          paidAmount: payNow,
+          totalAmount: itemTotal,
           feeWaived: false,
           waiveReason: "",
           paymentMethod: "online",
@@ -109,7 +120,7 @@ const PaymentSuccess = () => {
         }
         const safeData = cleanData(data);
 
-        // ✅ Save per student
+        // Receipt under student
         await setDoc(
           doc(
             db,
@@ -121,8 +132,46 @@ const PaymentSuccess = () => {
           safeData,
         );
 
-        // ✅ Global collection
-        await addDoc(collection(db, "institutesFees"), safeData);
+        // Upsert institutesFees for this month + sport (keep extras)
+        const feeQuery = query(
+          collection(db, "institutesFees"),
+          where("studentId", "==", studentId),
+          where("month", "==", state.month || ""),
+          where("category", "==", item.category || ""),
+          where("subCategory", "==", item.subCategory || ""),
+        );
+        const existing = await getDocs(feeQuery);
+
+        if (!existing.empty) {
+          const feeDoc = existing.docs[0];
+          const prev = feeDoc.data();
+          const prevPaid = Number(prev.paidAmount || 0);
+          const nextPaid = prevPaid + payNow;
+          const keptTotal = Number(
+            prev.totalAmount ?? itemTotal ?? payNow,
+          );
+          await updateDoc(feeDoc.ref, {
+            paidAmount: nextPaid,
+            totalAmount: keptTotal,
+            baseFee: prev.baseFee ?? baseFee,
+            extras: Array.isArray(prev.extras) ? prev.extras : extras,
+            paidDate: data.paidDate,
+            paymentMethod: "online",
+            paymentStatus: nextPaid >= keptTotal ? "paid" : "partial",
+            orderId: data.orderId || prev.orderId || "",
+            paymentId: data.paymentId || prev.paymentId || "",
+            utrNumber: data.utrNumber || prev.utrNumber || "",
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await addDoc(
+            collection(db, "institutesFees"),
+            cleanData({
+              ...safeData,
+              paymentStatus: "paid",
+            }),
+          );
+        }
       }
 
       // 🚀 AFTER SAVE → NAVIGATE

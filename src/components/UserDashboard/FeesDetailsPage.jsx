@@ -1,5 +1,11 @@
-import React, { useEffect, useState } from "react";
-import { ArrowLeft, CalendarDays, IndianRupee } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  IndianRupee,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 import { auth, db } from "../../firebase";
 import {
   doc,
@@ -12,10 +18,75 @@ import {
 import { onAuthStateChanged } from "firebase/auth";
 import { useSelectedStudent } from "../../context/SelectedStudentContext";
 import { useNavigate } from "react-router-dom";
+
+const sumExtras = (extras = []) =>
+  (Array.isArray(extras) ? extras : []).reduce(
+    (sum, row) => sum + Number(row?.amount || 0),
+    0,
+  );
+
+/** Resolve what a student owes for one sport in one month */
+const resolveCharge = (sport, record) => {
+  if (record?.feeWaived) {
+    return {
+      baseFee: 0,
+      extras: [],
+      extraTotal: 0,
+      total: 0,
+      paid: 0,
+      due: 0,
+      isPaid: true,
+      waived: true,
+      reason: record.waiveReason || "Fee waived",
+    };
+  }
+
+  const extras = Array.isArray(record?.extras) ? record.extras : [];
+  const extraTotal = sumExtras(extras);
+
+  if (!record) {
+    const baseFee = Number(sport?.fee || 0);
+    return {
+      baseFee,
+      extras: [],
+      extraTotal: 0,
+      total: baseFee,
+      paid: 0,
+      due: baseFee,
+      isPaid: false,
+      waived: false,
+      reason: "",
+    };
+  }
+
+  const baseFee = Number(
+    record.baseFee ??
+      (record.totalAmount != null
+        ? Number(record.totalAmount) - extraTotal
+        : sport?.fee ?? 0),
+  );
+  const total = Number(record.totalAmount ?? baseFee + extraTotal);
+  const paid = Number(record.paidAmount || 0);
+  const due = Math.max(0, total - paid);
+
+  return {
+    baseFee,
+    extras,
+    extraTotal,
+    total,
+    paid,
+    due,
+    isPaid: due <= 0,
+    waived: false,
+    reason: "",
+  };
+};
+
+const formatINR = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+
 const PaymentOverview = ({ onBack }) => {
   const [student, setStudent] = useState(null);
   const [loading, setLoading] = useState(true);
-
   const [showReminder, setShowReminder] = useState(false);
   const [generatedMonths, setGeneratedMonths] = useState([]);
   const { selectedStudentUid } = useSelectedStudent();
@@ -26,69 +97,47 @@ const PaymentOverview = ({ onBack }) => {
   const [feeHistory, setFeeHistory] = useState([]);
   const navigate = useNavigate();
 
-  const filteredHistory = feeHistory.filter(
-    (f) =>
-      (!selectedCategory || f.category === selectedCategory) &&
-      (!selectedSubCategory || f.subCategory === selectedSubCategory),
-  );
+  const sports = useMemo(() => {
+    const list = Array.isArray(student?.sports) ? student.sports : [];
+    return list.filter(
+      (s) =>
+        (!selectedCategory || s.category === selectedCategory) &&
+        (!selectedSubCategory || s.subCategory === selectedSubCategory),
+    );
+  }, [student, selectedCategory, selectedSubCategory]);
 
-  const totalPaid = filteredHistory.reduce(
-    (sum, f) => sum + Number(f.paidAmount || 0),
-    0,
-  );
-  const sortedMonths = [...generatedMonths].sort((a, b) => {
-    const aPaid = student.sports.every((sport) =>
-      feeHistory.find(
-        (f) =>
-          f.month === a.key &&
-          f.category === sport.category &&
-          f.subCategory === sport.subCategory &&
-          Number(f.paidAmount) > 0,
-      ),
+  const findRecord = (monthKey, sport) =>
+    feeHistory.find(
+      (f) =>
+        f.month === monthKey &&
+        f.category === sport.category &&
+        f.subCategory === sport.subCategory,
     );
 
-    const bPaid = student.sports.every((sport) =>
-      feeHistory.find(
-        (f) =>
-          f.month === b.key &&
-          f.category === sport.category &&
-          f.subCategory === sport.subCategory &&
-          Number(f.paidAmount) > 0,
-      ),
-    );
-
-    if (aPaid === bPaid) {
-      return b.key.localeCompare(a.key);
-    }
-
-    return aPaid ? 1 : -1;
-  });
-  const [processing, setProcessing] = useState(false);
-  const pendingMonths = sortedMonths.filter((month) => {
-    return student.sports.some((sport) => {
-      const rec = feeHistory.find(
-        (f) =>
-          f.month === month.key &&
-          f.category === sport.category &&
-          f.subCategory === sport.subCategory,
-      );
-
-      return !(rec && Number(rec.paidAmount) > 0);
+  const sortedMonths = useMemo(() => {
+    if (!student?.sports?.length) return [...generatedMonths].reverse();
+    return [...generatedMonths].sort((a, b) => {
+      const aDue = student.sports.some((sport) => {
+        const c = resolveCharge(sport, findRecord(a.key, sport));
+        return !c.isPaid && c.due > 0;
+      });
+      const bDue = student.sports.some((sport) => {
+        const c = resolveCharge(sport, findRecord(b.key, sport));
+        return !c.isPaid && c.due > 0;
+      });
+      if (aDue === bDue) return b.key.localeCompare(a.key);
+      return aDue ? -1 : 1;
     });
-  }).length;
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
-  const API_URL =
-    window.location.hostname === "localhost"
-      ? "http://localhost:5000"
-      : "https://kridana-razorpay-backend.onrender.com";
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [generatedMonths, student, feeHistory]);
+
+  const pendingMonths = sortedMonths.filter((month) =>
+    sports.some((sport) => {
+      const c = resolveCharge(sport, findRecord(month.key, sport));
+      return !c.isPaid && c.due > 0;
+    }),
+  ).length;
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -97,22 +146,17 @@ const PaymentOverview = ({ onBack }) => {
       }
       setUser(u);
     });
-
     return () => unsub();
   }, []);
+
   useEffect(() => {
     if (!activeStudentId) return;
 
     const fetchStudentData = async () => {
       setLoading(true);
-
       try {
-        // =========================
-        // Fetch student profile
-        // =========================
         const studentRef = doc(db, "students", activeStudentId);
         const snap = await getDoc(studentRef);
-
         if (!snap.exists()) {
           setLoading(false);
           return;
@@ -121,45 +165,20 @@ const PaymentOverview = ({ onBack }) => {
         const studentData = snap.data();
         setStudent(studentData);
 
-        // =========================
-        // Fetch payment history
-        // =========================
-        const feesRef = collection(db, "studentFees");
-
-        const q = query(feesRef, where("studentId", "==", activeStudentId));
-
-        const feesSnap = await getDocs(q);
-
-        console.log(
-          "Fetched Fees:",
-          feesSnap.docs.map((d) => d.data()),
+        const feesSnap = await getDocs(
+          query(
+            collection(db, "studentFees"),
+            where("studentId", "==", activeStudentId),
+          ),
         );
-
-        const history = [];
-        let paidSum = 0;
-
-        feesSnap.forEach((doc) => {
-          const data = doc.data();
-
-          history.push(data);
-          paidSum += Number(data.paidAmount || 0);
-        });
-
+        const history = feesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setFeeHistory(history);
 
-        // =========================
-        // Generate months
-        // =========================
-        // =========================
-        // Generate months
-        // =========================
-        if (studentData.createdAt) {
+        if (studentData.createdAt?.toDate) {
           const startDate = studentData.createdAt.toDate();
           const today = new Date();
-
           const monthsArray = [];
-
-          let tempDate = new Date(
+          const tempDate = new Date(
             startDate.getFullYear(),
             startDate.getMonth(),
             1,
@@ -168,58 +187,36 @@ const PaymentOverview = ({ onBack }) => {
           while (
             tempDate.getFullYear() < today.getFullYear() ||
             (tempDate.getFullYear() === today.getFullYear() &&
-              tempDate.getMonth() <= today.getMonth()) // ✅ include current month
+              tempDate.getMonth() <= today.getMonth())
           ) {
             const monthName = tempDate.toLocaleString("default", {
               month: "long",
             });
-
             const year = tempDate.getFullYear();
-            const monthKey = `${year}-${String(
-              tempDate.getMonth() + 1,
-            ).padStart(2, "0")}`;
-
-            const isPaid = history.some(
-              (item) =>
-                item.month ===
-                `${year}-${String(tempDate.getMonth() + 1).padStart(2, "0")}`,
-            );
-
+            const monthKey = `${year}-${String(tempDate.getMonth() + 1).padStart(2, "0")}`;
             monthsArray.push({
               month: monthName,
               year,
               key: monthKey,
-              paid: isPaid,
             });
-
             tempDate.setMonth(tempDate.getMonth() + 1);
           }
-
           setGeneratedMonths(monthsArray);
         }
 
-        // =========================
-        // Reminder logic
-        // =========================
         if (studentData.monthlyDate) {
           const today = new Date().getDate();
           const dueDay = Number(studentData.monthlyDate);
-
-          if (today >= dueDay - 5 && today < dueDay) {
-            setShowReminder(true);
-          } else {
-            setShowReminder(false);
-          }
+          setShowReminder(today >= dueDay - 5 && today < dueDay);
         }
       } catch (err) {
         console.error("Error fetching payment:", err);
       }
-
       setLoading(false);
     };
 
     fetchStudentData();
-  }, [activeStudentId, selectedCategory, selectedSubCategory]);
+  }, [activeStudentId]);
 
   const goBack = () => {
     if (typeof onBack === "function") {
@@ -229,17 +226,44 @@ const PaymentOverview = ({ onBack }) => {
     navigate(-1);
   };
 
+  const buildPayItem = (sport, charge) => ({
+    category: sport.category,
+    subCategory: sport.subCategory,
+    amount: charge.due,
+    baseFee: charge.baseFee,
+    extras: charge.extras,
+    extraTotal: charge.extraTotal,
+    totalAmount: charge.total,
+  });
+
+  const goToPayment = (monthKey, items) => {
+    const totalAmount = items.reduce((s, i) => s + Number(i.amount || 0), 0);
+    if (totalAmount <= 0) return;
+    navigate("/PaymentSelection", {
+      state: {
+        paymentType: items.length > 1 ? "multiple" : "single",
+        studentId: activeStudentId,
+        studentName: `${student.firstName || ""} ${student.lastName || ""}`.trim(),
+        month: monthKey,
+        items,
+        totalAmount,
+        student,
+      },
+    });
+  };
+
   if (loading) {
     return (
-      <div className="h-full min-h-[240px] flex items-center justify-center text-sm text-gray-500">
+      <div className="h-full min-h-[240px] flex items-center justify-center text-sm text-slate-500">
         Loading fees...
       </div>
     );
   }
+
   if (!student) {
     return (
       <div className="h-full min-h-[240px] flex flex-col items-center justify-center px-6 text-center">
-        <p className="text-sm font-semibold text-gray-700">No fee data found</p>
+        <p className="text-sm font-semibold text-slate-700">No fee data found</p>
         <button
           type="button"
           onClick={goBack}
@@ -251,450 +275,318 @@ const PaymentOverview = ({ onBack }) => {
     );
   }
 
-  let monthlyFee = 0;
-
-  if (selectedSubCategory) {
-    const sport = student.sports.find(
-      (s) => s.subCategory === selectedSubCategory,
-    );
-
-    monthlyFee = Number(sport?.fee || 0);
-  } else {
-    monthlyFee = (student.sports || []).reduce(
-      (sum, s) => sum + Number(s.fee || 0),
-      0,
-    );
-  }
   let expectedTotalFee = 0;
-
-  generatedMonths.forEach((m) => {
-    student.sports.forEach((sport) => {
-      const record = feeHistory.find(
-        (f) =>
-          f.month?.trim() === m.key?.trim() &&
-          f.category?.trim().toLowerCase() ===
-            sport.category?.trim().toLowerCase() &&
-          f.subCategory?.trim().toLowerCase() ===
-            sport.subCategory?.trim().toLowerCase(),
-      );
-      // If record exists AND paidAmount = 0 AND reason exists → skip fee
-      if (record && Number(record.paidAmount) === 0 && record.reason) {
-        return;
-      }
-
-      expectedTotalFee += Number(sport.fee || 0);
-    });
-  });
   let pendingFee = 0;
+  let totalPaid = 0;
 
-  generatedMonths.forEach((m) => {
-    student.sports.forEach((sport) => {
-      const record = feeHistory.find(
-        (f) =>
-          f.month === m.key &&
-          f.category === sport.category &&
-          f.subCategory === sport.subCategory,
-      );
-
-      // If record exists (even if amount is 0) → treat as handled
-      if (record) return;
-
-      // No record → unpaid
-      pendingFee += Number(sport.fee || 0);
+  sortedMonths.forEach((m) => {
+    sports.forEach((sport) => {
+      const c = resolveCharge(sport, findRecord(m.key, sport));
+      if (c.waived) return;
+      expectedTotalFee += c.total;
+      pendingFee += c.due;
+      totalPaid += c.paid;
     });
   });
 
   const categories = [
-    ...new Set((student?.sports || []).map((s) => s.category)),
+    ...new Set((student.sports || []).map((s) => s.category).filter(Boolean)),
   ];
-
   const subCategories = [
     ...new Set(
-      (student?.sports || [])
+      (student.sports || [])
         .filter((s) => !selectedCategory || s.category === selectedCategory)
-        .map((s) => s.subCategory),
+        .map((s) => s.subCategory)
+        .filter(Boolean),
     ),
   ];
 
+  const currentDuePreview = sports.reduce((sum, sport) => {
+    const latest = sortedMonths[0];
+    if (!latest) return sum;
+    return sum + resolveCharge(sport, findRecord(latest.key, sport)).due;
+  }, 0);
+
   return (
-    <div className="h-full min-h-0 bg-[#F4F6FB] flex flex-col overflow-hidden rounded-2xl">
+    <div className="h-full min-h-0 bg-[#F5F6F8] flex flex-col overflow-hidden rounded-2xl">
       <div
-        className="shrink-0 z-30 bg-white border-b border-orange-100 px-3 sm:px-4"
+        className="shrink-0 z-30 bg-white border-b border-slate-200 px-3 sm:px-5"
         style={{ paddingTop: "max(8px, env(safe-area-inset-top))" }}
       >
-        <div className="flex items-center gap-3 py-2.5">
+        <div className="flex items-center gap-3 py-2.5 max-w-4xl mx-auto w-full">
           <button
             type="button"
             onClick={goBack}
-            className="w-12 h-12 rounded-2xl bg-orange-50 text-[#FF6A00] flex items-center justify-center active:scale-95 shrink-0"
-            aria-label="Back to dashboard"
+            className="w-11 h-11 rounded-xl bg-orange-50 text-[#FF6A00] flex items-center justify-center shrink-0"
+            aria-label="Back"
           >
-            <ArrowLeft size={22} strokeWidth={2.4} />
+            <ArrowLeft size={20} />
           </button>
-
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
-              Fees Details
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 truncate">
+              Fees & payments
             </h1>
-            <p className="text-[11px] text-gray-400">
-              Monthly fees and payment history
+            <p className="text-xs text-slate-500">
+              Monthly fee, extras and pay now
             </p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-4">
-        <div className="grid grid-cols-2 gap-2.5 mb-4">
-          <select
-            value={selectedCategory}
-            onChange={(e) => {
-              setSelectedCategory(e.target.value);
-              setSelectedSubCategory("");
-            }}
-            className="bg-white border border-gray-200 rounded-xl px-3 min-h-[44px] text-[16px] sm:text-sm shadow-sm outline-none"
-          >
-            <option value="">All Categories</option>
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-5 py-4">
+        <div className="max-w-4xl mx-auto w-full space-y-4 pb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <select
+              value={selectedCategory}
+              onChange={(e) => {
+                setSelectedCategory(e.target.value);
+                setSelectedSubCategory("");
+              }}
+              className="bg-white border border-slate-200 rounded-xl px-3 min-h-[44px] text-sm outline-none focus:border-[#FF6A00]"
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedSubCategory}
+              onChange={(e) => setSelectedSubCategory(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3 min-h-[44px] text-sm outline-none focus:border-[#FF6A00]"
+            >
+              <option value="">All sports</option>
+              {subCategories.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            {categories.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-
-          <select
-            value={selectedSubCategory}
-            onChange={(e) => setSelectedSubCategory(e.target.value)}
-            className="bg-white border border-gray-200 rounded-xl px-3 min-h-[44px] text-[16px] sm:text-sm shadow-sm outline-none"
-          >
-            <option value="">All SubCategories</option>
-
-            {subCategories.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="rounded-3xl overflow-hidden shadow-md bg-gradient-to-br from-[#FF8A26] via-[#FF6A00] to-[#F4511E] text-white">
-          <div className="p-5">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center font-bold text-xl shrink-0">
-                {student.firstName?.charAt(0)}
+          {/* Summary hero */}
+          <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white p-5 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#FF6A00] flex items-center justify-center text-xl font-bold shrink-0">
+                {(student.firstName || "S").charAt(0)}
               </div>
-
-              <div className="min-w-0">
-                <p className="text-[11px] opacity-90">Student</p>
-                <h2 className="font-semibold text-[17px] truncate">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-slate-300">Student</p>
+                <h2 className="text-lg font-bold truncate">
                   {student.firstName} {student.lastName}
                 </h2>
-                <p className="text-xs mt-1 leading-5 text-white/90">
-                  {(student.sports || []).map((sport, i) => (
-                    <span key={i}>
-                      {sport.category} • {sport.subCategory}
-                      {i !== student.sports.length - 1 && (
-                        <>
-                          <br />
-                        </>
-                      )}
-                    </span>
-                  ))}
+                <p className="text-xs text-slate-400 mt-1">
+                  Due day: {student.monthlyDate || "—"}th of each month
+                </p>
+              </div>
+              <div className="sm:text-right">
+                <p className="text-xs text-slate-300 inline-flex items-center gap-1">
+                  <IndianRupee size={12} /> Pending overall
+                </p>
+                <p className="text-3xl font-bold text-[#FFB347] mt-0.5">
+                  {formatINR(pendingFee)}
                 </p>
               </div>
             </div>
+          </div>
 
-            <div className="mt-6 flex justify-between items-end gap-3">
+          <div className="grid grid-cols-3 gap-2.5">
+            <div className="rounded-xl bg-white border border-slate-200 p-3 text-center">
+              <p className="text-[11px] text-slate-500">Expected</p>
+              <p className="text-sm font-bold text-slate-900 mt-1">
+                {formatINR(expectedTotalFee)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-white border border-emerald-100 p-3 text-center">
+              <p className="text-[11px] text-emerald-600">Paid</p>
+              <p className="text-sm font-bold text-emerald-700 mt-1">
+                {formatINR(totalPaid)}
+              </p>
+            </div>
+            <div className="rounded-xl bg-white border border-orange-100 p-3 text-center">
+              <p className="text-[11px] text-[#FF6A00]">Open months</p>
+              <p className="text-sm font-bold text-[#FF6A00] mt-1">
+                {pendingMonths}
+              </p>
+            </div>
+          </div>
+
+          {showReminder ? (
+            <div className="rounded-xl bg-orange-50 border border-orange-200 px-4 py-3 flex items-start gap-3">
+              <AlertCircle className="text-[#FF6A00] shrink-0 mt-0.5" size={18} />
               <div>
-                <p className="text-xs opacity-90">Due Amount</p>
-                <h1 className="text-3xl sm:text-4xl font-bold mt-1">
-                  ₹{monthlyFee}
-                </h1>
-              </div>
-
-              <div className="text-right">
-                <p className="text-xs opacity-80 inline-flex items-center gap-1">
-                  <CalendarDays size={12} />
-                  To be paid
+                <p className="text-sm font-semibold text-slate-900">
+                  Payment reminder
                 </p>
-                <p className="text-sm font-medium mt-1">
-                  Every month {student.monthlyDate}th
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Fee is due on the {student.monthlyDate}th
+                  {currentDuePreview > 0
+                    ? ` · latest due ${formatINR(currentDuePreview)}`
+                    : ""}
                 </p>
               </div>
             </div>
-          </div>
-        </div>
+          ) : null}
 
-        <div className="mt-4 bg-[#FFF2E8] rounded-xl px-4 py-3 flex items-center gap-3 border border-orange-200">
-          <div className="w-9 h-9 rounded-full bg-[#FF6A00] text-white flex items-center justify-center text-sm font-semibold shrink-0">
-            {pendingMonths}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-800">
-              Pending month{pendingMonths === 1 ? "" : "s"}
-            </p>
-            <p className="text-xs text-gray-500">
-              {pendingMonths
-                ? "Some months still need payment"
-                : "All listed months are paid"}
-            </p>
-          </div>
-        </div>
+          <div className="space-y-3">
+            <h3 className="text-sm font-bold text-slate-900 px-0.5">
+              Month-wise details
+            </h3>
 
-        {/* PAYMENT HISTORY */}
-
-        <div className="mt-5 space-y-4 pb-6">
-          <p className="text-xs text-gray-500 mb-3">
-            Scroll to view previous months · Pending: {pendingMonths}
-          </p>
-
-          {generatedMonths.length === 0 && (
-            <p className="text-xs text-gray-400">No payments found</p>
-          )}
-
-          {sortedMonths.map((item, index) => (
-            <div
-              key={index}
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
-            >
-              {/* Month Header */}
-
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="font-semibold text-gray-800 text-lg">
-                  {item.month} {item.year}
-                </h3>
-
-                <p className="text-xs text-gray-400 mt-1">
-                  Due Date : {item.month} {student.monthlyDate}
-                </p>
+            {sortedMonths.length === 0 ? (
+              <div className="rounded-2xl bg-white border border-slate-200 p-8 text-center text-sm text-slate-500">
+                No fee months yet
               </div>
-
-              {(() => {
-                const records = student.sports.map((sport) => {
-                  const record = feeHistory.find(
-                    (f) =>
-                      f.month === item.key &&
-                      f.category === sport.category &&
-                      f.subCategory === sport.subCategory,
+            ) : (
+              sortedMonths.map((item) => {
+                const rows = sports.map((sport) => {
+                  const charge = resolveCharge(
+                    sport,
+                    findRecord(item.key, sport),
                   );
-
-                  return {
-                    category: sport.category,
-                    subCategory: sport.subCategory,
-                    amount: Number(sport.fee || 0),
-                    paidAmount: record?.paidAmount || 0,
-                    paid: record && Number(record.paidAmount) > 0,
-                    paymentDate:
-                      record?.paymentDate ||
-                      record?.paidAt ||
-                      record?.createdAt ||
-                      null,
-                  };
+                  return { sport, charge };
                 });
-
-                const handlePayNow = () => {
-                  const unpaidRecords = student.sports
-                    .map((sport) => {
-                      const record = feeHistory.find(
-                        (f) =>
-                          f.month === item.key &&
-                          f.category === sport.category &&
-                          f.subCategory === sport.subCategory,
-                      );
-
-                      if (record && Number(record.paidAmount) > 0) return null;
-
-                      return {
-                        category: sport.category,
-                        subCategory: sport.subCategory,
-                        amount: Number(sport.fee || 0),
-                      };
-                    })
-                    .filter(Boolean);
-
-                  const totalAmount = unpaidRecords.reduce(
-                    (sum, r) => sum + r.amount,
-                    0,
-                  );
-
-                  navigate("/PaymentSelection", {
-                    state: {
-                      paymentType: "multiple",
-                      studentId: activeStudentId,
-                      studentName: `${student.firstName} ${student.lastName}`,
-                      month: item.key,
-                      items: unpaidRecords,
-                      totalAmount,
-                      student,
-                    },
-                  });
-                };
+                const monthDue = rows.reduce(
+                  (s, r) => s + (r.charge.due || 0),
+                  0,
+                );
+                const unpaidRows = rows.filter(
+                  (r) => !r.charge.isPaid && r.charge.due > 0,
+                );
 
                 return (
-                  <>
-                    {records.map((r, i) => {
-                      const handleSinglePayment = () => {
-                        navigate("/PaymentSelection", {
-                          state: {
-                            paymentType: "single",
-                            studentId: activeStudentId,
-                            studentName: `${student.firstName} ${student.lastName}`,
-                            month: item.key,
-                            items: [
-                              {
-                                category: r.category,
-                                subCategory: r.subCategory,
-                                amount: r.amount,
-                              },
-                            ],
-                            totalAmount: r.amount,
-                            student,
-                          },
-                        });
-                      };
+                  <div
+                    key={item.key}
+                    className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm"
+                  >
+                    <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-50/60">
+                      <div>
+                        <h4 className="font-semibold text-slate-900">
+                          {item.month} {item.year}
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5 inline-flex items-center gap-1">
+                          <CalendarDays size={12} />
+                          Due {item.month} {student.monthlyDate || "—"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {monthDue > 0 ? (
+                          <>
+                            <span className="text-sm font-bold text-red-600">
+                              Due {formatINR(monthDue)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                goToPayment(
+                                  item.key,
+                                  unpaidRows.map(({ sport, charge }) =>
+                                    buildPayItem(sport, charge),
+                                  ),
+                                )
+                              }
+                              className="min-h-[40px] px-3.5 rounded-xl bg-[#FF6A00] text-white text-xs font-semibold"
+                            >
+                              Pay month
+                            </button>
+                          </>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">
+                            <CheckCircle2 size={14} />
+                            Settled
+                          </span>
+                        )}
+                      </div>
+                    </div>
 
-                      const iconColor = r.subCategory
-                        .toLowerCase()
-                        .includes("karate")
-                        ? "bg-black"
-                        : r.subCategory.toLowerCase().includes("swimming")
-                        ? "bg-sky-400"
-                        : r.subCategory.toLowerCase().includes("tennis")
-                        ? "bg-lime-500"
-                        : "bg-orange-500";
+                    <div className="divide-y divide-slate-100">
+                      {rows.map(({ sport, charge }, i) => (
+                        <div key={`${sport.subCategory}-${i}`} className="p-4 sm:p-5">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-900">
+                                {sport.category} · {sport.subCategory}
+                              </p>
 
-                      return (
-                        <div
-                          key={i}
-                          className="px-5 py-4 border-b last:border-b-0 border-gray-100"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex gap-3">
-                              <div
-                                className={`w-11 h-11 rounded-full ${iconColor} flex items-center justify-center text-white text-xs font-bold`}
-                              >
-                                {r.subCategory.charAt(0)}
-                              </div>
-
-                              <div>
-                                <h4 className="font-medium text-gray-800">
-                                  {r.category} - {r.subCategory}
-                                </h4>
-
-                                {r.paid ? (
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-green-600 text-sm font-medium">
-                                      Paid ₹{r.paidAmount}
+                              {charge.waived ? (
+                                <p className="text-xs text-amber-700 mt-1">
+                                  {charge.reason}
+                                </p>
+                              ) : (
+                                <div className="mt-2 space-y-1 text-sm">
+                                  <div className="flex justify-between gap-4 text-slate-600 max-w-sm">
+                                    <span>Monthly fee</span>
+                                    <span className="font-medium text-slate-800">
+                                      {formatINR(charge.baseFee)}
                                     </span>
-
-                                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center text-white text-[10px]">
-                                      ✓
-                                    </div>
                                   </div>
-                                ) : (
-                                  <span className="text-red-500 text-sm font-medium">
-                                    Unpaid ₹{r.amount}
-                                  </span>
-                                )}
-                              </div>
+                                  {charge.extras.map((ex, xi) => (
+                                    <div
+                                      key={ex.id || xi}
+                                      className="flex justify-between gap-4 text-slate-600 max-w-sm"
+                                    >
+                                      <span className="truncate">
+                                        Extra
+                                        {ex.note || ex.label
+                                          ? ` · ${ex.note || ex.label}`
+                                          : ""}
+                                      </span>
+                                      <span className="font-medium text-[#E85D04] shrink-0">
+                                        {formatINR(ex.amount)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                  <div className="flex justify-between gap-4 max-w-sm pt-1 border-t border-slate-100 font-semibold text-slate-900">
+                                    <span>Total</span>
+                                    <span>{formatINR(charge.total)}</span>
+                                  </div>
+                                  {charge.paid > 0 ? (
+                                    <div className="flex justify-between gap-4 max-w-sm text-emerald-700 text-xs font-medium">
+                                      <span>Already paid</span>
+                                      <span>{formatINR(charge.paid)}</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
 
-                            <div className="text-right">
-                              {r.paymentDate && r.paid && (
-                                <p className="text-xs text-gray-400 mb-2">
-                                  {r.paymentDate
-                                    .toDate()
-                                    .toLocaleDateString("en-IN")}
-                                </p>
-                              )}
-
-                              {!r.paid && (
-                                <button
-                                  onClick={handleSinglePayment}
-                                  className="bg-[#2F80ED] hover:bg-blue-700 text-white text-xs font-medium rounded-lg px-4 py-2 transition"
-                                >
-                                  Pay Now
-                                </button>
+                            <div className="sm:text-right shrink-0">
+                              {charge.isPaid ? (
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">
+                                  <CheckCircle2 size={14} />
+                                  Paid {formatINR(charge.paid || charge.total)}
+                                </span>
+                              ) : (
+                                <>
+                                  <p className="text-sm font-bold text-red-600 mb-2">
+                                    Pay {formatINR(charge.due)}
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      goToPayment(item.key, [
+                                        buildPayItem(sport, charge),
+                                      ])
+                                    }
+                                    className="min-h-[40px] px-4 rounded-xl bg-slate-900 text-white text-xs font-semibold"
+                                  >
+                                    Pay now
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
                         </div>
-                      );
-                    })}
-
-                    {records.some((r) => !r.paid) && (
-                      <div className="px-5 py-4 bg-gray-50 flex justify-end"></div>
-                    )}
-                  </>
+                      ))}
+                    </div>
+                  </div>
                 );
-              })()}
-            </div>
-          ))}
-        </div>
-
-        {/* Bottom Summary */}
-        {/* Bottom Summary */}
-
-        <div className="mt-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-10">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <span className="text-gray-500 text-sm font-medium">
-              Total Fees
-            </span>
-
-            <span className="text-lg font-bold text-gray-800">
-              ₹{expectedTotalFee}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <span className="text-gray-500 text-sm font-medium">Fees Paid</span>
-
-            <span className="text-lg font-bold text-green-600">
-              ₹{totalPaid}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between px-5 py-4">
-            <span className="text-gray-500 text-sm font-medium">
-              Pending Fees
-            </span>
-
-            <span className="text-lg font-bold text-red-500">
-              ₹{pendingFee}
-            </span>
+              })
+            )}
           </div>
         </div>
       </div>
-
-      {/* 🔴 Reminder Popup */}
-      {showReminder && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-bounce">
-          <div className="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-2xl shadow-xl px-5 py-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center text-xl">
-              🔔
-            </div>
-
-            <div>
-              <p className="font-semibold">Payment Reminder</p>
-
-              <p className="text-sm opacity-90">
-                Fee is due on {student.monthlyDate}th
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-      {processing && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[999] flex items-center justify-center">
-          <div className="bg-white rounded-3xl shadow-2xl px-8 py-8 flex flex-col items-center">
-            <div className="w-14 h-14 rounded-full border-[5px] border-orange-500 border-t-transparent animate-spin"></div>
-
-            <h2 className="mt-6 text-lg font-semibold text-gray-800">
-              Processing Payment
-            </h2>
-
-            <p className="text-gray-500 text-sm mt-2 text-center">
-              Please wait while we connect securely with Razorpay.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
