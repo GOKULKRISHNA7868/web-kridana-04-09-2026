@@ -20,6 +20,7 @@ import ChatMuteMenuItems from "../chat/ChatMuteMenuItems";
 import ChatSelectionToolbar from "../chat/ChatSelectionToolbar";
 import ChatDeleteConfirmModal from "../chat/ChatDeleteConfirmModal";
 import { getChatDayKey, getChatDayLabel } from "../../utils/chatDayLabel";
+import { isPersonCurrentlyActive } from "../../utils/personStatus";
 import {
   ensureChatNotifications,
   isChatMuted,
@@ -419,6 +420,7 @@ const ChatBox = () => {
         const students = snap.docs
           .map((item) => {
             const data = item.data();
+            if (!isPersonCurrentlyActive(data)) return null;
             const uid = data.customerUid || item.id;
             if (!uid) return null;
             return {
@@ -446,6 +448,7 @@ const ChatBox = () => {
         const trainers = snap.docs
           .map((item) => {
             const data = item.data();
+            if (!isPersonCurrentlyActive(data)) return null;
             const uid = data.trainerUid || item.id;
             if (!uid) return null;
             return {

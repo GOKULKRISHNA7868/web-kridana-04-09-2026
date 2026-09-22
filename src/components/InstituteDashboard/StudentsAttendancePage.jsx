@@ -12,6 +12,7 @@ import {
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
 import { Pagination } from "./shared";
+import { isPersonActiveOnDate } from "../../utils/personStatus";
 import {
   Search,
   Download,
@@ -110,7 +111,7 @@ const StudentsAttendancePage = ({
   const [exportFromDate, setExportFromDate] = useState("");
   const [exportToDate, setExportToDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 24;
   const clearAllAttendance = () => {
     setDraftAttendance({});
   };
@@ -205,16 +206,15 @@ const StudentsAttendancePage = ({
     fetchData();
   }, [instituteId, selectedDate, selectedCategory, selectedSubCategory]);
 
-  // Filter Students (JOIN DATE + LEFT DATE LOGIC)
+  // Filter Students — history-aware: show Left students only on/before leftDate
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
       const name = `${s.firstName || ""} ${s.lastName || ""}`.toLowerCase();
 
       const matchSearch = name.includes(search.toLowerCase());
 
-      const statusOk = !s.status || s.status === "Active";
-
-      const joinedOk = !s.joiningDate || s.joiningDate <= selectedDate;
+      if (!matchSearch) return false;
+      if (!isPersonActiveOnDate(s, selectedDate)) return false;
 
       const matchBranch =
         !selectedBranch || (s.branch || "").trim() === selectedBranch.trim();
@@ -240,15 +240,7 @@ const StudentsAttendancePage = ({
             (sp) => sp.timings === selectedTime || sp.timing === selectedTime,
           );
 
-      return (
-        matchSearch &&
-        statusOk &&
-        joinedOk &&
-        matchBranch &&
-        sportMatch &&
-        matchSession &&
-        matchTime
-      );
+      return matchBranch && sportMatch && matchSession && matchTime;
     });
   }, [
     students,
@@ -670,159 +662,126 @@ const StudentsAttendancePage = ({
   const categoryReady = Boolean(selectedCategory && selectedSubCategory);
 
   return (
-    <div className="relative h-full w-full bg-[#F4F6FB] rounded-none md:rounded-2xl overflow-hidden flex flex-col">
-      {/* ================= FIXED HEADER ================= */}
-      <div className="shrink-0 bg-white/95 backdrop-blur-md border-b border-orange-100/80 shadow-sm z-20">
-        <div className="px-3 py-3 sm:px-5 sm:py-4 md:px-8 lg:px-10">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 animate-moreFadeUp">
-            <div className="min-w-0 flex items-start gap-3">
-              <div className="hidden sm:flex w-11 h-11 rounded-2xl bg-gradient-to-br from-[#FF6A00] to-[#FF8A3D] text-white items-center justify-center shadow-lg shadow-orange-500/25 shrink-0">
-                <UserCheck size={20} />
-              </div>
+    <div className="relative h-full w-full min-h-0 bg-[#f5f6f8] rounded-none md:rounded-xl lg:rounded-2xl overflow-hidden flex flex-col">
+      {/* Compact toolbar — maximize student list */}
+      <div className="shrink-0 bg-white border-b border-gray-100 z-20">
+        <div className="px-2 sm:px-3 lg:px-4 pt-2 pb-1.5 space-y-1.5">
+          <div className="flex flex-col xl:flex-row xl:items-center gap-1.5 xl:gap-3">
+            <div className="flex items-center justify-between gap-2 min-w-0 xl:min-w-[210px]">
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 tracking-tight truncate">
+                <h1 className="text-sm sm:text-base font-bold text-gray-900 truncate leading-tight">
                   Customer Attendance
                 </h1>
-                <p className="text-xs sm:text-sm text-gray-500 mt-0.5 truncate">
-                  Mark present or absent ·{" "}
-                  <span className="text-[#FF6A00] font-medium">
+                <p className="text-[10px] text-gray-400 truncate">
+                  Mark present / absent ·{" "}
+                  <span className="text-[#FF6A00] font-semibold">
                     {selectedDate === today ? "Today" : selectedDate}
                   </span>
                 </p>
               </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md bg-orange-50 text-[#FF6A00] text-[10px] font-bold border border-orange-100">
+                  <Users size={11} />
+                  {summary.totalStudents}
+                </span>
+                <span className="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                  <UserCheck size={11} />
+                  {summary.presentToday}
+                </span>
+                <span className="inline-flex items-center gap-0.5 h-6 px-1.5 rounded-md bg-rose-50 text-rose-600 text-[10px] font-bold">
+                  <UserX size={11} />
+                  {summary.absentToday}
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-              <label className="inline-flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 hover:border-orange-300 transition focus-within:border-[#FF6A00] focus-within:ring-2 focus-within:ring-orange-100">
-                <CalendarDays size={16} className="text-[#FF6A00] shrink-0" />
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 flex-1 min-w-0">
+              <label className="inline-flex items-center gap-1.5 h-8 px-2 rounded-lg border border-gray-200 bg-gray-50 shrink-0 focus-within:border-orange-400">
+                <CalendarDays size={13} className="text-[#FF6A00]" />
                 <input
                   type="date"
                   value={selectedDate}
                   max={today}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="text-sm text-gray-800 bg-transparent outline-none w-[132px] sm:w-[150px]"
+                  className="text-[11px] sm:text-xs text-gray-800 bg-transparent outline-none w-[118px] sm:w-[132px]"
                 />
               </label>
+
+              <div className="relative flex-1 min-w-[140px]">
+                <Search
+                  size={13}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                />
+                <input
+                  placeholder="Search student..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full h-8 pl-7 pr-2 rounded-lg border border-gray-200 bg-gray-50 text-xs text-gray-800 outline-none focus:border-orange-400"
+                />
+              </div>
 
               <button
                 type="button"
                 onClick={() => setShowExportModal(true)}
-                className="inline-flex items-center gap-2 h-10 px-3 sm:px-4 border border-gray-200 rounded-xl bg-white text-[#FF6A00] font-semibold text-sm hover:bg-orange-50 active:scale-95 transition shadow-sm"
+                className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg border border-gray-200 bg-white text-[#FF6A00] text-[11px] font-semibold shrink-0 hover:bg-orange-50"
               >
-                <Download size={16} />
+                <Download size={13} />
                 <span className="hidden sm:inline">Export</span>
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-3 md:mt-4">
-            {[
-              [
-                "Total",
-                summary.totalStudents,
-                "from-orange-50 to-white border-orange-100 text-orange-600",
-                Users,
-              ],
-              [
-                "Present",
-                summary.presentToday,
-                "from-emerald-50 to-white border-emerald-100 text-emerald-600",
-                UserCheck,
-              ],
-              [
-                "Absent",
-                summary.absentToday,
-                "from-rose-50 to-white border-rose-100 text-rose-600",
-                UserX,
-              ],
-            ].map(([label, val, tone, Icon]) => (
-              <div
-                key={label}
-                className={`bg-gradient-to-br ${tone} border rounded-2xl py-2.5 sm:py-3.5 px-2 sm:px-4 shadow-sm text-center md:text-left md:flex md:items-center md:gap-3`}
-              >
-                <div className="hidden md:flex w-10 h-10 rounded-xl bg-white/80 items-center justify-center shrink-0 shadow-sm">
-                  <Icon size={18} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    {label}
-                  </div>
-                  <div className="font-bold text-base sm:text-xl text-gray-900 tabular-nums">
-                    {val}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <select
+              value={selectedSession}
+              onChange={(e) => setSelectedSession(e.target.value)}
+              className="h-8 border border-gray-200 rounded-lg px-2 text-[11px] sm:text-xs bg-gray-50 text-gray-800 outline-none focus:border-orange-400"
+            >
+              <option value="">Session</option>
+              {SESSIONS.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
 
-          <div className="mt-3 md:mt-4 flex flex-col lg:flex-row gap-2.5 lg:gap-3">
-            <div className="flex flex-1 items-center border border-gray-200 rounded-xl px-3 bg-gray-50 focus-within:border-[#FF6A00] focus-within:ring-2 focus-within:ring-orange-100 transition">
-              <Search size={16} className="text-gray-400 flex-shrink-0" />
-              <input
-                placeholder="Search student by name..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full px-2.5 py-2.5 outline-none text-sm text-gray-800 bg-transparent placeholder:text-gray-400"
-              />
-            </div>
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="h-8 border border-gray-200 rounded-lg px-2 text-[11px] sm:text-xs bg-gray-50 text-gray-800 outline-none focus:border-orange-400"
+            >
+              <option value="">Branch</option>
+              {branches.map((b) => (
+                <option key={b}>{b}</option>
+              ))}
+            </select>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 lg:w-[min(100%,36rem)]">
-              <select
-                value={selectedSession}
-                onChange={(e) => setSelectedSession(e.target.value)}
-                className="border border-gray-200 rounded-xl px-2.5 py-2.5 text-sm w-full bg-gray-50 text-gray-800 outline-none focus:border-[#FF6A00]"
-              >
-                <option value="">Session</option>
-                {SESSIONS.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="border border-gray-200 rounded-xl px-2.5 py-2.5 text-sm w-full bg-gray-50 text-gray-800 outline-none focus:border-[#FF6A00]"
-              >
-                <option value="">Branch</option>
-                {branches.map((b) => (
-                  <option key={b}>{b}</option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={() => openCategoryPicker()}
-                className={`col-span-2 md:col-span-1 flex items-center justify-between gap-2 border rounded-xl px-3 py-2 text-left min-h-[44px] transition hover:shadow-sm ${
-                  categoryReady
-                    ? "bg-orange-50 border-orange-200"
-                    : "bg-gray-50 border-gray-200"
-                }`}
-              >
-                <span className="min-w-0 flex items-center gap-2">
-                  <Layers size={15} className="text-[#FF6A00] shrink-0" />
-                  <span className="min-w-0">
-                    <span className="block text-[10px] text-gray-500 leading-none font-medium">
-                      Category
-                    </span>
-                    <span className="block text-xs sm:text-sm font-semibold text-gray-900 truncate">
-                      {categoryReady
-                        ? `${selectedCategory} · ${selectedSubCategory}`
-                        : "Choose before marking"}
-                    </span>
-                  </span>
+            <button
+              type="button"
+              onClick={() => openCategoryPicker()}
+              className={`col-span-2 sm:col-span-2 flex items-center justify-between gap-2 h-8 px-2.5 rounded-lg border text-left transition ${
+                categoryReady
+                  ? "bg-orange-50 border-orange-200"
+                  : "bg-gray-50 border-gray-200"
+              }`}
+            >
+              <span className="min-w-0 flex items-center gap-1.5">
+                <Layers size={13} className="text-[#FF6A00] shrink-0" />
+                <span className="text-[11px] sm:text-xs font-semibold text-gray-800 truncate">
+                  {categoryReady
+                    ? `${selectedCategory} · ${selectedSubCategory}`
+                    : "Choose category to mark"}
                 </span>
-                <ChevronDown size={16} className="text-gray-400 shrink-0" />
-              </button>
-            </div>
+              </span>
+              <ChevronDown size={14} className="text-gray-400 shrink-0" />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ================= SCROLL STUDENTS ONLY ================= */}
+      {/* Student list — fills remaining height */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <div
           ref={scrollRef}
-          className="h-full overflow-y-auto overflow-x-hidden px-3 sm:px-5 md:px-8 lg:px-10 py-3 sm:py-4 scrollbar-hide"
+          className="h-full overflow-y-auto overflow-x-hidden px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2"
           style={{
             WebkitOverflowScrolling: "touch",
             overscrollBehavior: "contain",
@@ -832,146 +791,244 @@ const StudentsAttendancePage = ({
             <button
               type="button"
               onClick={() => openCategoryPicker()}
-              className="w-full rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 to-white px-4 py-4 text-left hover:shadow-md active:scale-[0.99] transition mb-3"
+              className="w-full rounded-lg border border-dashed border-orange-300 bg-orange-50/80 px-3 py-2 text-left hover:bg-orange-50 mb-1.5"
             >
-              <p className="text-sm sm:text-base font-semibold text-[#FF6A00]">
+              <p className="text-xs font-semibold text-[#FF6A00]">
                 Choose category first
               </p>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">
+              <p className="text-[10px] text-gray-600 mt-0.5">
                 Select sport category and sub-category, then mark attendance.
               </p>
             </button>
           )}
 
           {paginatedStudents.length === 0 ? (
-            <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center px-6">
-              <div className="w-14 h-14 rounded-2xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-gray-300 mb-3">
-                <Users size={26} />
+            <div className="h-full min-h-[160px] flex flex-col items-center justify-center text-center px-4">
+              <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center text-gray-300 mb-2">
+                <Users size={20} />
               </div>
               <p className="text-sm font-semibold text-gray-700">
                 No students found
               </p>
-              <p className="text-xs text-gray-500 mt-1 max-w-xs">
-                Try another date, branch, session, or search term.
+              <p className="text-[11px] text-gray-500 mt-1 max-w-xs">
+                Try another date, branch, session, or search term. Left students
+                only appear for dates on or before they left.
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5 sm:gap-3 md:gap-4">
-              {paginatedStudents.map((s, index) => {
-                const key = `${s.uid}||${selectedCategory}||${selectedSubCategory}`;
-                const record = draftAttendance[key];
-                const rowNumber = (currentPage - 1) * itemsPerPage + index + 1;
+            <>
+              {/* Mobile compact cards */}
+              <div className="lg:hidden space-y-1.5">
+                {paginatedStudents.map((s, index) => {
+                  const key = `${s.uid}||${selectedCategory}||${selectedSubCategory}`;
+                  const record = draftAttendance[key];
+                  const rowNumber =
+                    (currentPage - 1) * itemsPerPage + index + 1;
 
-                return (
-                  <div
-                    key={s.uid}
-                    className="bg-white border border-gray-100 rounded-2xl p-3.5 sm:p-4 shadow-sm hover:shadow-md hover:border-orange-100 transition-all animate-moreFadeUp"
-                    style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}
-                  >
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-100 to-orange-50 text-[#FF6A00] flex items-center justify-center font-bold text-sm shrink-0 border border-orange-100">
-                        {(s.firstName || "?").charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-gray-900 text-sm sm:text-base leading-snug break-words">
-                          <span className="text-gray-400 font-medium mr-1">
-                            {rowNumber}.
-                          </span>
-                          {s.firstName} {s.lastName}
-                        </p>
-                        <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
-                          {s.sessions || "No session set"}
-                          {s.branch ? ` · ${s.branch}` : ""}
-                        </p>
-                        {record?.status && record?.markedByName && (
-                          <p className="text-[11px] sm:text-xs text-[#C2410C] mt-1.5 leading-snug bg-orange-50/80 rounded-lg px-2 py-1.5 border border-orange-100">
-                            Already marked by {record.markedByName}
-                            {record.markedByRole === "trainer"
-                              ? " (trainer)"
-                              : " (academy)"}
-                            {record.markedAtLabel
-                              ? ` · ${record.markedAtLabel}`
-                              : ""}
-                            . You can edit.
+                  return (
+                    <div
+                      key={s.uid}
+                      className="bg-white border border-gray-100 rounded-lg px-2.5 py-2 shadow-sm"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className="w-7 h-7 rounded-full bg-orange-50 text-[#FF6A00] flex items-center justify-center font-bold text-[11px] shrink-0 border border-orange-100">
+                          {(s.firstName || "?").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-gray-900 truncate leading-tight">
+                            <span className="text-gray-400 font-medium mr-1">
+                              {rowNumber}.
+                            </span>
+                            {s.firstName} {s.lastName}
                           </p>
-                        )}
+                          <p className="text-[10px] text-gray-400 truncate">
+                            {s.sessions || "No session"}
+                            {s.branch ? ` · ${s.branch}` : ""}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => saveAttendance(s, "present")}
-                        className={`flex items-center justify-center gap-2 py-2.5 sm:py-3 rounded-xl border text-sm font-semibold transition active:scale-95 ${
-                          record?.status === "present"
-                            ? "bg-emerald-50 border-emerald-300 text-emerald-700 shadow-sm"
-                            : "bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50/40"
-                        }`}
-                      >
-                        <span
-                          className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                      {record?.status && record?.markedByName ? (
+                        <p className="text-[10px] text-[#C2410C] mb-1.5 leading-snug bg-orange-50 rounded px-1.5 py-1 border border-orange-100">
+                          Marked by {record.markedByName}
+                          {record.markedByRole === "trainer"
+                            ? " (trainer)"
+                            : " (academy)"}
+                          {record.markedAtLabel
+                            ? ` · ${record.markedAtLabel}`
+                            : ""}
+                        </p>
+                      ) : null}
+
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => saveAttendance(s, "present")}
+                          className={`h-8 rounded-md border text-[11px] font-semibold transition active:scale-[0.98] ${
                             record?.status === "present"
-                              ? "border-emerald-500"
-                              : "border-gray-300"
+                              ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                              : "bg-gray-50 border-gray-200 text-gray-600"
                           }`}
                         >
-                          {record?.status === "present" && (
-                            <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full" />
-                          )}
-                        </span>
-                        Present
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => saveAttendance(s, "absent")}
-                        className={`flex items-center justify-center gap-2 py-2.5 sm:py-3 rounded-xl border text-sm font-semibold transition active:scale-95 ${
-                          record?.status === "absent"
-                            ? "bg-rose-50 border-rose-300 text-rose-700 shadow-sm"
-                            : "bg-gray-50 border-gray-200 text-gray-600 hover:border-rose-200 hover:bg-rose-50/40"
-                        }`}
-                      >
-                        <span
-                          className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                          Present
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => saveAttendance(s, "absent")}
+                          className={`h-8 rounded-md border text-[11px] font-semibold transition active:scale-[0.98] ${
                             record?.status === "absent"
-                              ? "border-rose-500"
-                              : "border-gray-300"
+                              ? "bg-rose-50 border-rose-300 text-rose-700"
+                              : "bg-gray-50 border-gray-200 text-gray-600"
                           }`}
                         >
-                          {record?.status === "absent" && (
-                            <span className="w-2.5 h-2.5 bg-rose-500 rounded-full" />
-                          )}
-                        </span>
-                        Absent
-                      </button>
-                    </div>
+                          Absent
+                        </button>
+                      </div>
 
-                    {record?.status === "absent" && (
-                      <select
-                        value={record?.reason || ""}
-                        onChange={(e) =>
-                          saveAttendance(s, "absent", e.target.value)
-                        }
-                        className="mt-3 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 bg-gray-50 outline-none focus:border-[#FF6A00] animate-moreFadeUp"
-                      >
-                        <option value="">Select reason</option>
-                        {absenceReasons.map((r) => (
-                          <option key={r}>{r}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      {record?.status === "absent" ? (
+                        <select
+                          value={record?.reason || ""}
+                          onChange={(e) =>
+                            saveAttendance(s, "absent", e.target.value)
+                          }
+                          className="mt-1.5 w-full h-8 border border-gray-200 rounded-md px-2 text-[11px] text-gray-800 bg-gray-50 outline-none focus:border-[#FF6A00]"
+                        >
+                          <option value="">Select reason</option>
+                          {absenceReasons.map((r) => (
+                            <option key={r}>{r}</option>
+                          ))}
+                        </select>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop dense table */}
+              <div className="hidden lg:block bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
+                <table className="w-full border-collapse text-left">
+                  <thead className="sticky top-0 z-10 bg-[#FFF7F0] shadow-[inset_0_-1px_0_#f3e8de]">
+                    <tr className="text-[10px] uppercase tracking-wide text-gray-500">
+                      <th className="px-2 py-1.5 font-semibold w-8">#</th>
+                      <th className="px-2 py-1.5 font-semibold">Student</th>
+                      <th className="px-2 py-1.5 font-semibold">Session</th>
+                      <th className="px-2 py-1.5 font-semibold">Branch</th>
+                      <th className="px-2 py-1.5 font-semibold">Marked by</th>
+                      <th className="px-2 py-1.5 font-semibold text-center w-[200px]">
+                        Attendance
+                      </th>
+                      <th className="px-2 py-1.5 font-semibold min-w-[140px]">
+                        Reason
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedStudents.map((s, index) => {
+                      const key = `${s.uid}||${selectedCategory}||${selectedSubCategory}`;
+                      const record = draftAttendance[key];
+                      const rowNumber =
+                        (currentPage - 1) * itemsPerPage + index + 1;
+
+                      return (
+                        <tr
+                          key={s.uid}
+                          className="border-b border-gray-50 hover:bg-orange-50/40"
+                        >
+                          <td className="px-2 py-1 text-[11px] text-gray-400 tabular-nums">
+                            {rowNumber}
+                          </td>
+                          <td className="px-2 py-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-7 h-7 rounded-full bg-orange-50 text-[#FF6A00] flex items-center justify-center font-bold text-[10px] shrink-0 border border-orange-100">
+                                {(s.firstName || "?").charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-gray-900 truncate leading-tight">
+                                  {s.firstName} {s.lastName}
+                                </p>
+                                <p className="text-[10px] text-gray-400 truncate">
+                                  {s.registernumber || s.phone || "—"}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-2 py-1 text-[11px] text-gray-700 whitespace-nowrap">
+                            {s.sessions || "—"}
+                          </td>
+                          <td className="px-2 py-1 text-[11px] text-gray-700 whitespace-nowrap">
+                            {s.branch || "—"}
+                          </td>
+                          <td className="px-2 py-1 text-[10px] text-gray-500 max-w-[160px]">
+                            {record?.status && record?.markedByName ? (
+                              <span className="truncate block">
+                                {record.markedByName}
+                                {record.markedAtLabel
+                                  ? ` · ${record.markedAtLabel}`
+                                  : ""}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => saveAttendance(s, "present")}
+                                className={`h-7 px-2.5 rounded-md border text-[11px] font-semibold transition ${
+                                  record?.status === "present"
+                                    ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                                    : "bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-200"
+                                }`}
+                              >
+                                Present
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => saveAttendance(s, "absent")}
+                                className={`h-7 px-2.5 rounded-md border text-[11px] font-semibold transition ${
+                                  record?.status === "absent"
+                                    ? "bg-rose-50 border-rose-300 text-rose-700"
+                                    : "bg-gray-50 border-gray-200 text-gray-600 hover:border-rose-200"
+                                }`}
+                              >
+                                Absent
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-2 py-1">
+                            {record?.status === "absent" ? (
+                              <select
+                                value={record?.reason || ""}
+                                onChange={(e) =>
+                                  saveAttendance(s, "absent", e.target.value)
+                                }
+                                className="w-full h-7 border border-gray-200 rounded-md px-1.5 text-[11px] text-gray-800 bg-gray-50 outline-none focus:border-[#FF6A00]"
+                              >
+                                <option value="">Reason</option>
+                                {absenceReasons.map((r) => (
+                                  <option key={r}>{r}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-[10px] text-gray-300">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* ================= STATIC FOOTER ================= */}
-      <div className="shrink-0 bg-white/95 backdrop-blur border-t border-gray-100 px-3 sm:px-5 md:px-8 lg:px-10 py-3 z-20">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="order-2 sm:order-1">
+      {/* Compact footer */}
+      <div className="shrink-0 bg-white border-t border-gray-100 px-2 sm:px-3 lg:px-4 py-1.5 z-20">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+          <div className="order-2 sm:order-1 scale-95 origin-left sm:scale-100">
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -979,27 +1036,27 @@ const StudentsAttendancePage = ({
             />
           </div>
 
-          <div className="order-1 sm:order-2 flex justify-center sm:justify-end gap-2 sm:gap-3 flex-wrap">
+          <div className="order-1 sm:order-2 flex justify-end gap-1.5">
             <button
               type="button"
               onClick={clearAllAttendance}
               disabled={!hasChanges}
-              className={`px-4 sm:px-5 py-2.5 min-h-[44px] text-sm font-semibold rounded-xl border transition ${
+              className={`h-8 px-3 text-[11px] sm:text-xs font-semibold rounded-lg border transition ${
                 hasChanges
-                  ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-50 active:scale-95"
+                  ? "bg-white text-gray-800 border-gray-300 hover:bg-gray-50"
                   : "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
               }`}
             >
-              Clear All
+              Clear
             </button>
 
             <button
               type="button"
               onClick={handleSaveAll}
               disabled={!hasChanges || saving}
-              className={`px-6 sm:px-8 py-2.5 min-h-[44px] text-sm font-semibold rounded-xl text-white transition ${
+              className={`h-8 px-4 text-[11px] sm:text-xs font-semibold rounded-lg text-white transition ${
                 hasChanges && !saving
-                  ? "bg-gradient-to-r from-[#FF6A00] to-[#FF8A3D] shadow-lg shadow-orange-500/25 hover:brightness-105 active:scale-95"
+                  ? "bg-[#FF6A00] hover:bg-[#e85f00]"
                   : "bg-gray-300 cursor-not-allowed"
               }`}
             >

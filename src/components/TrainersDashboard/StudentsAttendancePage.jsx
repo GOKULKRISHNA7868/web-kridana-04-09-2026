@@ -12,6 +12,7 @@ import {
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
 import { Pagination } from "./shared";
+import { isPersonActiveOnDate } from "../../utils/personStatus";
 import { Search, Download, ChevronDown, Check, Layers, X } from "lucide-react";
 import * as XLSX from "xlsx";
 
@@ -205,17 +206,8 @@ const StudentsAttendancePage = () => {
     return sortedStudents.filter((s) => {
       const name = `${s.firstName} ${s.lastName}`.toLowerCase();
       const matchSearch = name.includes(search.toLowerCase());
-
-      // ✅ Status rule
-      // show if:
-      // - status field not present
-      // - status === "Active"
-      // hide if:
-      // - status === "Left"
-      const statusOk = !s.status || s.status === "Active";
-
-      // ✅ Joining rule
-      const joinedOk = !s.joiningDate || s.joiningDate <= selectedDate;
+      if (!matchSearch) return false;
+      if (!isPersonActiveOnDate(s, selectedDate)) return false;
 
       const matchSession = !selectedSession || s.sessions === selectedSession;
       const matchTime = !selectedTime || s.timings === selectedTime;
@@ -230,7 +222,7 @@ const StudentsAttendancePage = () => {
 
         return categoryMatch && subCategoryMatch && sessionMatch && timeMatch;
       });
-      return matchSearch && statusOk && joinedOk && matchSport;
+      return matchSport;
     });
   }, [
     students,

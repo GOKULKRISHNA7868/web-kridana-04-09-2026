@@ -1,7 +1,12 @@
 export const parseFirestoreDate = (value) => {
   if (!value) return null;
   if (value?.toDate) return value.toDate();
-  if (value instanceof Date) return value;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === "object" && value.seconds != null) {
+    return new Date(Number(value.seconds) * 1000);
+  }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };

@@ -589,7 +589,12 @@ const MyAccountPage = ({ setActiveMenu }) => {
   };
 
   const handleDeleteStudent = async (id) => {
-    if (!window.confirm("Mark this customer as Left?")) return;
+    if (
+      !window.confirm(
+        "Mark this customer as Left?\n\nThey will hide from Active lists, attendance, and fees from today onward.\nPast months still show their fee and attendance history.",
+      )
+    )
+      return;
 
     await updateDoc(doc(db, "students", id), {
       status: "Left",
@@ -603,7 +608,9 @@ const MyAccountPage = ({ setActiveMenu }) => {
     );
   };
   const markAsLeftConfirm = async (student) => {
-    const reason = prompt("Enter reason for marking as Left:");
+    const reason = prompt(
+      "Reason for marking as Left?\n(They stay in history for months before today; hidden from current lists.)",
+    );
     if (!reason) return;
 
     await updateDoc(doc(db, "students", student.id), {
@@ -743,7 +750,8 @@ const MyAccountPage = ({ setActiveMenu }) => {
                 Team Management
               </h2>
               <p className="text-[11px] sm:text-xs text-gray-500">
-                Manage your instructors and staff members
+                Active instructors only. Marking someone Left hides them from
+                today onward; past months keep their salary and attendance.
               </p>
             </div>
 
@@ -1349,16 +1357,25 @@ const MyAccountPage = ({ setActiveMenu }) => {
       )}
       {showTrainerDeleteModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[10050] p-0 sm:p-4 animate-moreFadeUp">
-          <div className="bg-white w-full sm:w-[90%] max-w-[400px] rounded-t-3xl sm:rounded-2xl shadow-2xl p-5 sm:p-6 animate-slideUp sm:animate-moreFadeUp">
-            <h2 className="text-center font-semibold text-base sm:text-lg mb-4">
-              Please Provide the reason for deleting the details
+          <div className="bg-white w-full sm:w-[90%] max-w-[420px] rounded-t-3xl sm:rounded-2xl shadow-2xl p-5 sm:p-6 animate-slideUp sm:animate-moreFadeUp">
+            <h2 className="text-center font-semibold text-base sm:text-lg mb-2">
+              Mark trainer as Left?
             </h2>
+            <p className="text-center text-xs sm:text-sm text-gray-500 mb-4 leading-relaxed">
+              They will leave the active team from today. Past salary and
+              attendance for earlier days stay in history when you open those
+              months or dates. They will not appear in Timetable, Access, or
+              current lists.
+            </p>
 
-            <label className="text-sm text-gray-600">Enter your Reason</label>
+            <label className="text-sm text-gray-600 font-medium">
+              Reason for leaving
+            </label>
 
             <input
               value={deleteReason}
               onChange={(e) => setDeleteReason(e.target.value)}
+              placeholder="e.g. Resigned, Relocated..."
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 mt-2 mb-6 bg-gray-50 outline-none focus:border-orange-400"
             />
 
@@ -1380,7 +1397,7 @@ const MyAccountPage = ({ setActiveMenu }) => {
                 onClick={confirmDeleteTrainer}
                 className="bg-red-500 text-white px-6 py-2.5 rounded-xl text-sm font-medium active:scale-95 transition"
               >
-                Delete
+                Confirm Left
               </button>
             </div>
           </div>
@@ -1437,7 +1454,9 @@ const MyAccountPage = ({ setActiveMenu }) => {
                 Customer Management
               </h2>
               <p className="text-[11px] sm:text-xs text-gray-500">
-                Track and manage your customers
+                Use Active for current members. Open Left to review alumni —
+                they stay in fees and attendance history for months they were
+                enrolled.
               </p>
             </div>
 

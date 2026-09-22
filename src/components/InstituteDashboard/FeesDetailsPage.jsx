@@ -12,6 +12,10 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../../firebase";
 import { logStaffAction } from "../../utils/trainerAccess";
+import {
+  isPersonActiveInMonth,
+  isPersonCurrentlyActive,
+} from "../../utils/personStatus";
 import { ChevronDown, Filter, X, Plus, Trash2 } from "lucide-react";
 
 const newExtraId = () =>
@@ -46,6 +50,197 @@ const YEARS = Array.from({ length: 10 }, (_, i) =>
   (new Date().getFullYear() - 5 + i).toString(),
 );
 
+/** Normalize branch / category labels for reliable filter matching */
+const normalizeLabel = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+
+const labelsMatch = (a, b) =>
+  normalizeLabel(a).toLowerCase() === normalizeLabel(b).toLowerCase();
+
+const getStudentSports = (student) => {
+  if (Array.isArray(student?.sports)) return student.sports;
+  if (student?.sports && typeof student.sports === "object") {
+    return [student.sports];
+  }
+  return [];
+};
+
+const useBodyScrollLock = (locked) => {
+  useEffect(() => {
+    if (!locked) return undefined;
+
+    const scrollY = window.scrollY || window.pageYOffset;
+    const prev = {
+      overflow: document.body.style.overflow,
+      paddingRight: document.body.style.paddingRight,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+      htmlOverflow: document.documentElement.style.overflow,
+    };
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+
+    // Nested locks (filters + month picker) share one lock via counter
+    const key = "__kridanaScrollLockCount";
+    window[key] = (window[key] || 0) + 1;
+    if (window[key] === 1) {
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = "100%";
+      if (scrollbar > 0) {
+        document.body.style.paddingRight = `${scrollbar}px`;
+      }
+      window.__kridanaScrollY = scrollY;
+      window.__kridanaScrollPrev = prev;
+    }
+
+    return () => {
+      window[key] = Math.max(0, (window[key] || 1) - 1);
+      if (window[key] === 0) {
+        const saved = window.__kridanaScrollPrev || prev;
+        const y = window.__kridanaScrollY ?? scrollY;
+        document.documentElement.style.overflow = saved.htmlOverflow;
+        document.body.style.overflow = saved.overflow;
+        document.body.style.paddingRight = saved.paddingRight;
+        document.body.style.position = saved.position;
+        document.body.style.top = saved.top;
+        document.body.style.width = saved.width;
+        window.scrollTo(0, y);
+        delete window.__kridanaScrollPrev;
+        delete window.__kridanaScrollY;
+      }
+    };
+  }, [locked]);
+};
+
+const PickerSheet = ({
+  open,
+  title,
+  subtitle,
+  onClose,
+  children,
+  zIndex = 11050,
+}) => {
+  useBodyScrollLock(open);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center p-3"
+      style={{ zIndex, touchAction: "none" }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-slate-900/55 cursor-default"
+        aria-label="Close"
+        onClick={onClose}
+      />
+      <div
+        className="
+          relative z-10 w-full max-w-md
+          max-h-[min(80dvh,520px)]
+          bg-white rounded-2xl shadow-2xl
+          flex flex-col overflow-hidden
+        "
+        style={{ touchAction: "manipulation" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-3 border-b border-slate-100 shrink-0">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-bold text-slate-900">
+              {title}
+            </h2>
+            {subtitle ? (
+              <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center shrink-0"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div
+          className="px-4 py-4 overflow-y-auto overscroll-contain min-h-0"
+          style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
+        >
+          {children}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
+const MonthGrid = ({ value, onChange, columns = 3 }) => (
+  <div
+    className={`grid gap-2 ${
+      columns === 4 ? "grid-cols-4" : "grid-cols-3"
+    }`}
+  >
+    {MONTHS.map((m) => {
+      const active = value === m.value;
+      return (
+        <button
+          key={m.value}
+          type="button"
+          onClick={() => onChange(m.value)}
+          className={`min-h-[44px] sm:min-h-[48px] rounded-xl px-1.5 py-2.5 text-xs sm:text-sm font-semibold border transition ${
+            active
+              ? "bg-[#FF6A00] text-white border-[#FF6A00] shadow-sm"
+              : "bg-slate-50 text-slate-800 border-slate-200 active:bg-orange-50"
+          }`}
+        >
+          <span className="sm:hidden">{m.label.slice(0, 3)}</span>
+          <span className="hidden sm:inline">{m.label}</span>
+        </button>
+      );
+    })}
+  </div>
+);
+
+const YearChips = ({ value, onChange }) => (
+  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+    {YEARS.map((y) => {
+      const active = value === y;
+      return (
+        <button
+          key={y}
+          type="button"
+          onClick={() => onChange(y)}
+          className={`shrink-0 min-h-[40px] min-w-[72px] px-3 rounded-xl text-sm font-semibold border ${
+            active
+              ? "bg-[#FF6A00] text-white border-[#FF6A00]"
+              : "bg-slate-50 text-slate-700 border-slate-200"
+          }`}
+        >
+          {y}
+        </button>
+      );
+    })}
+  </div>
+);
+
 const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
   const instituteId = overrideId || auth.currentUser?.uid;
 
@@ -59,14 +254,11 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
   const [selectedBranch, setSelectedBranch] = useState("");
   const [search, setSearch] = useState("");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [pickerMode, setPickerMode] = useState(null); // "month" | "year" | null
 
-  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
-  const monthRef = useRef(null);
   const listScrollRef = useRef(null);
   const listScrollTopRef = useRef(0);
   const [selectedSport, setSelectedSport] = useState(null);
-  const [showYearDropdown, setShowYearDropdown] = useState(false);
-  const yearRef = useRef(null);
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -82,18 +274,35 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
     feeWaived: false,
   });
 
+  useBodyScrollLock(showMobileFilters);
+
+  // Freeze list scroll while any overlay is open (dashboard uses nested overflow)
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (monthRef.current && !monthRef.current.contains(e.target)) {
-        setShowMonthDropdown(false);
-      }
-      if (yearRef.current && !yearRef.current.contains(e.target)) {
-        setShowYearDropdown(false);
-      }
+    const el = listScrollRef.current;
+    if (!el) return undefined;
+    const overlayOpen = showMobileFilters || !!pickerMode || showEditModal;
+    if (!overlayOpen) return undefined;
+    const savedTop = listScrollTopRef.current || el.scrollTop;
+    listScrollTopRef.current = savedTop;
+    const prev = el.style.overflowY;
+    el.style.overflowY = "hidden";
+    el.scrollTop = savedTop;
+    return () => {
+      el.style.overflowY = prev;
+      el.scrollTop = listScrollTopRef.current;
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [showMobileFilters, pickerMode, showEditModal]);
+
+  const monthLabel = selectedMonth
+    ? MONTHS.find((m) => m.value === selectedMonth)?.label || selectedMonth
+    : "Select Month";
+
+  const activeFilterCount = [
+    selectedMonth,
+    selectedBranch,
+    selectedCategory,
+    selectedSubCategory,
+  ].filter(Boolean).length;
 
   useEffect(() => {
     if (!instituteId) return;
@@ -133,100 +342,117 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
       setFees(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
   }, [instituteId]);
-  const categories = [
-    ...new Set(
-      students.flatMap((s) => (s.sports || []).map((sp) => sp.category)),
-    ),
-  ];
-  const subCategories = [
-    ...new Set(
-      students
-        .flatMap((s) => s.sports || [])
-        .filter((sp) => !selectedCategory || sp.category === selectedCategory)
-        .map((sp) => sp.subCategory),
-    ),
-  ];
-  const branches = useMemo(() => {
-    return [
-      ...new Set(
-        students.map((s) => s.branch).filter((b) => b && b.trim() !== ""),
-      ),
-    ];
+  const categories = useMemo(() => {
+    const set = new Set();
+    students.forEach((s) => {
+      getStudentSports(s).forEach((sp) => {
+        const c = normalizeLabel(sp?.category);
+        if (c) set.add(c);
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [students]);
+
+  const subCategories = useMemo(() => {
+    const set = new Set();
+    students.forEach((s) => {
+      getStudentSports(s).forEach((sp) => {
+        if (
+          selectedCategory &&
+          !labelsMatch(sp?.category, selectedCategory)
+        ) {
+          return;
+        }
+        const sub = normalizeLabel(sp?.subCategory);
+        if (sub) set.add(sub);
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [students, selectedCategory]);
+
+  const branches = useMemo(() => {
+    const set = new Set();
+    students.forEach((s) => {
+      const b = normalizeLabel(s.branch);
+      if (b) set.add(b);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [students]);
+
+  // Keep selected filters aligned with normalized option values
+  useEffect(() => {
+    if (!selectedBranch) return;
+    const canonical = branches.find((b) => labelsMatch(b, selectedBranch));
+    if (!canonical) setSelectedBranch("");
+    else if (canonical !== selectedBranch) setSelectedBranch(canonical);
+  }, [branches, selectedBranch]);
+
+  useEffect(() => {
+    if (!selectedCategory) return;
+    const canonical = categories.find((c) =>
+      labelsMatch(c, selectedCategory),
+    );
+    if (!canonical) {
+      setSelectedCategory("");
+      setSelectedSubCategory("");
+    } else if (canonical !== selectedCategory) {
+      setSelectedCategory(canonical);
+    }
+  }, [categories, selectedCategory]);
+
+  useEffect(() => {
+    if (!selectedSubCategory) return;
+    const canonical = subCategories.find((s) =>
+      labelsMatch(s, selectedSubCategory),
+    );
+    if (!canonical) setSelectedSubCategory("");
+    else if (canonical !== selectedSubCategory) {
+      setSelectedSubCategory(canonical);
+    }
+  }, [subCategories, selectedSubCategory]);
+
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
-      const matchesSearch = `${s.firstName} ${s.lastName}`
+      const matchesSearch = `${s.firstName || ""} ${s.lastName || ""}`
         .toLowerCase()
-        .includes(search.toLowerCase());
+        .includes((search || "").toLowerCase());
 
       if (!matchesSearch) return false;
-      if (selectedBranch && s.branch !== selectedBranch) {
+
+      if (selectedBranch && !labelsMatch(s.branch, selectedBranch)) {
         return false;
       }
-      if (!selectedMonth || !selectedYear) return true;
 
-      const selectedDate = new Date(
-        Number(selectedYear),
-        Number(selectedMonth) - 1,
-        1,
-      );
-
-      if (s.joiningDate) {
-        const joiningDate = new Date(s.joiningDate);
-        if (
-          selectedDate <
-          new Date(joiningDate.getFullYear(), joiningDate.getMonth(), 1)
-        ) {
-          return false;
-        }
+      // No month selected → only current members (hide Left going forward)
+      if (!selectedMonth || !selectedYear) {
+        return isPersonCurrentlyActive(s);
       }
 
-      if (s.leftDate) {
-        const leftDate = s.leftDate?.toDate?.() || new Date(s.leftDate);
-        const leftMonthDate = new Date(
-          leftDate.getFullYear(),
-          leftDate.getMonth(),
-          1,
-        );
-        if (selectedDate > leftMonthDate) {
-          return false;
-        }
-      }
-
-      if (s.status === "Left") {
-        if (s.leftDate) {
-          const leftDate = s.leftDate?.toDate?.() || new Date(s.leftDate);
-          const leftMonthDate = new Date(
-            leftDate.getFullYear(),
-            leftDate.getMonth(),
-            1,
-          );
-          if (selectedDate > leftMonthDate) {
-            return false;
-          }
-        }
-      }
-
-      return true;
+      // Past/selected month → include people who were still active that month
+      return isPersonActiveInMonth(s, selectedYear, selectedMonth);
     });
   }, [students, search, selectedMonth, selectedYear, selectedBranch]);
+
   const filteredRows = useMemo(() => {
-    let rows = [];
+    const rows = [];
 
     filteredStudents.forEach((student) => {
-      (student.sports || []).forEach((sport) => {
-        if (selectedCategory && sport.category !== selectedCategory) {
+      getStudentSports(student).forEach((sport) => {
+        if (
+          selectedCategory &&
+          !labelsMatch(sport?.category, selectedCategory)
+        ) {
           return;
         }
 
-        if (selectedSubCategory && sport.subCategory !== selectedSubCategory) {
+        if (
+          selectedSubCategory &&
+          !labelsMatch(sport?.subCategory, selectedSubCategory)
+        ) {
           return;
         }
 
-        rows.push({
-          student,
-          sport,
-        });
+        rows.push({ student, sport });
       });
     });
 
@@ -437,160 +663,110 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
     };
   };
 
-  const StatCard = ({ title, value }) => (
-    <div className="bg-[#FF6A00] text-white rounded-2xl p-4 sm:p-5 min-h-[10px] flex flex-col justify-between shadow-sm hover:shadow-md transition-all duration-200">
-      {/* Title */}
-      <h3 className="text-[11px] sm:text-sm md:text-base font-medium text-white/90 leading-snug break-words">
-        {title}
-      </h3>
-
-      {/* Value */}
-      <p className="text-lg sm:text-2xl md:text-3xl font-bold mt-3 break-words leading-tight">
-        {value}
-      </p>
-    </div>
-  );
   return (
-    <div
-      className="
-    h-full
-    w-full
-    flex
-    flex-col
-    bg-gray-50
-    rounded-2xl
-    overflow-hidden
-  "
-    >
+    <div className="h-full min-h-0 w-full flex flex-col bg-gray-50 rounded-none sm:rounded-2xl overflow-hidden">
       {/* ================= FIXED TOP HEADER ================= */}
-      <div
-        className="
-    sticky
-    top-0
-    z-20
-    bg-white
-    border-b
-    shadow-sm
-  "
-      >
-        <div className="p-4 space-y-4">
-          {/* TITLE */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div className="flex items-center justify-between">
-              <h1 className="text-3xl font-bold text-gray-800">Fees Details</h1>
+      <div className="sticky top-0 z-20 bg-white border-b shadow-sm shrink-0">
+        <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-800 truncate">
+                Fees Details
+              </h1>
 
-              {/* Mobile Filter Button */}
               <button
-                onClick={() => setShowMobileFilters(true)}
-                className="lg:hidden flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-xl shadow"
+                type="button"
+                onClick={() => {
+                  if (listScrollRef.current) {
+                    listScrollTopRef.current = listScrollRef.current.scrollTop;
+                  }
+                  setShowMobileFilters(true);
+                }}
+                className="lg:hidden relative flex items-center gap-2 bg-orange-500 text-white px-3.5 py-2.5 min-h-[44px] rounded-xl shadow shrink-0"
               >
                 <Filter size={18} />
-                Filters
+                <span className="font-semibold text-sm">Filters</span>
+                {activeFilterCount > 0 ? (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
               </button>
             </div>
 
-            {/* Desktop Filters */}
-            <div className="hidden lg:flex flex-wrap items-center gap-3">
-              {/* Year */}
-              <div ref={yearRef} className="relative w-32">
-                <button
-                  onClick={() => setShowYearDropdown(!showYearDropdown)}
-                  className="bg-orange-500 text-white rounded-lg px-4 py-3 font-semibold w-full"
+            {/* Always-visible month / year (responsive) */}
+            <div className="flex flex-wrap items-stretch gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setPickerMode("year")}
+                className="min-h-[44px] min-w-[96px] flex-1 sm:flex-none sm:w-28 bg-orange-500 text-white rounded-xl px-3 py-2.5 font-semibold flex items-center justify-between gap-2 shadow-sm"
+              >
+                <span>{selectedYear}</span>
+                <ChevronDown size={16} className="opacity-90 shrink-0" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPickerMode("month")}
+                className="min-h-[44px] flex-[1.4] sm:flex-none sm:min-w-[180px] bg-orange-500 text-white rounded-xl px-3 py-2.5 font-semibold flex items-center justify-between gap-2 shadow-sm"
+              >
+                <span className="truncate">{monthLabel}</span>
+                <ChevronDown size={16} className="opacity-90 shrink-0" />
+              </button>
+
+              {/* Desktop-only extra filters */}
+              <div className="hidden lg:flex flex-wrap items-center gap-2 flex-1 min-w-0">
+                <select
+                  value={selectedBranch}
+                  onChange={(e) =>
+                    setSelectedBranch(normalizeLabel(e.target.value))
+                  }
+                  className="border border-slate-200 bg-white px-3 py-2.5 min-h-[44px] rounded-xl text-sm"
                 >
-                  {selectedYear}
-                </button>
+                  <option value="">All Branches</option>
+                  {branches.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
 
-                {showYearDropdown && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
-                    {YEARS.map((y) => (
-                      <div
-                        key={y}
-                        onClick={() => {
-                          setSelectedYear(y);
-                          setShowYearDropdown(false);
-                        }}
-                        className="px-4 py-2 hover:bg-orange-100 cursor-pointer"
-                      >
-                        {y}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Month */}
-              <div ref={monthRef} className="relative w-44">
-                <button
-                  onClick={() => setShowMonthDropdown(!showMonthDropdown)}
-                  className="bg-orange-500 text-white rounded-lg px-4 py-3 font-semibold w-full flex items-center justify-between"
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => {
+                    setSelectedCategory(normalizeLabel(e.target.value));
+                    setSelectedSubCategory("");
+                  }}
+                  className="border border-slate-200 bg-white px-3 py-2.5 min-h-[44px] rounded-xl text-sm"
                 >
-                  {selectedMonth
-                    ? MONTHS.find((m) => m.value === selectedMonth)?.label
-                    : "Select Month"}
-                  <ChevronDown size={18} />
-                </button>
+                  <option value="">All Categories</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
 
-                {showMonthDropdown && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border rounded-lg shadow-md max-h-48 overflow-y-auto">
-                    {MONTHS.map((m) => (
-                      <div
-                        key={m.value}
-                        onClick={() => {
-                          setSelectedMonth(m.value);
-                          setShowMonthDropdown(false);
-                        }}
-                        className="px-4 py-2 hover:bg-orange-100 cursor-pointer"
-                      >
-                        {m.label}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <select
+                  value={selectedSubCategory}
+                  onChange={(e) =>
+                    setSelectedSubCategory(normalizeLabel(e.target.value))
+                  }
+                  className="border border-slate-200 bg-white px-3 py-2.5 min-h-[44px] rounded-xl text-sm"
+                >
+                  <option value="">All SubCategories</option>
+                  {subCategories.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
               </div>
-
-              {/* Branch */}
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="border px-4 py-3 rounded-lg"
-              >
-                <option value="">All Branches</option>
-                {branches.map((b) => (
-                  <option key={b}>{b}</option>
-                ))}
-              </select>
-
-              {/* Category */}
-              <select
-                value={selectedCategory}
-                onChange={(e) => {
-                  setSelectedCategory(e.target.value);
-                  setSelectedSubCategory("");
-                }}
-                className="border px-4 py-3 rounded-lg"
-              >
-                <option value="">All Categories</option>
-                {categories.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-
-              {/* Sub */}
-              <select
-                value={selectedSubCategory}
-                onChange={(e) => setSelectedSubCategory(e.target.value)}
-                className="border px-4 py-3 rounded-lg"
-              >
-                <option value="">All SubCategories</option>
-                {subCategories.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
             </div>
           </div>
 
           {/* STATS */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <StatCard title="Total Fees Amount" value={`₹ ${totalAmount}`} />
             <StatCard title="Total Fees Pending" value={`₹ ${totalPending}`} />
             <StatCard title="Total Fees Paid" value={`₹ ${totalPaid}`} />
@@ -598,31 +774,61 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
           </div>
 
           {/* SEARCH */}
-          <div className="relative w-full sm:w-80">
+          <div className="relative w-full sm:max-w-md">
             <img
               src="/search-icon.png"
-              alt="search"
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-60"
+              alt=""
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-60 pointer-events-none"
             />
-
             <input
               type="text"
-              placeholder="Search here..."
+              placeholder="Search students..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="border border-orange-400 rounded px-10 py-2 w-full focus:outline-none"
+              className="border border-orange-400 rounded-xl px-10 py-2.5 min-h-[44px] w-full focus:outline-none focus:ring-2 focus:ring-orange-200"
             />
           </div>
         </div>
       </div>
       {/* TABLE */}
-      {/* ================= TABLE / MOBILE RESPONSIVE ================= */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         <div
           ref={listScrollRef}
-          className="h-full overflow-y-auto px-4 pb-28"
+          className="h-full overflow-y-auto overflow-x-hidden px-3 sm:px-4 pb-28 overscroll-contain"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
+          {filteredRows.length === 0 ? (
+            <div className="bg-white rounded-xl shadow mt-4 px-6 py-12 text-center">
+              <p className="text-sm font-semibold text-slate-700">
+                No students found for this filter
+              </p>
+              <p className="text-xs text-slate-500 mt-1.5">
+                {selectedMonth && selectedYear
+                  ? "Only students enrolled during this month are listed. Left students appear here for months on or before their leave date."
+                  : "Select a month to view fee history. Without a month, only currently active students are shown."}
+                {selectedBranch
+                  ? ` Branch filter: “${selectedBranch}”.`
+                  : ""}
+              </p>
+              {(selectedBranch ||
+                selectedCategory ||
+                selectedSubCategory ||
+                search) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBranch("");
+                    setSelectedCategory("");
+                    setSelectedSubCategory("");
+                    setSearch("");
+                  }}
+                  className="mt-4 min-h-[40px] px-4 rounded-xl bg-[#FF6A00] text-white text-sm font-semibold"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
           <div className="bg-white rounded-xl shadow overflow-hidden mt-4">
             {/* DESKTOP TABLE */}
             <div className="hidden lg:block">
@@ -783,6 +989,7 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
               })}
             </div>
           </div>
+          )}
         </div>
       </div>
 
@@ -803,169 +1010,257 @@ const FeesDetailsPage = ({ instituteId: overrideId, actor = null } = {}) => {
           onClose={closeEditModal}
         />
       )}
-      {/* ===== MOBILE FILTER POPUP (BOTTOM NAV SAFE) ===== */}
-      {showMobileFilters && (
-        <div className="fixed inset-0 z-[100] bg-black/40 lg:hidden">
-          {/* Click outside close */}
-          <div
-            className="absolute inset-0"
-            onClick={() => setShowMobileFilters(false)}
-          />
 
-          {/* Bottom Sheet */}
-          <div
-            className="
-        absolute left-0 right-0 bottom-0
-        bg-white rounded-t-3xl shadow-2xl
-        max-h-[82vh] overflow-y-auto
-        px-5 pt-5
-        pb-[calc(env(safe-area-inset-bottom)+88px)]
-        animate-slideUp
-      "
-          >
-            {/* Handle Bar */}
-            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4" />
+      {/* Month picker */}
+      <PickerSheet
+        open={pickerMode === "month"}
+        title="Select month"
+        subtitle={`Fees for ${selectedYear}`}
+        onClose={() => setPickerMode(null)}
+      >
+        <MonthGrid
+          value={selectedMonth}
+          onChange={(v) => {
+            setSelectedMonth(v);
+            setPickerMode(null);
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedMonth("");
+            setPickerMode(null);
+          }}
+          className="mt-4 w-full min-h-[44px] rounded-xl border border-slate-200 text-slate-600 font-semibold"
+        >
+          Clear month
+        </button>
+      </PickerSheet>
 
-            {/* Header */}
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-800">Filters</h2>
-
+      {/* Year picker */}
+      <PickerSheet
+        open={pickerMode === "year"}
+        title="Select year"
+        onClose={() => setPickerMode(null)}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {YEARS.map((y) => {
+            const active = selectedYear === y;
+            return (
               <button
-                onClick={() => setShowMobileFilters(false)}
-                className="p-2 bg-gray-100 rounded-full"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* YEAR */}
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-600 block mb-2">
-                Year
-              </label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="w-full border rounded-xl px-4 py-3"
-              >
-                {YEARS.map((y) => (
-                  <option key={y}>{y}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* MONTH */}
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-600 block mb-2">
-                Month
-              </label>
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="w-full border rounded-xl px-4 py-3"
-              >
-                <option value="">Select Month</option>
-                {MONTHS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* BRANCH */}
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-600 block mb-2">
-                Branch
-              </label>
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full border rounded-xl px-4 py-3"
-              >
-                <option value="">All Branches</option>
-                {branches.map((b) => (
-                  <option key={b}>{b}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* CATEGORY */}
-            <div className="mb-4">
-              <label className="text-sm font-medium text-gray-600 block mb-2">
-                Category
-              </label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => {
-                  setSelectedCategory(e.target.value);
-                  setSelectedSubCategory("");
+                key={y}
+                type="button"
+                onClick={() => {
+                  setSelectedYear(y);
+                  setPickerMode(null);
                 }}
-                className="w-full border rounded-xl px-4 py-3"
+                className={`min-h-[48px] rounded-xl px-3 py-3 text-sm font-semibold border ${
+                  active
+                    ? "bg-[#FF6A00] text-white border-[#FF6A00] shadow-sm"
+                    : "bg-slate-50 text-slate-800 border-slate-200"
+                }`}
               >
-                <option value="">All Categories</option>
-                {categories.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* SUB CATEGORY */}
-            <div className="mb-6">
-              <label className="text-sm font-medium text-gray-600 block mb-2">
-                Sub Category
-              </label>
-              <select
-                value={selectedSubCategory}
-                onChange={(e) => setSelectedSubCategory(e.target.value)}
-                className="w-full border rounded-xl px-4 py-3"
-              >
-                <option value="">All SubCategories</option>
-                {subCategories.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* FIXED BUTTON AREA ABOVE NAVBAR */}
-            <div
-              className="
-          sticky bottom-0 bg-white pt-3
-          pb-[calc(env(safe-area-inset-bottom)+10px)]
-        "
-            >
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedMonth("");
-                    setSelectedBranch("");
-                    setSelectedCategory("");
-                    setSelectedSubCategory("");
-                  }}
-                  className="py-3 rounded-xl border font-semibold"
-                >
-                  Reset
-                </button>
-
-                <button
-                  onClick={() => setShowMobileFilters(false)}
-                  className="py-3 rounded-xl bg-orange-500 text-white font-semibold"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          </div>
+                {y}
+              </button>
+            );
+          })}
         </div>
-      )}
+      </PickerSheet>
+
+      {/* Mobile filters — centered overlay, Apply always visible */}
+      {showMobileFilters
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[11050] flex items-center justify-center p-3 lg:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filters"
+              style={{ touchAction: "none" }}
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-slate-900/60"
+                aria-label="Close filters"
+                onClick={() => setShowMobileFilters(false)}
+              />
+
+              <div
+                className="
+                  relative z-10 w-full max-w-md
+                  h-[min(82dvh,560px)]
+                  max-h-[calc(100dvh-24px)]
+                  bg-white rounded-2xl shadow-2xl
+                  flex flex-col overflow-hidden
+                "
+                style={{ touchAction: "manipulation" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-bold text-slate-900">Filters</h2>
+                    <p className="text-xs text-slate-500">
+                      Choose month & options, then Apply
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileFilters(false)}
+                    className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0"
+                    aria-label="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div
+                  className="px-4 py-3 space-y-3 overflow-y-auto overscroll-contain flex-1 min-h-0"
+                  style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-sm font-semibold text-slate-700">
+                        Month
+                      </label>
+                      {selectedMonth ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMonth("")}
+                          className="text-xs font-semibold text-[#FF6A00]"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {MONTHS.map((m) => {
+                        const active = selectedMonth === m.value;
+                        return (
+                          <button
+                            key={m.value}
+                            type="button"
+                            onClick={() => setSelectedMonth(m.value)}
+                            className={`min-h-[38px] rounded-lg text-xs font-semibold border ${
+                              active
+                                ? "bg-[#FF6A00] text-white border-[#FF6A00]"
+                                : "bg-slate-50 text-slate-700 border-slate-200"
+                            }`}
+                          >
+                            {m.label.slice(0, 3)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700 block mb-1.5">
+                      Year
+                    </label>
+                    <YearChips value={selectedYear} onChange={setSelectedYear} />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2.5">
+                    <div>
+                      <label className="text-sm font-semibold text-slate-700 block mb-1.5">
+                        Branch
+                      </label>
+                      <select
+                        value={selectedBranch}
+                        onChange={(e) =>
+                          setSelectedBranch(normalizeLabel(e.target.value))
+                        }
+                        className="w-full min-h-[44px] border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-sm"
+                      >
+                        <option value="">All Branches</option>
+                        {branches.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold text-slate-700 block mb-1.5">
+                        Category
+                      </label>
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => {
+                          setSelectedCategory(normalizeLabel(e.target.value));
+                          setSelectedSubCategory("");
+                        }}
+                        className="w-full min-h-[44px] border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-sm"
+                      >
+                        <option value="">All Categories</option>
+                        {categories.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold text-slate-700 block mb-1.5">
+                        Sub Category
+                      </label>
+                      <select
+                        value={selectedSubCategory}
+                        onChange={(e) =>
+                          setSelectedSubCategory(normalizeLabel(e.target.value))
+                        }
+                        className="w-full min-h-[44px] border border-slate-200 rounded-xl px-3 py-2.5 bg-white text-sm"
+                      >
+                        <option value="">All SubCategories</option>
+                        {subCategories.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-4 py-3 grid grid-cols-2 gap-2.5 border-t border-slate-100 shrink-0 bg-white">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMonth("");
+                      setSelectedBranch("");
+                      setSelectedCategory("");
+                      setSelectedSubCategory("");
+                    }}
+                    className="min-h-[46px] rounded-xl border border-slate-200 font-semibold text-sm"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowMobileFilters(false)}
+                    className="min-h-[46px] rounded-xl bg-orange-500 text-white font-semibold text-sm"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 };
 
 const StatCard = ({ title, value }) => (
-  <div className="bg-black text-white p-4 rounded-lg">
-    <h3 className="text-sm">{title}</h3>
-    <p className="text-xl font-bold text-orange-500 mt-2">{value}</p>
+  <div className="bg-[#FF6A00] text-white rounded-2xl p-3 sm:p-4 min-h-[88px] flex flex-col justify-between shadow-sm">
+    <h3 className="text-[11px] sm:text-sm font-medium text-white/90 leading-snug">
+      {title}
+    </h3>
+    <p className="text-lg sm:text-2xl font-bold mt-2 break-words leading-tight">
+      {value}
+    </p>
   </div>
 );
 
@@ -982,44 +1277,15 @@ const ModalForm = ({
   const [showWaiveConfirm, setShowWaiveConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  useBodyScrollLock(true);
+
   useEffect(() => {
-    const scrollY = window.scrollY || window.pageYOffset;
-    const prev = {
-      overflow: document.body.style.overflow,
-      paddingRight: document.body.style.paddingRight,
-      position: document.body.style.position,
-      top: document.body.style.top,
-      width: document.body.style.width,
-      htmlOverflow: document.documentElement.style.overflow,
-    };
-    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
-
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-    if (scrollbar > 0) {
-      document.body.style.paddingRight = `${scrollbar}px`;
-    }
-
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.documentElement.style.overflow = prev.htmlOverflow;
-      document.body.style.overflow = prev.overflow;
-      document.body.style.paddingRight = prev.paddingRight;
-      document.body.style.position = prev.position;
-      document.body.style.top = prev.top;
-      document.body.style.width = prev.width;
-      window.scrollTo(0, scrollY);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- lock once while modal is mounted
-  }, []);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const handleSave = async () => {
     try {

@@ -9,7 +9,8 @@
    - ALL CONDITIONS + LOGICS PRESERVED
 ========================================================= */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   collection,
   query,
@@ -24,6 +25,10 @@ import {
 import { db } from "../../firebase";
 
 import { useAuth } from "../../context/AuthContext";
+import {
+  isPersonActiveInMonth,
+  isPersonCurrentlyActive,
+} from "../../utils/personStatus";
 
 import {
   Search,
@@ -103,33 +108,122 @@ const formatCurrency = (num) => {
   return `₹${Number(num).toLocaleString("en-IN")}`;
 };
 
-/** Prevent page scroll while a modal/popup is open */
-const useLockBodyScroll = (locked) => {
+/** Prevent page scroll while a modal is open — restores exact scroll position */
+const useBodyScrollLock = (locked) => {
   useEffect(() => {
-    if (!locked) return;
+    if (!locked) return undefined;
 
-    const scrollY = window.scrollY;
-    const { style } = document.body;
-    const previous = {
-      overflow: style.overflow,
-      position: style.position,
-      top: style.top,
-      width: style.width,
+    const scrollY = window.scrollY || window.pageYOffset;
+    const prev = {
+      overflow: document.body.style.overflow,
+      paddingRight: document.body.style.paddingRight,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+      htmlOverflow: document.documentElement.style.overflow,
     };
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
 
-    style.overflow = "hidden";
-    style.position = "fixed";
-    style.top = `-${scrollY}px`;
-    style.width = "100%";
+    const key = "__kridanaScrollLockCount";
+    window[key] = (window[key] || 0) + 1;
+    if (window[key] === 1) {
+      document.documentElement.style.overflow = "hidden";
+      document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = "100%";
+      if (scrollbar > 0) {
+        document.body.style.paddingRight = `${scrollbar}px`;
+      }
+      window.__kridanaScrollY = scrollY;
+      window.__kridanaScrollPrev = prev;
+    }
 
     return () => {
-      style.overflow = previous.overflow;
-      style.position = previous.position;
-      style.top = previous.top;
-      style.width = previous.width;
-      window.scrollTo(0, scrollY);
+      window[key] = Math.max(0, (window[key] || 1) - 1);
+      if (window[key] === 0) {
+        const saved = window.__kridanaScrollPrev || prev;
+        const y = window.__kridanaScrollY ?? scrollY;
+        document.documentElement.style.overflow = saved.htmlOverflow;
+        document.body.style.overflow = saved.overflow;
+        document.body.style.paddingRight = saved.paddingRight;
+        document.body.style.position = saved.position;
+        document.body.style.top = saved.top;
+        document.body.style.width = saved.width;
+        window.scrollTo(0, y);
+        delete window.__kridanaScrollPrev;
+        delete window.__kridanaScrollY;
+      }
     };
   }, [locked]);
+};
+
+/** Centered compact dialog portaled to body — never scrolls off-screen */
+const ModalShell = ({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+  maxWidth = "max-w-md",
+  zIndex = 10050,
+}) => {
+  useBodyScrollLock(open);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center p-3 sm:p-4"
+      style={{ zIndex, touchAction: "none" }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+        aria-label="Close"
+        onClick={onClose}
+      />
+      <div
+        className={`relative w-full ${maxWidth} bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-[min(86dvh,640px)] flex flex-col`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="shrink-0 px-3.5 sm:px-4 py-2.5 border-b border-gray-100 flex items-center justify-between gap-2">
+          <h2 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 hover:bg-gray-200"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3.5 sm:px-4 py-3">
+          {children}
+        </div>
+        {footer ? (
+          <div className="shrink-0 border-t border-gray-100 bg-white px-3.5 sm:px-4 py-2.5">
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body,
+  );
 };
 
 const SalaryDetailsPage = () => {
@@ -149,7 +243,6 @@ const SalaryDetailsPage = () => {
 
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
-  const monthRef = useRef(null);
 
   const [editData, setEditData] = useState({
     monthlySalary: "",
@@ -168,20 +261,7 @@ const SalaryDetailsPage = () => {
     paidDate: "",
   });
 
-  useLockBodyScroll(showEditModal || showExpenseModal);
-
-  /* CLICK OUTSIDE */
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (monthRef.current && !monthRef.current.contains(e.target)) {
-        setShowMonthDropdown(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  /* Month picker closes via ModalShell backdrop / Escape */
 
   /* FETCH TRAINERS */
   useEffect(() => {
@@ -237,20 +317,24 @@ const SalaryDetailsPage = () => {
     fetchExpenses();
   }, [user]);
 
-  /* FILTERED */
+  /* FILTERED — hide Left trainers going forward; keep history for selected month */
   const filteredTrainers = useMemo(() => {
+    const currentYear = new Date().getFullYear();
     return trainers
-      .filter((t) =>
-        `${t.firstName} ${t.lastName}`
+      .filter((t) => {
+        const nameOk = `${t.firstName || ""} ${t.lastName || ""}`
           .toLowerCase()
-          .includes(search.toLowerCase()),
-      )
+          .includes(search.toLowerCase());
+        if (!nameOk) return false;
+        if (!selectedMonth) return isPersonCurrentlyActive(t);
+        return isPersonActiveInMonth(t, currentYear, selectedMonth);
+      })
       .sort((a, b) =>
         `${a.firstName} ${a.lastName}`.localeCompare(
           `${b.firstName} ${b.lastName}`,
         ),
       );
-  }, [trainers, search]);
+  }, [trainers, search, selectedMonth]);
 
   /* GET SALARY */
   const getTrainerSalaryData = (trainer) => {
@@ -485,10 +569,10 @@ const SalaryDetailsPage = () => {
     ? `${currentYear}-${selectedMonth}`
     : "";
 
-  const totalEmployees = trainers.length;
+  const totalEmployees = filteredTrainers.length;
 
   /* TOTAL SALARY */
-  const totalAmount = trainers.reduce(
+  const totalAmount = filteredTrainers.reduce(
     (sum, t) => sum + Number(t.monthlySalary || 0),
     0,
   );
@@ -564,7 +648,8 @@ const SalaryDetailsPage = () => {
             Salary & Expenses
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Manage employee salaries and monthly records
+            Manage employee salaries and monthly records. Left trainers appear
+            only when you open the month they still worked.
           </p>
         </div>
       </div>
@@ -584,47 +669,53 @@ const SalaryDetailsPage = () => {
           />
         </div>
 
-        {/* MONTH */}
-        <div ref={monthRef} className="relative">
+        {/* MONTH — compact portaled picker (stays on screen) */}
+        <div className="relative">
           <button
             type="button"
             onClick={() => setShowMonthDropdown(!showMonthDropdown)}
-            className="h-12 sm:h-14 w-full rounded-2xl bg-white border border-gray-200 px-4 flex items-center justify-between"
+            className="h-10 sm:h-11 w-full rounded-xl bg-white border border-gray-200 px-3 flex items-center justify-between"
           >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <CalendarDays size={18} className="shrink-0 text-gray-600" />
-              <span className="font-semibold text-sm sm:text-base truncate">
+            <div className="flex items-center gap-2 min-w-0">
+              <CalendarDays size={16} className="shrink-0 text-gray-600" />
+              <span className="font-semibold text-xs sm:text-sm truncate">
                 {selectedMonth
                   ? MONTHS.find((m) => m.value === selectedMonth)?.label
                   : "Select Month"}
               </span>
             </div>
-            <ChevronDown size={16} className="shrink-0" />
+            <ChevronDown size={14} className="shrink-0" />
           </button>
-
-          {showMonthDropdown && (
-            <div className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-xl border overflow-hidden z-50 max-h-64 overflow-y-auto">
-              {MONTHS.map((m) => (
-                <button
-                  key={m.value}
-                  type="button"
-                  onClick={() => {
-                    setSelectedMonth(m.value);
-                    setShowMonthDropdown(false);
-                  }}
-                  className={`w-full text-left px-4 py-3 text-sm hover:bg-orange-50 ${
-                    selectedMonth === m.value
-                      ? "bg-orange-50 text-[#FF6B00] font-semibold"
-                      : ""
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
+
+      <ModalShell
+        open={showMonthDropdown}
+        title="Select month"
+        onClose={() => setShowMonthDropdown(false)}
+        maxWidth="max-w-xs"
+        zIndex={10040}
+      >
+        <div className="grid grid-cols-3 gap-1.5">
+          {MONTHS.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => {
+                setSelectedMonth(m.value);
+                setShowMonthDropdown(false);
+              }}
+              className={`h-9 rounded-lg text-[11px] font-semibold transition ${
+                selectedMonth === m.value
+                  ? "bg-[#FF6B00] text-white"
+                  : "bg-gray-50 text-gray-700 hover:bg-orange-50 border border-gray-100"
+              }`}
+            >
+              {m.label.slice(0, 3)}
+            </button>
+          ))}
+        </div>
+      </ModalShell>
 
       {/* STATS */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5 sm:gap-3 mt-4 sm:mt-5">
@@ -934,8 +1025,6 @@ const EditableSalaryRow = ({ trainer, value, setTrainers }) => {
   const [open, setOpen] = useState(false);
   const [salary, setSalary] = useState(value);
 
-  useLockBodyScroll(open);
-
   useEffect(() => {
     setSalary(value);
   }, [value]);
@@ -981,115 +1070,89 @@ const EditableSalaryRow = ({ trainer, value, setTrainers }) => {
         </button>
       </div>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-[10050] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setOpen(false)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-5 pb-[max(20px,env(safe-area-inset-bottom))] shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4 sm:hidden" />
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg sm:text-xl font-bold">Edit base salary</h2>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <label className="font-semibold text-sm block mb-2">
-              Monthly salary
-            </label>
-            <input
-              autoFocus
-              inputMode="numeric"
-              value={salary}
-              onChange={(e) =>
-                setSalary(e.target.value.replace(/[^0-9]/g, ""))
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter") saveSalary();
-              }}
-              className="h-12 w-full rounded-xl border px-4 outline-none text-[16px]"
-            />
-
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="flex-1 min-h-[48px] rounded-xl border border-gray-200 font-semibold text-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveSalary}
-                className="flex-1 min-h-[48px] rounded-xl bg-[#FF6B00] text-white font-bold"
-              >
-                Save
-              </button>
-            </div>
+      <ModalShell
+        open={open}
+        title="Edit base salary"
+        onClose={() => setOpen(false)}
+        maxWidth="max-w-sm"
+        footer={
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="flex-1 h-9 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveSalary}
+              className="flex-1 h-9 rounded-lg bg-[#FF6B00] text-white text-xs font-bold"
+            >
+              Save
+            </button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <label className="font-semibold text-xs block mb-1.5 text-gray-700">
+          Monthly salary
+        </label>
+        <input
+          autoFocus
+          inputMode="numeric"
+          value={salary}
+          onChange={(e) => setSalary(e.target.value.replace(/[^0-9]/g, ""))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveSalary();
+          }}
+          className="h-10 w-full rounded-lg border border-gray-200 px-3 outline-none text-sm focus:border-orange-400"
+        />
+      </ModalShell>
     </>
   );
 };
 
-/* SALARY MODAL */
 const ModalForm = ({ data, setData, onClose, onSave }) => (
-  <div
-    className="fixed inset-0 z-[10040] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overscroll-none"
-    onClick={onClose}
-    role="dialog"
-    aria-modal="true"
-  >
-    <div
-      className="w-full max-w-xl bg-white rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[min(92dvh,920px)] flex flex-col shadow-2xl"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mt-3 sm:hidden shrink-0" />
-      <div className="px-4 sm:px-5 py-3.5 border-b flex items-center justify-between shrink-0">
-        <h2 className="text-lg sm:text-xl font-bold">Update salary</h2>
+  <ModalShell
+    open
+    title="Update salary"
+    onClose={onClose}
+    maxWidth="max-w-md"
+    footer={
+      <div className="flex gap-2">
         <button
           type="button"
           onClick={onClose}
-          className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center"
-          aria-label="Close"
+          className="flex-1 h-9 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700"
         >
-          <X size={18} />
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          className="flex-[1.3] h-9 rounded-lg bg-[#FF6B00] text-white text-xs font-bold"
+        >
+          Save salary
         </button>
       </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 space-y-4">
-        <div>
-          <label className="font-semibold text-sm block mb-2">
-            Monthly salary
-          </label>
-          <input
-            autoFocus
-            inputMode="numeric"
-            value={data.monthlySalary}
-            onChange={(e) =>
-              setData({
-                ...data,
-                monthlySalary: e.target.value.replace(/[^0-9]/g, ""),
-              })
-            }
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onSave();
-            }}
-            className="h-12 w-full rounded-xl border px-4 outline-none text-[16px]"
-          />
-        </div>
+    }
+  >
+    <div className="space-y-3">
+      <InputBox
+        label="Monthly salary"
+        value={data.monthlySalary}
+        autoFocus
+        onChange={(v) =>
+          setData({
+            ...data,
+            monthlySalary: v.replace(/[^0-9]/g, ""),
+          })
+        }
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSave();
+        }}
+      />
+      <div className="grid grid-cols-2 gap-2.5">
         <InputBox
           label="Bonus"
           value={data.bonus}
@@ -1110,16 +1173,18 @@ const ModalForm = ({ data, setData, onClose, onSave }) => (
             })
           }
         />
-        <InputBox
-          label="Paid amount"
-          value={data.paidAmount}
-          onChange={(v) =>
-            setData({
-              ...data,
-              paidAmount: v.replace(/[^0-9]/g, ""),
-            })
-          }
-        />
+      </div>
+      <InputBox
+        label="Paid amount"
+        value={data.paidAmount}
+        onChange={(v) =>
+          setData({
+            ...data,
+            paidAmount: v.replace(/[^0-9]/g, ""),
+          })
+        }
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         <InputBox
           label="Payment method"
           value={data.paymentMethod}
@@ -1140,8 +1205,157 @@ const ModalForm = ({ data, setData, onClose, onSave }) => (
             })
           }
         />
+      </div>
+      <div>
+        <label className="font-semibold text-xs block mb-1.5 text-gray-700">
+          Paid date
+        </label>
+        <input
+          type="date"
+          value={data.paidDate}
+          onChange={(e) =>
+            setData({
+              ...data,
+              paidDate: e.target.value,
+            })
+          }
+          className="h-10 w-full rounded-lg border border-gray-200 px-3 outline-none text-sm focus:border-orange-400"
+        />
+      </div>
+    </div>
+  </ModalShell>
+);
+
+const ExpenseModal = ({ data, setData, onClose, onSave, isEdit = false }) => {
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
+
+  return (
+    <ModalShell
+      open
+      title={isEdit ? "Edit expense" : "Add expense"}
+      onClose={onClose}
+      maxWidth="max-w-md"
+      footer={
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 h-9 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            className="flex-[1.3] h-9 rounded-lg bg-[#FF6B00] text-white text-xs font-bold"
+          >
+            Save expense
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
         <div>
-          <label className="font-semibold text-sm block mb-2">Paid date</label>
+          <label className="font-semibold text-xs block mb-1.5 text-gray-700">
+            Category
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowCategoryDropdown((v) => !v)}
+            className="h-10 w-full rounded-lg border border-gray-200 px-3 flex items-center justify-between text-left text-sm bg-gray-50"
+          >
+            <span className="truncate text-gray-800">
+              {data.category || "Select category"}
+            </span>
+            <ChevronDown size={14} className="text-gray-400 shrink-0" />
+          </button>
+
+          {showCategoryDropdown ? (
+            <div className="mt-1.5 border border-gray-100 rounded-xl overflow-hidden max-h-[200px] overflow-y-auto overscroll-contain bg-white shadow-sm">
+              {EXPENSE_CATEGORIES.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => {
+                      setData({ ...data, category: item.label });
+                      setShowCategoryDropdown(false);
+                    }}
+                    className="w-full px-3 py-2 flex items-center justify-between hover:bg-orange-50 transition"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="h-7 w-7 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
+                        <Icon size={14} className="text-orange-600" />
+                      </div>
+                      <span className="font-medium text-xs truncate">
+                        {item.label}
+                      </span>
+                    </div>
+                    {data.category === item.label ? (
+                      <Check size={14} className="text-green-600 shrink-0" />
+                    ) : null}
+                  </button>
+                );
+              })}
+
+              <div className="border-t p-2 bg-gray-50">
+                <p className="font-semibold text-[10px] mb-1.5 text-gray-500">
+                  Custom category
+                </p>
+                <div className="flex gap-1.5">
+                  <input
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    placeholder="Enter name"
+                    className="h-8 flex-1 min-w-0 rounded-lg border px-2 outline-none bg-white text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!customCategory.trim()) return;
+                      setData({
+                        ...data,
+                        category: customCategory.trim(),
+                      });
+                      setCustomCategory("");
+                      setShowCategoryDropdown(false);
+                    }}
+                    className="h-8 px-3 rounded-lg bg-[#FF6B00] text-white text-xs font-semibold shrink-0"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <InputBox
+          label="Amount paid"
+          value={data.amount}
+          onChange={(v) =>
+            setData({
+              ...data,
+              amount: v.replace(/[^0-9]/g, ""),
+            })
+          }
+        />
+        <InputBox
+          label="Paid through"
+          value={data.paidThrough}
+          onChange={(v) =>
+            setData({
+              ...data,
+              paidThrough: v,
+            })
+          }
+        />
+        <div>
+          <label className="font-semibold text-xs block mb-1.5 text-gray-700">
+            Paid date
+          </label>
           <input
             type="date"
             value={data.paidDate}
@@ -1151,236 +1365,25 @@ const ModalForm = ({ data, setData, onClose, onSave }) => (
                 paidDate: e.target.value,
               })
             }
-            className="h-12 w-full rounded-xl border px-4 outline-none text-[16px]"
+            className="h-10 w-full rounded-lg border border-gray-200 px-3 outline-none text-sm focus:border-orange-400"
           />
         </div>
       </div>
-
-      <div className="shrink-0 border-t bg-white px-4 sm:px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 min-h-[48px] rounded-xl border border-gray-200 font-semibold text-gray-700"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            className="flex-[1.4] min-h-[48px] rounded-xl bg-[#FF6B00] text-white font-bold"
-          >
-            Save salary
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-/* EXPENSE MODAL */
-const ExpenseModal = ({ data, setData, onClose, onSave, isEdit = false }) => {
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [customCategory, setCustomCategory] = useState("");
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowCategoryDropdown(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
-
-  return (
-    <div
-      className="fixed inset-0 z-[10040] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overscroll-none"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[min(92dvh,920px)] flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mt-3 sm:hidden shrink-0" />
-        <div className="px-4 sm:px-5 py-3.5 border-b flex items-center justify-between shrink-0">
-          <h2 className="text-lg sm:text-xl font-bold">
-            {isEdit ? "Edit expense" : "Add expense"}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center"
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 space-y-4">
-          <div ref={dropdownRef}>
-            <label className="font-semibold text-sm block mb-2">
-              Expense category
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-              className="h-12 w-full rounded-xl border px-4 flex items-center justify-between bg-white"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                {data.category &&
-                  (() => {
-                    const found = EXPENSE_CATEGORIES.find(
-                      (c) => c.label === data.category,
-                    );
-                    const Icon = found?.icon;
-                    return Icon ? (
-                      <Icon size={18} className="text-orange-500 shrink-0" />
-                    ) : null;
-                  })()}
-                <span
-                  className={`text-sm truncate ${
-                    data.category ? "text-black" : "text-gray-400"
-                  }`}
-                >
-                  {data.category || "Select category"}
-                </span>
-              </div>
-              <ChevronDown size={16} className="shrink-0" />
-            </button>
-
-            {showCategoryDropdown && (
-              <div className="mt-2 bg-white border rounded-2xl shadow-lg overflow-hidden max-h-[240px] overflow-y-auto overscroll-contain">
-                {EXPENSE_CATEGORIES.map((item, index) => {
-                  const Icon = item.icon;
-                  return (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => {
-                        setData({
-                          ...data,
-                          category: item.label,
-                        });
-                        setShowCategoryDropdown(false);
-                      }}
-                      className="w-full px-3.5 py-3 flex items-center justify-between hover:bg-orange-50 transition"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-9 w-9 rounded-xl bg-orange-100 flex items-center justify-center shrink-0">
-                          <Icon size={16} className="text-orange-600" />
-                        </div>
-                        <span className="font-medium text-sm truncate">
-                          {item.label}
-                        </span>
-                      </div>
-                      {data.category === item.label && (
-                        <Check size={16} className="text-green-600 shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-
-                <div className="border-t p-3 bg-gray-50">
-                  <p className="font-semibold text-xs mb-2">Custom category</p>
-                  <div className="flex gap-2">
-                    <input
-                      value={customCategory}
-                      onChange={(e) => setCustomCategory(e.target.value)}
-                      placeholder="Enter name"
-                      className="h-11 flex-1 min-w-0 rounded-xl border px-3 outline-none bg-white text-[16px]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!customCategory.trim()) return;
-                        setData({
-                          ...data,
-                          category: customCategory.trim(),
-                        });
-                        setCustomCategory("");
-                        setShowCategoryDropdown(false);
-                      }}
-                      className="h-11 px-4 rounded-xl bg-[#FF6B00] text-white text-sm font-semibold shrink-0"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <InputBox
-            label="Amount paid"
-            value={data.amount}
-            onChange={(v) =>
-              setData({
-                ...data,
-                amount: v.replace(/[^0-9]/g, ""),
-              })
-            }
-          />
-          <InputBox
-            label="Paid through"
-            value={data.paidThrough}
-            onChange={(v) =>
-              setData({
-                ...data,
-                paidThrough: v,
-              })
-            }
-          />
-          <div>
-            <label className="font-semibold text-sm block mb-2">Paid date</label>
-            <input
-              type="date"
-              value={data.paidDate}
-              onChange={(e) =>
-                setData({
-                  ...data,
-                  paidDate: e.target.value,
-                })
-              }
-              className="h-12 w-full rounded-xl border px-4 outline-none text-[16px]"
-            />
-          </div>
-        </div>
-
-        <div className="shrink-0 border-t bg-white px-4 sm:px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 min-h-[48px] rounded-xl border border-gray-200 font-semibold text-gray-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              className="flex-[1.4] min-h-[48px] rounded-xl bg-[#FF6B00] text-white font-bold"
-            >
-              Save expense
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    </ModalShell>
   );
 };
 
-const InputBox = ({ label, value, onChange }) => (
+const InputBox = ({ label, value, onChange, autoFocus, onKeyDown }) => (
   <div>
-    <label className="font-semibold text-sm block mb-2">{label}</label>
+    <label className="font-semibold text-xs block mb-1.5 text-gray-700">
+      {label}
+    </label>
     <input
+      autoFocus={autoFocus}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-12 w-full rounded-xl border px-4 outline-none text-[16px]"
+      onKeyDown={onKeyDown}
+      className="h-10 w-full rounded-lg border border-gray-200 px-3 outline-none text-sm focus:border-orange-400"
     />
   </div>
 );

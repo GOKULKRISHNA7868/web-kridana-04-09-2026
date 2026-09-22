@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../../firebase";
 import { logStaffAction } from "../../utils/trainerAccess";
+import { isPersonCurrentlyActive } from "../../utils/personStatus";
 import {
   History,
   User,
@@ -184,9 +185,11 @@ const DailyBill = ({ instituteId: overrideId, actor = null } = {}) => {
           studentsSnap.docs
             .map((item) => {
               const data = item.data();
+              if (!isPersonCurrentlyActive(data)) return null;
               return {
                 id: item.id,
-                name: data.studentName || data.name || data.fullName || "",
+                name: data.studentName || data.name || data.fullName ||
+                  `${data.firstName || ""} ${data.lastName || ""}`.trim(),
                 phone: String(data.phoneNumber || data.phone || "").replace(
                   /\D/g,
                   "",
@@ -194,7 +197,7 @@ const DailyBill = ({ instituteId: overrideId, actor = null } = {}) => {
                 email: data.email || "",
               };
             })
-            .filter((item) => isReadableLabel(item.name)),
+            .filter((item) => item && isReadableLabel(item.name)),
         );
       } catch (error) {
         console.error("Daily bill setup error:", error);

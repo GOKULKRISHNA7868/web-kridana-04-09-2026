@@ -5,6 +5,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronDown, Filter, ArrowLeft, MapPin, Star, Users } from "lucide-react";
+import SeoHead from "../components/SeoHead";
 
 export default function ViewInstitutes() {
   const navigate = useNavigate();
@@ -365,6 +366,11 @@ export default function ViewInstitutes() {
 
   return (
     <div className="min-h-[100dvh] bg-[#F4F6FB] flex flex-col pb-[calc(var(--bottom-navbar-height,64px)+12px)]">
+      <SeoHead
+        title="Sports Academies & Institutes"
+        description="Browse sports academies and institutes on Kridana. Open public profiles to see sports, location, fees, and book demos — like Instagram for sports training."
+        path="/institutes"
+      />
       <div
         className="sticky top-0 z-40 bg-[#F4F6FB]/95 backdrop-blur-md border-b border-orange-100"
         style={{ paddingTop: "max(10px, env(safe-area-inset-top, 0px))" }}

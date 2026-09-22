@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { getCurrentUserLocation } from "../utils/location";
 import { db } from "../firebase";
+import SeoHead from "../components/SeoHead";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import {
@@ -1282,6 +1283,12 @@ const Landing = () => {
     searchedPosts.length > 0;
   return (
     <div className="page-content w-full font-sans pb-0 touch-pan-x touch-pan-y">
+      <SeoHead
+        title="Kridana — Sports Academies & Trainers"
+        description="Discover sports academies, institutes, and solo trainers on Kridana. Open public profiles, explore sports and fees, and book demos near you."
+        path="/"
+        image="/Kridana logo.png"
+      />
       {/* 3px white line */}
       <div className="w-full h-[10px] bg-white"></div>
 

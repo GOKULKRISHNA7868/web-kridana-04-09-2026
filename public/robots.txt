@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+Allow: /institutes
+Allow: /institutes/
+Allow: /trainers
+Allow: /trainers/
+Allow: /about
+Allow: /services
+Allow: /categories
+Allow: /book-demo/
+
+Disallow: /institutes/dashboard
+Disallow: /trainers/dashboard
+Disallow: /login
+Disallow: /signup
+Disallow: /chat
+Disallow: /payment
+Disallow: /checkout
+Disallow: /cart
+Disallow: /wishlist
+Disallow: /reset-password
+
+Sitemap: https://kridana.net/sitemap.xml

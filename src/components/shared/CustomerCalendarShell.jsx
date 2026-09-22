@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -54,6 +54,19 @@ const CustomerCalendarShell = ({
   const [showFilters, setShowFilters] = useState(false);
 
   const getCalApi = () => calendarRef.current?.getApi?.();
+
+  useEffect(() => {
+    const api = getCalApi();
+    if (!api) return;
+    const id = requestAnimationFrame(() => {
+      try {
+        api.updateSize();
+      } catch {
+        /* ignore */
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [calendarView]);
 
   const filteredEvents = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -283,31 +296,43 @@ const CustomerCalendarShell = ({
             </span>
           </div>
 
-          {filteredEvents.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
-              <CalendarDays size={40} className="text-gray-300 mb-3" />
-              <p className="font-semibold text-gray-700">{emptyTitle}</p>
-              <p className="text-sm text-gray-500 mt-1 max-w-xs">{emptyHint}</p>
-            </div>
-          ) : (
-            <div className="flex-1 min-h-[280px] sm:min-h-[360px] kridana-cal px-1 sm:px-2 pb-2 overflow-hidden">
+          <div className="relative flex-1 min-h-[280px] sm:min-h-[360px] flex flex-col overflow-hidden">
+            {filteredEvents.length === 0 ? (
+              <div className="absolute inset-x-0 top-0 z-10 pointer-events-none flex justify-center px-2 pt-2">
+                <div className="pointer-events-auto max-w-sm w-full rounded-lg border border-dashed border-orange-200 bg-orange-50/95 px-2.5 py-1.5 text-center shadow-sm">
+                  <p className="text-xs font-semibold text-gray-800">
+                    {emptyTitle}
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{emptyHint}</p>
+                </div>
+              </div>
+            ) : null}
+
+            <div
+              className={`flex-1 min-h-0 overflow-hidden kridana-cal px-1 sm:px-2 pb-2 ${
+                calendarView === "dayGridMonth" ? "is-month" : "is-time"
+              }`}
+            >
               <FullCalendar
                 ref={calendarRef}
                 plugins={[dayGridPlugin, timeGridPlugin, listPlugin]}
                 headerToolbar={false}
                 initialView="timeGridWeek"
                 height="100%"
-                contentHeight="auto"
                 allDaySlot={false}
                 slotMinTime="06:00:00"
                 slotMaxTime="22:00:00"
                 slotDuration="00:30:00"
-                scrollTime="08:00:00"
+                slotLabelInterval="01:00:00"
+                slotMinHeight={26}
+                scrollTime="07:00:00"
+                scrollTimeReset={false}
                 nowIndicator
                 stickyHeaderDates
-                expandRows
+                expandRows={calendarView === "dayGridMonth"}
                 handleWindowResize
-                dayMaxEvents
+                windowResizeDelay={80}
+                dayMaxEvents={calendarView === "dayGridMonth" ? 2 : true}
                 events={filteredEvents}
                 slotLabelFormat={{
                   hour: "2-digit",
@@ -319,11 +344,15 @@ const CustomerCalendarShell = ({
                   minute: "2-digit",
                   hour12: !is24Hour,
                 }}
-                dayHeaderFormat={{
-                  weekday: "short",
-                  month: "numeric",
-                  day: "numeric",
-                }}
+                dayHeaderFormat={
+                  calendarView === "dayGridMonth"
+                    ? { weekday: "short" }
+                    : {
+                        weekday: "short",
+                        month: "numeric",
+                        day: "numeric",
+                      }
+                }
                 dayCellClassNames={(arg) =>
                   isSameDay(arg.date, selectedDate)
                     ? ["kridana-cal-selected"]
@@ -332,6 +361,13 @@ const CustomerCalendarShell = ({
                 datesSet={(info) => {
                   setCalendarTitle(info.view.title);
                   setCalendarView(info.view.type);
+                  requestAnimationFrame(() => {
+                    try {
+                      info.view.calendar.updateSize();
+                    } catch {
+                      /* ignore */
+                    }
+                  });
                   setSelectedDate(info.view.calendar.getDate());
                 }}
                 dateClick={(info) => setSelectedDate(info.date)}
@@ -344,7 +380,7 @@ const CustomerCalendarShell = ({
                 )}
               />
             </div>
-          )}
+          </div>
         </div>
 
         {sidePanel && (

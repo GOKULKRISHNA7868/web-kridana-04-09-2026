@@ -20,6 +20,7 @@ import {
   trainerDisplayName,
   formatStaffTime,
 } from "../../utils/trainerAccess";
+import { filterCurrentlyActive } from "../../utils/personStatus";
 import {
   Check,
   Shield,
@@ -105,10 +106,15 @@ const TrainerAccessPage = () => {
     return accessSnapshot(saved) !== accessSnapshot(draft);
   };
 
+  const activeTrainers = useMemo(
+    () => filterCurrentlyActive(trainers),
+    [trainers],
+  );
+
   const pendingTrainerCount = useMemo(
-    () => trainers.filter(hasPendingChanges).length,
+    () => activeTrainers.filter(hasPendingChanges).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [trainers, draftByTrainer],
+    [activeTrainers, draftByTrainer],
   );
 
   const toggleDraftAccess = (trainerId, key) => {
@@ -208,9 +214,10 @@ const TrainerAccessPage = () => {
             Trainer access
           </h1>
           <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-            Select permissions for each trainer, then tap{" "}
+            Select permissions for each active trainer, then tap{" "}
             <span className="font-semibold text-gray-700">OK</span> to confirm.
-            Nothing is saved until you approve.
+            Trainers marked Left are hidden here — their past records stay in
+            salary and attendance history.
           </p>
         </div>
         {pendingTrainerCount > 0 ? (
@@ -221,16 +228,16 @@ const TrainerAccessPage = () => {
       </div>
 
       <div className="mt-4 space-y-4">
-        {trainers.length === 0 ? (
+        {activeTrainers.length === 0 ? (
           <div className="bg-white border border-gray-100 rounded-2xl p-6 text-center">
             <User size={32} className="mx-auto text-gray-300 mb-2" />
-            <p className="text-sm font-medium text-gray-600">No academy trainers yet</p>
+            <p className="text-sm font-medium text-gray-600">No active trainers</p>
             <p className="text-xs text-gray-400 mt-1">
-              Add trainers first, then manage their access here.
+              Add trainers in My Account, or check if they were marked Left.
             </p>
           </div>
         ) : (
-          trainers.map((trainer) => {
+          activeTrainers.map((trainer) => {
             const access = getDraftAccess(trainer);
             const name = trainerDisplayName(trainer);
             const pending = hasPendingChanges(trainer);

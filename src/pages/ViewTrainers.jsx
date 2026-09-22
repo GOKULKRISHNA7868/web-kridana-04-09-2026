@@ -6,6 +6,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronDown, Filter } from "lucide-react";
 import { ArrowLeft } from "lucide-react";
+import SeoHead from "../components/SeoHead";
 
 /* 🌍 Distance Formula */
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -419,6 +420,11 @@ export default function ViewTrainers() {
 
   return (
     <div className="min-h-screen bg-white px-4 sm:px-6 md:px-16 py-8 md:py-12 max-w-[1600px] mx-auto">
+      <SeoHead
+        title="Solo Sports Trainers"
+        description="Find solo sports trainers on Kridana. View public trainer profiles with sports, location, and fees — then book and train."
+        path="/trainers"
+      />
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-2 text-[#FF6A00] font-semibold mb-6"

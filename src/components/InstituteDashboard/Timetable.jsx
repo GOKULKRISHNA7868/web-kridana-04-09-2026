@@ -19,6 +19,7 @@ import {
   parseFirestoreDate,
   uniqueValues,
 } from "../../utils/calendarHelpers";
+import { filterCurrentlyActive } from "../../utils/personStatus";
 import {
   buildScheduleInsights,
   classAccent,
@@ -354,7 +355,11 @@ export default function ClassTime() {
           ),
         );
 
-        setTrainers(trainerSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setTrainers(
+          filterCurrentlyActive(
+            trainerSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          ),
+        );
 
         /* ---------------- INSTITUTE (CATEGORIES) ---------------- */
         const instituteDoc = await getDoc(doc(db, "institutes", instituteId));
@@ -369,10 +374,12 @@ export default function ClassTime() {
           ),
         );
 
-        const studentList = studentSnap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
+        const studentList = filterCurrentlyActive(
+          studentSnap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          })),
+        );
 
         setStudents(studentList);
 
@@ -380,15 +387,11 @@ export default function ClassTime() {
         const branchSet = new Set();
 
         studentList.forEach((s) => {
-          if (s.branch && s.branch.trim() !== "") {
-            branchSet.add(s.branch.trim());
-          }
+          const b = String(s.branch || "").trim();
+          if (b) branchSet.add(b);
         });
 
-        setBranches([...branchSet]);
-
-        console.log("Students:", studentList);
-        console.log("Branches:", [...branchSet]);
+        setBranches([...branchSet].sort((a, b) => a.localeCompare(b)));
 
         /* ---------------- TIMETABLE ---------------- */
         const timetableSnap = await getDocs(
@@ -410,12 +413,25 @@ export default function ClassTime() {
 
     loadData();
   }, [instituteId]);
-  const filteredStudents = students.filter((s) => s.branch === form.branch);
+  const filteredStudents = students.filter(
+    (s) =>
+      String(s.branch || "")
+        .trim()
+        .toLowerCase() ===
+      String(form.branch || "")
+        .trim()
+        .toLowerCase(),
+  );
 
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   /* ---------------- SAVE ---------------- */
   const saveClass = async () => {
+    if (!form.date || !form.startTime || !form.endTime) {
+      alert("Select date, start time and end time");
+      return;
+    }
+
     if (
       !form.category ||
       !form.subCategory ||
@@ -451,9 +467,26 @@ export default function ClassTime() {
     }
 
     const trainer = trainers.find((t) => t.id === form.trainerId);
+    if (!trainer) {
+      alert("Selected trainer not found");
+      return;
+    }
 
     const startDateTime = new Date(`${form.date}T${form.startTime}`);
     const endDateTime = new Date(`${form.date}T${form.endTime}`);
+
+    if (
+      Number.isNaN(startDateTime.getTime()) ||
+      Number.isNaN(endDateTime.getTime())
+    ) {
+      alert("Invalid date or time");
+      return;
+    }
+
+    if (endDateTime <= startDateTime) {
+      alert("End time must be after start time");
+      return;
+    }
 
     const payload = {
       title: form.subCategory,
@@ -463,27 +496,27 @@ export default function ClassTime() {
       start: startDateTime,
       end: endDateTime,
       trainerId: trainer.id,
-      trainerName: trainer.firstName,
+      trainerName:
+        `${trainer.firstName || ""} ${trainer.lastName || ""}`.trim() ||
+        trainer.name ||
+        "Trainer",
       students: form.students,
       updatedAt: serverTimestamp(),
     };
 
     try {
       if (editId) {
-        // 🔥 UPDATE
         await updateDoc(
           doc(db, "institutes", instituteId, "timetable", editId),
           payload,
         );
 
-        // ✅ update state locally
         setSchedule((prev) =>
           prev.map((item) =>
             item.id === editId ? { ...item, ...payload } : item,
           ),
         );
       } else {
-        // 🔥 ADD
         const docRef = await addDoc(
           collection(db, "institutes", instituteId, "timetable"),
           {
@@ -492,15 +525,14 @@ export default function ClassTime() {
           },
         );
 
-        // ✅ add to state locally
         setSchedule((prev) => [...prev, { id: docRef.id, ...payload }]);
       }
 
-      // ✅ close modal & reset
       setShowModal(false);
       setEditId(null);
     } catch (err) {
       console.error("Save error:", err);
+      alert("Could not save class. Please try again.");
     }
   };
   useEffect(() => {
@@ -513,9 +545,6 @@ export default function ClassTime() {
         )
         .map((s) => s.id);
 
-      console.log("Selected Branch:", form.branch);
-      console.log("Matched Students:", autoStudents);
-
       setForm((prev) => ({
         ...prev,
         students: autoStudents,
@@ -524,26 +553,33 @@ export default function ClassTime() {
   }, [form.branch, students, editId]);
   const events = useMemo(
     () =>
-      schedule.map((s) => {
-        const accent = classAccent(s.category, s.cancelled);
-        return {
-          id: s.id,
-          title: s.cancelled ? `Cancelled · ${s.subCategory}` : s.subCategory,
-          start: parseFirestoreDate(s.start),
-          end: parseFirestoreDate(s.end),
-          extendedProps: {
-            trainer: s.trainerName,
-            count: s.students?.length || 0,
-            cancelled: s.cancelled || false,
-            cancelReason: s.cancelReason || "",
-            category: s.category || "",
-            branch: s.branch || "",
-            trainerName: s.trainerName || "",
-            chipClass: accent.chip,
-            raw: s,
-          },
-        };
-      }),
+      schedule
+        .map((s) => {
+          const start = parseFirestoreDate(s.start);
+          const end = parseFirestoreDate(s.end);
+          if (!start || !end) return null;
+          const accent = classAccent(s.category, s.cancelled);
+          return {
+            id: s.id,
+            title: s.cancelled
+              ? `Cancelled · ${s.subCategory}`
+              : s.subCategory || s.title || "Class",
+            start,
+            end,
+            extendedProps: {
+              trainer: s.trainerName,
+              count: s.students?.length || 0,
+              cancelled: s.cancelled || false,
+              cancelReason: s.cancelReason || "",
+              category: s.category || "",
+              branch: s.branch || "",
+              trainerName: s.trainerName || "",
+              chipClass: accent.chip,
+              raw: s,
+            },
+          };
+        })
+        .filter(Boolean),
     [schedule],
   );
 
@@ -628,12 +664,21 @@ export default function ClassTime() {
     );
   }).length;
 
+  const toLocalDateInput = (date = new Date()) => {
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const openNewClass = (prefill = {}) => {
     setEditId(null);
     setForm({
-      date: prefill.date || new Date().toISOString().slice(0, 10),
-      startTime: prefill.startTime || "",
-      endTime: prefill.endTime || "",
+      date: prefill.date || toLocalDateInput(new Date()),
+      startTime: prefill.startTime || "09:00",
+      endTime: prefill.endTime || "10:00",
       category: "",
       subCategory: "",
       branch: "",
@@ -649,7 +694,7 @@ export default function ClassTime() {
     if (!start || !end) return;
     setEditId(event.id);
     setForm({
-      date: start.toISOString().slice(0, 10),
+      date: toLocalDateInput(start),
       startTime: `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`,
       endTime: `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`,
       category: event.category || "",
@@ -662,11 +707,23 @@ export default function ClassTime() {
   };
 
   const handleRangeSelect = (info) => {
-    const date = info.startStr.split("T")[0];
-    const start = info.startStr.split("T")[1]?.slice(0, 5);
-    const end = info.endStr.split("T")[1]?.slice(0, 5);
-    setSelectedDate(info.start);
-    openNewClass({ date, startTime: start, endTime: end });
+    const start = info.start;
+    const end = info.end;
+    const date = toLocalDateInput(start);
+    let startTime = "09:00";
+    let endTime = "10:00";
+
+    if (!info.allDay && info.startStr?.includes("T")) {
+      startTime = `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}`;
+      endTime = `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}`;
+      if (endTime === startTime || end <= start) {
+        const adjusted = new Date(start.getTime() + 60 * 60 * 1000);
+        endTime = `${String(adjusted.getHours()).padStart(2, "0")}:${String(adjusted.getMinutes()).padStart(2, "0")}`;
+      }
+    }
+
+    setSelectedDate(start);
+    openNewClass({ date, startTime, endTime });
   };
 
   const handleEventClick = (info) => {
@@ -738,9 +795,9 @@ export default function ClassTime() {
           setFilters((prev) => ({ ...prev, [key]: value }))
         }
         aiInsights={scheduleInsights.insights}
-        alert="Use Week or Agenda on mobile for the clearest view. Drag on the calendar to schedule a class."
-        emptyTitle="No classes on calendar"
-        emptyHint="Add your first class or drag a time range on the calendar."
+        alert={null}
+        emptyTitle="No classes this month"
+        emptyHint="Drag across dates or tap Add class to schedule."
         onAddClick={() => openNewClass()}
         addLabel="Add class"
         onCalendarReady={(api) => {
@@ -749,34 +806,32 @@ export default function ClassTime() {
         onDateClick={(info) => setSelectedDate(info.date)}
         onRangeSelect={handleRangeSelect}
         onEventClick={handleEventClick}
-        initialView="timeGridWeek"
+        initialView="dayGridMonth"
         footerStats={
           <>
-            <p className="text-[11px] sm:text-xs text-gray-600">
-              This month:{" "}
+            <p className="text-[10px] sm:text-[11px] text-gray-600">
+              Month:{" "}
               <span className="font-semibold text-gray-800">
-                {monthClassCount} class{monthClassCount === 1 ? "" : "es"}
+                {monthClassCount}
               </span>
-              <span className="hidden sm:inline text-gray-400"> · </span>
-              <span className="hidden sm:inline">
-                Today: {scheduleInsights.todayCount}
-              </span>
+              <span className="text-gray-400"> · </span>
+              Today: {scheduleInsights.todayCount}
             </p>
           </>
         }
         sidePanel={
           <>
-            <div className="shrink-0 px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-gray-900 truncate">
+            <div className="shrink-0 px-3 py-2 border-b border-gray-100 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold text-gray-900 truncate">
                 {selectedDayLabel}
               </h3>
-              <span className="h-6 min-w-[24px] px-1.5 rounded-full bg-[#FF6A00] text-white text-xs font-bold flex items-center justify-center">
+              <span className="h-5 min-w-[20px] px-1 rounded-full bg-[#FF6A00] text-white text-[10px] font-bold flex items-center justify-center">
                 {selectedDayClasses.length}
               </span>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2.5">
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-1.5">
               {selectedDayClasses.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">
+                <p className="text-xs text-gray-400 text-center py-6">
                   No classes on this day.
                 </p>
               ) : (
@@ -787,34 +842,22 @@ export default function ClassTime() {
                       key={cls.id}
                       type="button"
                       onClick={() => openScheduledClass(cls)}
-                      className="w-full text-left rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden active:scale-[0.99] transition"
+                      className="w-full text-left rounded-lg border border-gray-100 bg-white shadow-sm overflow-hidden active:scale-[0.99] transition"
                     >
                       <div className="flex">
-                        <span className={`w-1.5 shrink-0 ${accent.bar}`} />
-                        <div className="flex-1 min-w-0 p-3">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-gray-900 truncate">
-                              {cls.cancelled
-                                ? `Cancelled · ${cls.subCategory}`
-                                : cls.subCategory}
-                            </p>
-                            {cls.category ? (
-                              <span
-                                className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${accent.tag}`}
-                              >
-                                {cls.category}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="text-xs text-gray-500 mt-0.5 truncate">
+                        <span className={`w-1 shrink-0 ${accent.bar}`} />
+                        <div className="flex-1 min-w-0 p-2">
+                          <p className="text-xs font-semibold text-gray-900 truncate">
+                            {cls.cancelled
+                              ? `Cancelled · ${cls.subCategory}`
+                              : cls.subCategory}
+                          </p>
+                          <p className="text-[10px] text-gray-500 mt-0.5 truncate">
                             {cls.trainerName || "Trainer"}
                             {cls.branch ? ` · ${cls.branch}` : ""}
                           </p>
-                          <p className="text-xs font-medium text-gray-700 mt-1.5">
+                          <p className="text-[10px] font-medium text-gray-700 mt-1">
                             {formatClock(cls.start)} – {formatClock(cls.end)}
-                          </p>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            {cls.students?.length || 0} students
                           </p>
                         </div>
                       </div>
@@ -823,13 +866,13 @@ export default function ClassTime() {
                 })
               )}
             </div>
-            <div className="shrink-0 p-3 border-t border-gray-100">
+            <div className="shrink-0 p-2 border-t border-gray-100">
               <button
                 type="button"
                 onClick={goToSelectedDay}
-                className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700 inline-flex items-center justify-center gap-2"
+                className="w-full h-8 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 inline-flex items-center justify-center gap-1.5"
               >
-                <CalendarDays size={16} className="text-[#FF6A00]" />
+                <CalendarDays size={14} className="text-[#FF6A00]" />
                 Open day view
               </button>
             </div>

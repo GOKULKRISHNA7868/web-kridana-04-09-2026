@@ -302,9 +302,22 @@ body {
   }
 }
 
+.kridana-cal {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .kridana-cal .fc {
   font-family: inherit;
   height: 100%;
+  min-height: 0;
+  flex: 1;
+}
+.kridana-cal .fc-view-harness,
+.kridana-cal .fc-view-harness-active {
+  height: 100% !important;
+  min-height: 0;
 }
 .kridana-cal .fc-toolbar {
   display: none;
@@ -312,46 +325,122 @@ body {
 .kridana-cal .fc-scrollgrid,
 .kridana-cal .fc-theme-standard td,
 .kridana-cal .fc-theme-standard th {
-  border-color: #f1f1f1;
+  border-color: #e8eaef;
+}
+.kridana-cal .fc-scrollgrid-section-header > * {
+  border-bottom-width: 1px;
 }
 .kridana-cal .fc-col-header-cell {
-  background: #fff;
-  padding: 6px 0;
-  font-size: 11px;
-  font-weight: 600;
+  background: #f8f9fb;
+  padding: 4px 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: #6b7280;
 }
 .kridana-cal .fc-daygrid-day-number,
 .kridana-cal .fc-timegrid-slot-label {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   color: #374151;
+  padding: 2px 4px !important;
+}
+.kridana-cal .fc-daygrid-day-frame {
+  min-height: 0 !important;
+  padding: 1px 2px 2px;
+}
+.kridana-cal .fc-daygrid-day-events {
+  margin-top: 0 !important;
+  min-height: 0 !important;
+}
+.kridana-cal .fc-daygrid-event-harness {
+  margin-top: 1px !important;
+}
+.kridana-cal .fc-daygrid-day-top {
+  flex-direction: row;
+  justify-content: flex-end;
+  margin: 0 !important;
+}
+
+/* Month only: stretch day cells to fill the viewport */
+.kridana-cal.is-month .fc-daygrid-body,
+.kridana-cal.is-month .fc-daygrid-body table,
+.kridana-cal.is-month .fc-scrollgrid-sync-table {
+  height: 100% !important;
+}
+
+/*
+ * Time / agenda: keep natural slot height so the body can scroll
+ * past noon through slotMaxTime (e.g. 22:00). Never force 100% here.
+ */
+.kridana-cal.is-time .fc-scrollgrid-sync-table,
+.kridana-cal.is-time .fc-timegrid-body,
+.kridana-cal.is-time .fc-timegrid-slots table,
+.kridana-cal.is-time .fc-timegrid-cols table {
+  height: auto !important;
+}
+.kridana-cal.is-time .fc-scroller,
+.kridana-cal.is-time .fc-scroller-liquid-absolute {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch;
+}
+.kridana-cal.is-time .fc-timegrid-slot {
+  height: 1.625rem;
+}
+.kridana-cal.is-time .fc-timegrid-slot-minor {
+  border-top-style: dotted;
+}
+.kridana-cal.is-time .fc-timegrid-axis {
+  width: 3rem;
+}
+.kridana-cal.is-time .fc-timegrid-slot-label-cushion {
+  font-variant-numeric: tabular-nums;
+}
+
+.kridana-cal .fc-day-other .fc-daygrid-day-number {
+  color: #c4c9d4;
+  font-weight: 500;
 }
 .kridana-cal .fc-day-today {
-  background: #fff4ec !important;
+  background: #fff7f0 !important;
 }
 .kridana-cal .fc-highlight {
-  background: rgba(255, 106, 0, 0.12) !important;
+  background: rgba(255, 106, 0, 0.1) !important;
 }
 .kridana-cal .fc-event {
   border: none !important;
   background: transparent !important;
+  cursor: pointer;
+  box-shadow: none !important;
 }
 .kridana-cal .fc-timegrid-now-indicator-line {
   border-color: #ff6a00;
 }
 .kridana-cal .fc-daygrid-event {
-  margin: 1px 2px;
+  margin: 0 1px 1px !important;
+}
+.kridana-cal .fc-daygrid-block-event .fc-event-main {
+  padding: 0;
+}
+.kridana-cal .fc-more-link {
+  color: #ff6a00;
+  font-weight: 700;
+  font-size: 9px;
+  margin: 0 1px;
 }
 .kridana-cal .kridana-cal-selected .fc-daygrid-day-number {
   background: #ff6a00;
   color: #fff !important;
   border-radius: 9999px;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.35rem;
+  height: 1.35rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin: 4px;
+  margin: 1px 2px;
+  font-size: 10px;
 }
 .kridana-cal .fc-timegrid-event-harness {
   margin-right: 1px;
@@ -360,18 +449,51 @@ body {
 .kridana-cal .fc-list-event-time {
   font-size: 12px;
 }
-@media (max-width: 640px) {
-  .kridana-cal .fc-col-header-cell {
-    font-size: 10px;
+
+/* Compact full-month layout for web */
+.kridana-cal.is-month .fc-daygrid-day-number {
+  font-size: 11px;
+  line-height: 1.2;
+}
+.kridana-cal.is-month .fc-col-header-cell {
+  padding: 6px 0;
+  font-size: 11px;
+}
+@media (min-width: 1024px) {
+  .kridana-cal.is-month .fc-col-header-cell {
+    font-size: 12px;
+    padding: 8px 0;
   }
-  .kridana-cal .fc-daygrid-day-number {
+  .kridana-cal.is-month .fc-daygrid-day-number {
+    font-size: 12px;
+  }
+  .kridana-cal.is-month .kridana-cal-selected .fc-daygrid-day-number {
+    width: 1.5rem;
+    height: 1.5rem;
     font-size: 11px;
   }
-  .kridana-cal .fc-timegrid-slot-label {
+}
+@media (max-width: 640px) {
+  .kridana-cal .fc-col-header-cell {
+    font-size: 9px;
+    padding: 3px 0;
+  }
+  .kridana-cal .fc-daygrid-day-number {
     font-size: 10px;
+  }
+  .kridana-cal .fc-timegrid-slot-label {
+    font-size: 9px;
   }
   .kridana-cal .fc-timegrid-axis-cushion {
     padding: 0 2px;
+  }
+  .kridana-cal .kridana-cal-selected .fc-daygrid-day-number {
+    width: 1.2rem;
+    height: 1.2rem;
+    font-size: 9px;
+  }
+  .kridana-cal.is-time .fc-timegrid-axis {
+    width: 2.5rem;
   }
 }
 

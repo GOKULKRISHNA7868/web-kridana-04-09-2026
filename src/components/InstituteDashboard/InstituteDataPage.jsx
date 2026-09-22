@@ -7,26 +7,72 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock3,
+  Users,
 } from "lucide-react";
 
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
 import { getDashboardGreeting } from "../../utils/dashboardGreeting";
+import {
+  isPersonCurrentlyActive,
+  isPersonLeft,
+} from "../../utils/personStatus";
 
 import { collection, query, where, getDocs } from "firebase/firestore";
+
+const StatusBadge = ({ status }) => {
+  if (status === "Paid") {
+    return (
+      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-semibold whitespace-nowrap">
+        <CheckCircle2 size={10} />
+        Paid
+      </span>
+    );
+  }
+
+  if (status === "Partial") {
+    return (
+      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 text-[10px] font-semibold whitespace-nowrap">
+        <Clock3 size={10} />
+        Partial
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 text-[10px] font-semibold whitespace-nowrap">
+      <AlertCircle size={10} />
+      Pending
+    </span>
+  );
+};
+
+const getPrimarySport = (student) => {
+  const sport = Array.isArray(student.sports) ? student.sports[0] : null;
+  return {
+    subCategory:
+      student.subCategory || sport?.subCategory || sport?.category || "-",
+    belt: student.belt || sport?.belt || sport?.skillLevel || "-",
+    sessions: student.sessions || sport?.sessions || sport?.session || "-",
+  };
+};
+
+const avatarUrl = (student) =>
+  student.profileImageUrl ||
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    `${student.firstName || "S"}+${student.lastName || ""}`,
+  )}&background=FFF1E8&color=FF6A00&size=64`;
 
 const PerformanceDashboard = () => {
   const { user } = useAuth();
 
   const [students, setStudents] = useState([]);
   const [fees, setFees] = useState([]);
-
   const [loading, setLoading] = useState(true);
-
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("Active");
 
-  // ================= FETCH DATA =================
   useEffect(() => {
     if (!user) return;
 
@@ -34,7 +80,6 @@ const PerformanceDashboard = () => {
       try {
         setLoading(true);
 
-        // ================= STUDENTS =================
         const studentsSnap = await getDocs(
           query(
             collection(db, "students"),
@@ -42,14 +87,13 @@ const PerformanceDashboard = () => {
           ),
         );
 
-        const studentsData = studentsSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        setStudents(
+          studentsSnap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+          })),
+        );
 
-        setStudents(studentsData);
-
-        // ================= FEES =================
         const feeSnap = await getDocs(
           query(
             collection(db, "studentFees"),
@@ -57,12 +101,12 @@ const PerformanceDashboard = () => {
           ),
         );
 
-        const feesData = feeSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-
-        setFees(feesData);
+        setFees(
+          feeSnap.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+          })),
+        );
       } catch (error) {
         console.log(error);
       }
@@ -73,24 +117,16 @@ const PerformanceDashboard = () => {
     fetchData();
   }, [user]);
 
-  // ================= COMBINE STUDENT + FEES =================
   const tableData = useMemo(() => {
     return students.map((student) => {
       const fee = fees.find((f) => f.studentId === student.id);
-
       const totalAmount = Number(fee?.totalAmount || student.monthlyFee || 0);
-
       const paidAmount = Number(fee?.paidAmount || 0);
-
-      const pendingAmount = totalAmount - paidAmount;
+      const pendingAmount = Math.max(0, totalAmount - paidAmount);
 
       let paymentStatus = "Pending";
-
-      if (pendingAmount <= 0) {
-        paymentStatus = "Paid";
-      } else if (paidAmount > 0) {
-        paymentStatus = "Partial";
-      }
+      if (pendingAmount <= 0 && totalAmount > 0) paymentStatus = "Paid";
+      else if (paidAmount > 0) paymentStatus = "Partial";
 
       return {
         ...student,
@@ -102,354 +138,332 @@ const PerformanceDashboard = () => {
     });
   }, [students, fees]);
 
-  // ================= BRANCHES =================
   const branches = useMemo(() => {
     const list = tableData.map((s) => s.branch || "Unknown");
-
     return ["All", ...new Set(list)];
   }, [tableData]);
 
-  // ================= FILTER =================
   const filteredStudents = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return tableData.filter((student) => {
       const fullName = `${student.firstName || ""} ${
         student.lastName || ""
       }`.toLowerCase();
 
       const matchesSearch =
-        fullName.includes(search.toLowerCase()) ||
-        student.phone?.includes(search) ||
-        student.email?.toLowerCase().includes(search.toLowerCase()) ||
-        student.registernumber?.toLowerCase().includes(search.toLowerCase());
+        !q ||
+        fullName.includes(q) ||
+        String(student.phone || "").includes(q) ||
+        String(student.email || "")
+          .toLowerCase()
+          .includes(q) ||
+        String(student.registernumber || "")
+          .toLowerCase()
+          .includes(q);
 
       const matchesBranch =
         branchFilter === "All" || student.branch === branchFilter;
 
-      return matchesSearch && matchesBranch;
+      let matchesStatus = true;
+      if (statusFilter === "Active") {
+        matchesStatus = isPersonCurrentlyActive(student);
+      } else if (statusFilter === "Left") {
+        matchesStatus = isPersonLeft(student);
+      }
+
+      return matchesSearch && matchesBranch && matchesStatus;
     });
-  }, [tableData, search, branchFilter]);
+  }, [tableData, search, branchFilter, statusFilter]);
 
-  // ================= STATUS UI =================
-  const StatusBadge = ({ status }) => {
-    if (status === "Paid") {
-      return (
-        <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 text-[11px] font-semibold whitespace-nowrap">
-          <CheckCircle2 size={12} />
-          Paid
-        </div>
-      );
-    }
-
-    if (status === "Partial") {
-      return (
-        <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 text-[11px] font-semibold whitespace-nowrap">
-          <Clock3 size={12} />
-          Partial
-        </div>
-      );
-    }
-
-    return (
-      <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-700 text-[11px] font-semibold whitespace-nowrap">
-        <AlertCircle size={12} />
-        Pending
-      </div>
-    );
-  };
+  const paidCount = useMemo(
+    () => filteredStudents.filter((s) => s.paymentStatus === "Paid").length,
+    [filteredStudents],
+  );
+  const pendingCount = useMemo(
+    () =>
+      filteredStudents.filter((s) => s.paymentStatus !== "Paid").length,
+    [filteredStudents],
+  );
 
   return (
-    <div
-      className="
-    h-full
-    w-full
-    flex
-    flex-col
-    bg-gray-50
-    rounded-2xl
-    overflow-hidden
-  "
-    >
-      {/* ================= FIXED TOP SECTION ================= */}
-      <div className="shrink-0 px-3 md:px-5 pt-3 pb-2">
-        {/* ================= HEADER ================= */}
-        <div className="mb-3 rounded-2xl bg-gradient-to-br from-[#FF6A00] via-[#FF7A1A] to-[#FF9A4A] p-4 shadow-[0_8px_24px_rgba(255,106,0,0.22)] relative overflow-hidden">
-          <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/15 pointer-events-none" />
-          <div className="relative">
-            <p className="text-orange-100 text-[11px] font-medium tracking-wide">
-              {getDashboardGreeting()}
-            </p>
-            <h1 className="text-lg sm:text-xl font-bold text-white mt-0.5">
-              Students Dashboard
-            </h1>
-            <p className="text-xs sm:text-sm text-orange-50/90 mt-1">
-              Manage all students and payment details
-            </p>
-          </div>
-        </div>
-
-        {/* ================= FILTERS ================= */}
-        <div className="dash-card p-2.5 mb-0">
-          {/* SEARCH */}
-          <div className="relative mb-3">
-            <Search
-              size={18}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            />
-
-            <input
-              type="text"
-              placeholder="Search student..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="
-                w-full
-                pl-10
-                pr-4
-                py-3
-                border
-                border-gray-200
-                rounded-xl
-                text-sm
-                outline-none
-                focus:border-orange-500
-                bg-gray-50/80
-                transition
-              "
-            />
-          </div>
-
-          {/* BRANCH FILTER */}
-          <div className="overflow-x-auto scrollbar-hide">
-            <div className="flex gap-2 min-w-max pb-1">
-              {branches.map((branch, index) => (
-                <button
-                  key={index}
-                  onClick={() => setBranchFilter(branch)}
-                  className={`
-                    px-4
-                    py-2
-                    rounded-xl
-                    text-sm
-                    font-semibold
-                    whitespace-nowrap
-                    transition
-                    active:scale-95
-                    ${
-                      branchFilter === branch
-                        ? "bg-[#FF6A00] text-white"
-                        : "bg-gray-100 text-gray-700"
-                    }
-                  `}
-                >
-                  {branch}
-                </button>
-              ))}
+    <div className="h-full w-full min-h-0 flex flex-col bg-[#f5f6f8] rounded-xl lg:rounded-2xl overflow-hidden">
+      {/* Compact toolbar — maximize table height */}
+      <div className="shrink-0 px-2 sm:px-3 lg:px-4 pt-2 pb-1.5 space-y-1.5">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3">
+          {/* Title strip */}
+          <div className="flex items-center justify-between gap-2 min-w-0 lg:min-w-[200px] xl:min-w-[240px]">
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 font-medium leading-none">
+                {getDashboardGreeting()}
+              </p>
+              <h1 className="text-sm sm:text-base font-bold text-gray-900 truncate leading-tight mt-0.5">
+                Students
+              </h1>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="inline-flex items-center gap-1 rounded-md bg-white border border-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700">
+                <Users size={11} className="text-[#FF6A00]" />
+                {filteredStudents.length}
+              </span>
+              <span className="hidden sm:inline-flex rounded-md bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[10px] font-semibold">
+                {paidCount} paid
+              </span>
+              <span className="hidden sm:inline-flex rounded-md bg-red-50 text-red-600 px-1.5 py-0.5 text-[10px] font-semibold">
+                {pendingCount} due
+              </span>
             </div>
           </div>
+
+          {/* Search */}
+          <div className="relative flex-1 min-w-0">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+            />
+            <input
+              type="search"
+              placeholder="Search name, phone, email, reg. no..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-8 pl-8 pr-3 rounded-lg border border-gray-200 bg-white text-xs text-gray-800 placeholder:text-gray-400 outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-100"
+            />
+          </div>
+
+          {/* Status pills */}
+          <div className="grid grid-cols-3 gap-0.5 p-0.5 rounded-lg bg-gray-200/80 shrink-0 lg:w-[200px]">
+            {["Active", "Left", "All"].map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setStatusFilter(item)}
+                className={`h-7 rounded-md text-[11px] font-semibold transition ${
+                  statusFilter === item
+                    ? "bg-[#FF6A00] text-white shadow-sm"
+                    : "text-gray-600 hover:bg-white/70"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Branches — compact chips */}
+        <div className="overflow-x-auto scrollbar-hide -mx-0.5 px-0.5">
+          <div className="flex gap-1 min-w-max">
+            {branches.map((branch) => (
+              <button
+                key={branch}
+                type="button"
+                onClick={() => setBranchFilter(branch)}
+                className={`h-6 px-2 rounded-md text-[10px] sm:text-[11px] font-semibold whitespace-nowrap transition active:scale-[0.98] ${
+                  branchFilter === branch
+                    ? "bg-[#FF6A00] text-white"
+                    : "bg-white text-gray-600 border border-gray-200 hover:border-orange-200"
+                }`}
+              >
+                {branch}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <p className="text-[10px] text-gray-400 leading-snug hidden sm:block">
+          Active list is current members. Open Left for alumni — fee history
+          stays on past months.
+        </p>
       </div>
 
-      {/* ================= TABLE SECTION ONLY SCROLLABLE ================= */}
-      <div
-        className="
-    flex-1
-    min-h-0
-    px-3
-    md:px-5
-    pb-2
-    md:pb-4
-  "
-      >
-        <div
-          className="
-            bg-white
-            rounded-2xl
-            shadow-sm
-            h-full
-            flex
-            flex-col
-            overflow-hidden
-          "
-        >
-          {/* TABLE HEADER */}
-          <div className="px-4 py-4 border-b bg-white shrink-0">
-            <h2 className="font-bold text-lg">Students Table</h2>
-
-            <p className="text-sm text-gray-500 mt-1">
-              Total Records: {filteredStudents.length}
+      {/* Table fills remaining height */}
+      <div className="flex-1 min-h-0 px-2 sm:px-3 lg:px-4 pb-2 lg:pb-3">
+        <div className="h-full min-h-0 bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
+          <div className="shrink-0 h-8 px-2.5 sm:px-3 border-b border-gray-100 flex items-center justify-between gap-2 bg-[#fafafa]">
+            <p className="text-[11px] font-semibold text-gray-700">
+              Directory
+            </p>
+            <p className="text-[10px] text-gray-400">
+              {filteredStudents.length} shown
+              {statusFilter !== "All" ? ` · ${statusFilter}` : ""}
+              {branchFilter !== "All" ? ` · ${branchFilter}` : ""}
             </p>
           </div>
 
-          {/* ================= TABLE SCROLL AREA ================= */}
-          <div
-            className="
-              flex-1
-              min-h-0
-              overflow-auto
-              overscroll-contain
-              touch-pan-x
-              touch-pan-y
-            "
-          >
+          <div className="flex-1 min-h-0 overflow-auto overscroll-contain">
             {loading ? (
-              <div className="p-4 space-y-3">
-                {Array(6)
-                  .fill(0)
-                  .map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-28 rounded-2xl dash-shimmer"
-                      style={{ animationDelay: `${i * 60}ms` }}
-                    />
-                  ))}
+              <div className="p-2 space-y-1.5">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-9 rounded-md dash-shimmer"
+                    style={{ animationDelay: `${i * 40}ms` }}
+                  />
+                ))}
               </div>
             ) : filteredStudents.length === 0 ? (
-              <div className="dash-empty">
-                <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center">
-                  <Search size={22} className="text-[#FF6A00]" />
+              <div className="h-full min-h-[180px] flex flex-col items-center justify-center px-4 text-center">
+                <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center mb-2">
+                  <Search size={18} className="text-[#FF6A00]" />
                 </div>
-                <p className="dash-empty-title">No students found</p>
-                <p className="dash-empty-sub">
-                  Try another search or branch filter to see results.
+                <p className="text-sm font-semibold text-gray-800">
+                  No students found
+                </p>
+                <p className="text-xs text-gray-500 mt-1 max-w-xs">
+                  Try another search, branch, or status filter.
                 </p>
               </div>
             ) : (
-              <div className="min-w-[1150px]">
-                <table className="w-full border-collapse">
-                  {/* ================= STICKY TABLE HEADER ================= */}
-                  <thead className="sticky top-0 z-20 bg-[#FFF1E8]">
-                    <tr className="text-left text-xs text-gray-700">
-                      <th className="px-3 py-3 whitespace-nowrap">Profile</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Name</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Phone</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Email</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Branch</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Sport</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Belt</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Session</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">
-                        Monthly Fee
-                      </th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Paid</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Pending</th>
-
-                      <th className="px-3 py-3 whitespace-nowrap">Status</th>
-                    </tr>
-                  </thead>
-
-                  {/* ================= TABLE BODY ================= */}
-                  <tbody>
-                    {filteredStudents.map((student) => (
-                      <tr
+              <>
+                {/* Mobile / tablet compact cards */}
+                <div className="lg:hidden divide-y divide-gray-100">
+                  {filteredStudents.map((student) => {
+                    const sport = getPrimarySport(student);
+                    return (
+                      <div
                         key={student.id}
-                        className="
-                          border-b
-                          text-sm
-                          bg-white
-                        "
+                        className="px-2.5 py-2 flex gap-2.5 items-start hover:bg-orange-50/40"
                       >
-                        {/* PROFILE */}
-                        <td className="px-3 py-3">
-                          <img
-                            src={
-                              student.profileImageUrl ||
-                              "https://ui-avatars.com/api/?name=Student"
-                            }
-                            alt="profile"
-                            className="
-                              w-12
-                              h-12
-                              rounded-full
-                              object-cover
-                            "
-                          />
-                        </td>
-
-                        {/* NAME */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <div className="font-semibold">
-                            {student.firstName} {student.lastName}
+                        <img
+                          src={avatarUrl(student)}
+                          alt=""
+                          className="w-9 h-9 rounded-full object-cover shrink-0 border border-gray-100"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-gray-900 truncate leading-tight">
+                                {student.firstName} {student.lastName}
+                              </p>
+                              <p className="text-[10px] text-gray-400 truncate">
+                                {student.registernumber || "No reg. no"}
+                                {student.branch ? ` · ${student.branch}` : ""}
+                              </p>
+                            </div>
+                            <StatusBadge status={student.paymentStatus} />
                           </div>
-
-                          <div className="text-xs text-gray-500">
-                            {student.registernumber}
+                          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-gray-500">
+                            <span className="truncate max-w-[140px]">
+                              {sport.subCategory}
+                            </span>
+                            <span>·</span>
+                            <span>{sport.belt}</span>
+                            <span>·</span>
+                            <span>{sport.sessions}</span>
                           </div>
-                        </td>
-
-                        {/* PHONE */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1">
-                            <Phone size={13} />
-
-                            {student.phone || "-"}
+                          <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px]">
+                            <div className="flex items-center gap-2 min-w-0 text-gray-500">
+                              <span className="inline-flex items-center gap-0.5 truncate">
+                                <Phone size={10} className="shrink-0" />
+                                {student.phone || "-"}
+                              </span>
+                            </div>
+                            <div className="shrink-0 font-semibold tabular-nums">
+                              <span className="text-gray-700">
+                                ₹{student.totalAmount}
+                              </span>
+                              <span className="text-gray-300 mx-1">|</span>
+                              <span className="text-emerald-600">
+                                ₹{student.paidAmount}
+                              </span>
+                              <span className="text-gray-300 mx-1">|</span>
+                              <span className="text-red-500">
+                                ₹{student.pendingAmount}
+                              </span>
+                            </div>
                           </div>
-                        </td>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                        {/* EMAIL */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <div className="flex items-center gap-1">
-                            <Mail size={13} />
-
-                            <span>{student.email || "-"}</span>
-                          </div>
-                        </td>
-
-                        {/* BRANCH */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {student.branch || "-"}
-                        </td>
-
-                        {/* SPORT */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {student.subCategory ||
-                            student.sports?.[0]?.subCategory ||
-                            "-"}
-                        </td>
-
-                        {/* BELT */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {student.belt || "-"}
-                        </td>
-
-                        {/* SESSION */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {student.sessions || "-"}
-                        </td>
-
-                        {/* MONTHLY */}
-                        <td className="px-3 py-3 whitespace-nowrap font-semibold">
-                          ₹{student.totalAmount}
-                        </td>
-
-                        {/* PAID */}
-                        <td className="px-3 py-3 whitespace-nowrap text-green-600 font-semibold">
-                          ₹{student.paidAmount}
-                        </td>
-
-                        {/* PENDING */}
-                        <td className="px-3 py-3 whitespace-nowrap text-red-500 font-semibold">
-                          ₹{student.pendingAmount}
-                        </td>
-
-                        {/* STATUS */}
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          <StatusBadge status={student.paymentStatus} />
-                        </td>
+                {/* Desktop dense table */}
+                <div className="hidden lg:block min-w-0">
+                  <table className="w-full border-collapse text-left">
+                    <thead className="sticky top-0 z-20 bg-[#FFF7F0] shadow-[inset_0_-1px_0_#f3e8de]">
+                      <tr className="text-[10px] uppercase tracking-wide text-gray-500">
+                        <th className="px-2 py-1.5 font-semibold w-10" />
+                        <th className="px-2 py-1.5 font-semibold">Name</th>
+                        <th className="px-2 py-1.5 font-semibold">Contact</th>
+                        <th className="px-2 py-1.5 font-semibold">Branch</th>
+                        <th className="px-2 py-1.5 font-semibold">Sport</th>
+                        <th className="px-2 py-1.5 font-semibold">Belt</th>
+                        <th className="px-2 py-1.5 font-semibold">Session</th>
+                        <th className="px-2 py-1.5 font-semibold text-right">
+                          Fee
+                        </th>
+                        <th className="px-2 py-1.5 font-semibold text-right">
+                          Paid
+                        </th>
+                        <th className="px-2 py-1.5 font-semibold text-right">
+                          Due
+                        </th>
+                        <th className="px-2 py-1.5 font-semibold">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {filteredStudents.map((student) => {
+                        const sport = getPrimarySport(student);
+                        return (
+                          <tr
+                            key={student.id}
+                            className="border-b border-gray-50 hover:bg-orange-50/50 transition-colors"
+                          >
+                            <td className="px-2 py-1">
+                              <img
+                                src={avatarUrl(student)}
+                                alt=""
+                                className="w-7 h-7 rounded-full object-cover border border-gray-100"
+                              />
+                            </td>
+                            <td className="px-2 py-1 min-w-[140px]">
+                              <p className="text-xs font-semibold text-gray-900 truncate leading-tight">
+                                {student.firstName} {student.lastName}
+                              </p>
+                              <p className="text-[10px] text-gray-400 truncate">
+                                {student.registernumber || "—"}
+                              </p>
+                            </td>
+                            <td className="px-2 py-1 min-w-[150px]">
+                              <p className="text-[11px] text-gray-700 flex items-center gap-1 truncate">
+                                <Phone size={10} className="text-gray-400 shrink-0" />
+                                {student.phone || "—"}
+                              </p>
+                              <p className="text-[10px] text-gray-400 flex items-center gap-1 truncate max-w-[180px]">
+                                <Mail size={10} className="shrink-0" />
+                                {student.email || "—"}
+                              </p>
+                            </td>
+                            <td className="px-2 py-1 text-[11px] text-gray-700 whitespace-nowrap">
+                              {student.branch || "—"}
+                            </td>
+                            <td className="px-2 py-1 text-[11px] text-gray-700 whitespace-nowrap max-w-[120px] truncate">
+                              {sport.subCategory}
+                            </td>
+                            <td className="px-2 py-1 text-[11px] text-gray-700 whitespace-nowrap">
+                              {sport.belt}
+                            </td>
+                            <td className="px-2 py-1 text-[11px] text-gray-700 whitespace-nowrap">
+                              {sport.sessions}
+                            </td>
+                            <td className="px-2 py-1 text-[11px] font-semibold text-gray-800 text-right tabular-nums whitespace-nowrap">
+                              ₹{student.totalAmount}
+                            </td>
+                            <td className="px-2 py-1 text-[11px] font-semibold text-emerald-600 text-right tabular-nums whitespace-nowrap">
+                              ₹{student.paidAmount}
+                            </td>
+                            <td className="px-2 py-1 text-[11px] font-semibold text-red-500 text-right tabular-nums whitespace-nowrap">
+                              ₹{student.pendingAmount}
+                            </td>
+                            <td className="px-2 py-1 whitespace-nowrap">
+                              <StatusBadge status={student.paymentStatus} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </div>

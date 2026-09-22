@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 
 import dayjs from "dayjs";
+import { isPersonActiveInMonth } from "../../utils/personStatus";
 const inputClass =
   "h-11 px-3 w-full border border-orange-400 rounded-md bg-white outline-none focus:border-2 focus:border-orange-500";
 const categories = [
@@ -447,39 +448,19 @@ export default function StudentPerformanceReport() {
   };
 
   const filterByMonth = () => {
-    console.log("[FILTER BY MONTH] START");
     const month = dayjs(selectedMonth);
+    const year = month.year();
+    const monthNum = month.month() + 1;
 
     const filtered = students
-      .filter((s) => {
-        if (!s.createdAt) {
-          console.log("[NO CREATEDAT]", s.id);
-          return false;
-        }
-
-        const joinDate = dayjs(s.createdAt.toDate());
-
-        const valid =
-          joinDate.isSame(month, "month") || joinDate.isBefore(month, "month");
-
-        console.log("[MONTH FILTER]", s.id, joinDate.format(), valid);
-
-        return valid;
-      })
+      .filter((s) => isPersonActiveInMonth(s, year, monthNum))
       .sort((a, b) =>
         `${a.firstName} ${a.lastName}`.localeCompare(
           `${b.firstName} ${b.lastName}`,
         ),
       );
 
-    console.log("[FILTERED STUDENTS]", filtered);
-    setFilteredStudents(
-      filtered.sort((a, b) =>
-        `${a.firstName} ${a.lastName}`.localeCompare(
-          `${b.firstName} ${b.lastName}`,
-        ),
-      ),
-    );
+    setFilteredStudents(filtered);
   };
   const [manualAttendance, setManualAttendance] = useState({
     total: "",

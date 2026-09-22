@@ -16,6 +16,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { useParams, useNavigate } from "react-router-dom";
+import SeoHead, { buildTrainerJsonLd } from "../components/SeoHead";
 import {
   ArrowLeft,
   Heart,
@@ -532,6 +533,24 @@ export default function TrainerDetailsPage() {
 
   return (
     <div className="page-content min-h-screen bg-[#F5F6F8] pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-10">
+      <SeoHead
+        title={`${displayName}${shortLocation ? ` · ${shortLocation}` : ""} — Solo Trainer`}
+        description={
+          (
+            aboutText ||
+            `${displayName} is a sports trainer on Kridana. ${shortLocation}. View sports, fees, and book a session.`
+          ).slice(0, 300)
+        }
+        path={`/trainers/${trainer.id}`}
+        image={
+          trainer.profileImageUrl ||
+          trainer.coverImageUrl ||
+          "/Kridana logo.png"
+        }
+        type="profile"
+        jsonLdId="trainer"
+        jsonLd={buildTrainerJsonLd(trainer, `/trainers/${trainer.id}`)}
+      />
       {/* Top bar */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-3 sm:px-5 h-12 flex items-center justify-between gap-2">

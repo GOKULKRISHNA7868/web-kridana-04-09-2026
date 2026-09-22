@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -41,16 +41,16 @@ const parseEventDate = (value) => {
 
 const StatPill = ({ label, value, accent }) => (
   <div
-    className={`rounded-xl px-2.5 py-1.5 text-center min-w-[52px] border ${
+    className={`rounded-lg px-2 py-1 text-center min-w-[44px] border ${
       accent ? "bg-orange-50 border-orange-100" : "bg-white border-gray-100"
     }`}
   >
     <p
-      className={`text-base font-bold leading-none ${accent ? "text-[#FF6A00]" : "text-gray-900"}`}
+      className={`text-sm font-bold leading-none ${accent ? "text-[#FF6A00]" : "text-gray-900"}`}
     >
       {value}
     </p>
-    <p className="text-[10px] text-gray-500 mt-0.5 font-medium">{label}</p>
+    <p className="text-[9px] text-gray-500 mt-0.5 font-medium">{label}</p>
   </div>
 );
 
@@ -66,15 +66,18 @@ const DefaultEventChip = ({ event, viewType }) => {
   if (viewType === "dayGridMonth") {
     return (
       <div
-        className={`truncate rounded-full px-1.5 py-[1px] text-[9px] sm:text-[10px] font-semibold border ${tone}`}
+        className={`truncate rounded px-1 py-0 text-[9px] leading-[14px] font-semibold border ${tone}`}
+        title={event.title}
       >
-        • {event.title}
+        {event.title}
       </div>
     );
   }
 
   return (
-    <div className={`rounded-md px-1.5 py-1 text-[10px] sm:text-[11px] leading-tight border overflow-hidden ${tone}`}>
+    <div
+      className={`rounded-md px-1.5 py-1 text-[10px] sm:text-[11px] leading-tight border overflow-hidden ${tone}`}
+    >
       <div className="font-semibold truncate">{event.title}</div>
       {event.extendedProps?.trainer ? (
         <div className="truncate opacity-90">{event.extendedProps.trainer}</div>
@@ -109,7 +112,7 @@ export default function AdminCalendarShell({
   sidePanel,
   footerStats,
   aiInsights = [],
-  initialView = "timeGridWeek",
+  initialView = "dayGridMonth",
   slotMinTime = "06:00:00",
   slotMaxTime = "22:00:00",
   renderEventChip,
@@ -122,14 +125,30 @@ export default function AdminCalendarShell({
   const [calendarTitle, setCalendarTitle] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [showFilters, setShowFilters] = useState(false);
-  const [showAiPanel, setShowAiPanel] = useState(true);
+  const [showAiPanel, setShowAiPanel] = useState(false);
   const [showSidePanel, setShowSidePanel] = useState(true);
 
   const getCalApi = () => calendarRef.current?.getApi?.();
 
+  // Recompute layout after month ↔ time switches so the week/day scroller works
+  useEffect(() => {
+    const api = getCalApi();
+    if (!api) return;
+    const id = requestAnimationFrame(() => {
+      try {
+        api.updateSize();
+      } catch {
+        /* ignore */
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [calendarView]);
+
   const filteredEvents = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return events.filter((event) => {
+      const start = parseEventDate(event.start);
+      if (!start) return false;
       if (keyword) {
         const haystack = [
           event.title,
@@ -145,7 +164,16 @@ export default function AdminCalendarShell({
       for (const [key, value] of Object.entries(activeFilters)) {
         if (!value || value === "all") continue;
         const eventValue = event.extendedProps?.[key] ?? event[key];
-        if (String(eventValue || "") !== String(value)) return false;
+        if (
+          String(eventValue || "")
+            .trim()
+            .toLowerCase() !==
+          String(value || "")
+            .trim()
+            .toLowerCase()
+        ) {
+          return false;
+        }
       }
       return true;
     });
@@ -191,27 +219,27 @@ export default function AdminCalendarShell({
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-transparent overflow-hidden">
-      <div className="shrink-0 pb-2 sm:pb-3">
-        <div className="flex items-start justify-between gap-2 sm:gap-3">
+      <div className="shrink-0 pb-1.5 sm:pb-2">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate flex items-center gap-2">
-              <CalendarDays size={20} className="text-[#FF6A00] shrink-0" />
+            <h1 className="text-base sm:text-lg font-bold text-gray-900 truncate flex items-center gap-2">
+              <CalendarDays size={18} className="text-[#FF6A00] shrink-0" />
               {title}
             </h1>
-            <p className="text-xs sm:text-sm text-gray-500 mt-0.5 truncate">
+            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
               {subtitle}
             </p>
           </div>
-          <div className="flex gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex gap-1.5 shrink-0 items-center">
             <StatPill label="Today" value={stats.todayCount} />
             <StatPill label="Week" value={stats.weekCount} accent />
             {onAddClick ? (
               <button
                 type="button"
                 onClick={onAddClick}
-                className="hidden sm:inline-flex items-center gap-1.5 bg-[#FF6A00] hover:bg-[#e85f00] text-white px-3 py-2 rounded-xl text-sm font-semibold shadow-sm h-fit self-center"
+                className="hidden sm:inline-flex items-center gap-1 bg-[#FF6A00] hover:bg-[#e85f00] text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm h-fit"
               >
-                <Plus size={16} />
+                <Plus size={14} />
                 {addLabel}
               </button>
             ) : null}
@@ -219,15 +247,15 @@ export default function AdminCalendarShell({
         </div>
 
         {alert ? (
-          <div className="mt-3 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-sm text-amber-900">
-            <Bell size={16} className="shrink-0 mt-0.5 text-amber-600" />
+          <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-[11px] sm:text-xs text-amber-900">
+            <Bell size={14} className="shrink-0 mt-0.5 text-amber-600" />
             <p className="leading-snug">{alert}</p>
           </div>
         ) : null}
 
         {stats.upcoming ? (
-          <div className="mt-3 bg-white border border-orange-100 rounded-xl px-3 py-2.5 flex items-center gap-2 text-sm">
-            <Clock size={16} className="text-[#FF6A00] shrink-0" />
+          <div className="mt-2 bg-white border border-orange-100 rounded-lg px-2.5 py-1.5 flex items-center gap-2 text-[11px] sm:text-xs">
+            <Clock size={14} className="text-[#FF6A00] shrink-0" />
             <p className="text-gray-700 truncate">
               <span className="font-semibold text-gray-900">Next: </span>
               {stats.upcoming.title} ·{" "}
@@ -238,24 +266,24 @@ export default function AdminCalendarShell({
         ) : null}
 
         {aiInsights.length > 0 ? (
-          <div className="mt-3 bg-white border border-violet-100 rounded-xl overflow-hidden">
+          <div className="mt-2 bg-white border border-violet-100 rounded-lg overflow-hidden">
             <button
               type="button"
               onClick={() => setShowAiPanel((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+              className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 text-left"
             >
-              <span className="flex items-center gap-2 text-sm font-semibold text-violet-900">
-                <Sparkles size={16} className="text-violet-600" />
-                Smart schedule insights
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-900">
+                <Sparkles size={14} className="text-violet-600" />
+                Smart insights
               </span>
-              {showAiPanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {showAiPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
             {showAiPanel ? (
-              <ul className="px-3 pb-3 space-y-1.5">
+              <ul className="px-2.5 pb-2 space-y-1">
                 {aiInsights.map((item, index) => (
                   <li
                     key={index}
-                    className={`text-xs sm:text-sm rounded-lg px-2.5 py-2 leading-snug ${
+                    className={`text-[11px] rounded-md px-2 py-1.5 leading-snug ${
                       item.type === "warn"
                         ? "bg-red-50 text-red-800 border border-red-100"
                         : item.type === "tip"
@@ -272,46 +300,46 @@ export default function AdminCalendarShell({
         ) : null}
       </div>
 
-      <div className="shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm p-2.5 sm:p-3 mb-3">
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+      <div className="shrink-0 bg-white rounded-xl border border-gray-100 shadow-sm p-2 sm:p-2.5 mb-2">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
             <button
               type="button"
               onClick={goToday}
-              className="shrink-0 h-9 px-3 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-700"
+              className="shrink-0 h-8 px-2.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700"
             >
               Today
             </button>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-0.5">
               <button
                 type="button"
                 onClick={() => getCalApi()?.prev()}
-                className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
+                className="h-8 w-8 rounded-lg border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
                 aria-label="Previous"
               >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={16} />
               </button>
               <button
                 type="button"
                 onClick={() => getCalApi()?.next()}
-                className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
+                className="h-8 w-8 rounded-lg border border-gray-200 bg-white text-gray-700 flex items-center justify-center"
                 aria-label="Next"
               >
-                <ChevronRight size={18} />
+                <ChevronRight size={16} />
               </button>
             </div>
-            <div className="flex shrink-0 border border-gray-200 rounded-xl overflow-hidden bg-white text-xs font-semibold">
+            <div className="flex shrink-0 border border-gray-200 rounded-lg overflow-hidden bg-white text-[11px] font-semibold">
               <button
                 type="button"
                 onClick={() => setIs24Hour(false)}
-                className={`h-9 px-2.5 ${!is24Hour ? "bg-[#FF6A00] text-white" : "text-gray-600"}`}
+                className={`h-8 px-2 ${!is24Hour ? "bg-[#FF6A00] text-white" : "text-gray-600"}`}
               >
                 12h
               </button>
               <button
                 type="button"
                 onClick={() => setIs24Hour(true)}
-                className={`h-9 px-2.5 ${is24Hour ? "bg-[#FF6A00] text-white" : "text-gray-600"}`}
+                className={`h-8 px-2 ${is24Hour ? "bg-[#FF6A00] text-white" : "text-gray-600"}`}
               >
                 24h
               </button>
@@ -320,49 +348,49 @@ export default function AdminCalendarShell({
               <button
                 type="button"
                 onClick={() => setShowFilters((v) => !v)}
-                className={`shrink-0 h-9 px-3 rounded-xl border text-sm font-semibold flex items-center gap-1.5 ${
+                className={`shrink-0 h-8 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1 ${
                   showFilters || hasActiveFilters
                     ? "border-orange-300 bg-orange-50 text-orange-700"
                     : "border-gray-200 bg-white text-gray-700"
                 }`}
               >
-                <Filter size={15} />
+                <Filter size={13} />
                 Filters
                 {hasActiveFilters ? (
-                  <span className="w-2 h-2 rounded-full bg-[#FF6A00]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#FF6A00]" />
                 ) : null}
               </button>
             ) : null}
-            <div className="relative min-w-[120px] flex-1 max-w-xs">
+            <div className="relative min-w-[110px] flex-1 max-w-xs">
               <Search
-                size={15}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"
               />
               <input
                 type="search"
-                placeholder="Search classes..."
+                placeholder="Search..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-9 w-full rounded-xl border border-gray-200 bg-gray-50 pl-8 pr-3 text-sm text-gray-800 placeholder:text-gray-400 outline-none focus:border-orange-400 focus:bg-white"
+                className="h-8 w-full rounded-lg border border-gray-200 bg-gray-50 pl-7 pr-2 text-xs text-gray-800 placeholder:text-gray-400 outline-none focus:border-orange-400 focus:bg-white"
               />
             </div>
             {onAddClick ? (
               <button
                 type="button"
                 onClick={onAddClick}
-                className="sm:hidden shrink-0 inline-flex items-center gap-1 bg-[#FF6A00] text-white h-9 px-3 rounded-xl text-sm font-semibold"
+                className="sm:hidden shrink-0 inline-flex items-center gap-1 bg-[#FF6A00] text-white h-8 px-2.5 rounded-lg text-xs font-semibold"
               >
-                <Plus size={16} />
+                <Plus size={14} />
                 Add
               </button>
             ) : null}
           </div>
 
           {showFilters && filterOptions.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1 border-t border-gray-100">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 pt-1 border-t border-gray-100">
               {filterOptions.map((filter) => (
                 <label key={filter.key} className="block">
-                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
                     {filter.label}
                   </span>
                   <select
@@ -370,7 +398,7 @@ export default function AdminCalendarShell({
                     onChange={(e) =>
                       onFilterChange?.(filter.key, e.target.value)
                     }
-                    className="mt-1 w-full min-h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-800"
+                    className="mt-0.5 w-full min-h-[34px] rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-800"
                   >
                     <option value="all">All {filter.label}</option>
                     {filter.options.map((opt) => (
@@ -384,13 +412,13 @@ export default function AdminCalendarShell({
             </div>
           ) : null}
 
-          <div className="flex rounded-xl bg-gray-100 p-1 w-full sm:w-auto self-start overflow-x-auto scrollbar-hide">
+          <div className="flex rounded-lg bg-gray-100 p-0.5 w-full sm:w-auto self-start overflow-x-auto scrollbar-hide">
             {VIEWS.map((view) => (
               <button
                 key={view.id}
                 type="button"
                 onClick={() => changeCalendarView(view.id)}
-                className={`shrink-0 h-8 px-3 sm:px-3.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                className={`shrink-0 h-7 px-2.5 sm:px-3 rounded-md text-[11px] sm:text-xs font-semibold transition-colors ${
                   calendarView === view.id
                     ? "bg-[#FF6A00] text-white shadow-sm"
                     : "text-gray-600"
@@ -403,36 +431,45 @@ export default function AdminCalendarShell({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3 overflow-hidden">
-        <div className="flex-1 min-h-[320px] lg:min-h-0 flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="shrink-0 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 border-b border-gray-100">
-            <h2 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+      <div className="flex-1 min-h-0 flex flex-col xl:flex-row gap-2 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="shrink-0 px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-2 border-b border-gray-100">
+            <h2 className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
               {calendarTitle || "Calendar"}
             </h2>
-            <span className="text-xs text-gray-400 shrink-0">
+            <span className="text-[10px] text-gray-400 shrink-0">
               {filteredEvents.length} class
               {filteredEvents.length === 1 ? "" : "es"}
             </span>
           </div>
 
-          {filteredEvents.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
-              <CalendarDays size={40} className="text-gray-300 mb-3" />
-              <p className="font-semibold text-gray-700">{emptyTitle}</p>
-              <p className="text-sm text-gray-500 mt-1 max-w-xs">{emptyHint}</p>
-              {onAddClick ? (
-                <button
-                  type="button"
-                  onClick={onAddClick}
-                  className="mt-4 inline-flex items-center gap-1.5 bg-[#FF6A00] text-white px-4 py-2.5 rounded-xl text-sm font-semibold"
-                >
-                  <Plus size={16} />
-                  {addLabel}
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex-1 min-h-[280px] sm:min-h-[360px] kridana-cal px-1 sm:px-2 pb-2 overflow-auto">
+          <div className="relative flex-1 min-h-[420px] sm:min-h-[480px] xl:min-h-0 flex flex-col overflow-hidden">
+            {filteredEvents.length === 0 ? (
+              <div className="absolute inset-x-0 top-0 z-10 pointer-events-none flex justify-center px-2 pt-2">
+                <div className="pointer-events-auto max-w-sm w-full rounded-lg border border-dashed border-orange-200 bg-orange-50/95 px-2.5 py-1.5 text-center shadow-sm">
+                  <p className="text-xs font-semibold text-gray-800">
+                    {emptyTitle}
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{emptyHint}</p>
+                  {onAddClick ? (
+                    <button
+                      type="button"
+                      onClick={onAddClick}
+                      className="mt-1.5 inline-flex items-center gap-1 bg-[#FF6A00] text-white px-2.5 py-1 rounded-md text-[10px] font-semibold"
+                    >
+                      <Plus size={12} />
+                      {addLabel}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            <div
+              className={`flex-1 min-h-0 overflow-hidden kridana-cal px-0.5 sm:px-1 pb-1 ${
+                calendarView === "dayGridMonth" ? "is-month" : "is-time"
+              }`}
+            >
               <FullCalendar
                 ref={calendarRef}
                 plugins={[
@@ -444,23 +481,25 @@ export default function AdminCalendarShell({
                 headerToolbar={false}
                 initialView={initialView}
                 height="100%"
-                contentHeight="auto"
                 allDaySlot={false}
+                fixedWeekCount
+                showNonCurrentDates
                 slotMinTime={slotMinTime}
                 slotMaxTime={slotMaxTime}
                 slotDuration="00:30:00"
                 slotLabelInterval="01:00:00"
-                scrollTime="08:00:00"
+                slotMinHeight={26}
+                scrollTime="07:00:00"
                 scrollTimeReset={false}
                 nowIndicator
                 stickyHeaderDates
-                expandRows
+                expandRows={calendarView === "dayGridMonth"}
                 handleWindowResize
-                windowResizeDelay={100}
+                windowResizeDelay={80}
                 longPressDelay={150}
                 selectLongPressDelay={150}
-                dayMaxEvents
-                dayMaxEventRows={3}
+                dayMaxEvents={calendarView === "dayGridMonth" ? 2 : true}
+                moreLinkClick="popover"
                 selectable={selectable}
                 selectMirror={selectable}
                 unselectAuto
@@ -471,15 +510,20 @@ export default function AdminCalendarShell({
                   hour12: !is24Hour,
                 }}
                 eventTimeFormat={{
-                  hour: "2-digit",
+                  hour: "numeric",
                   minute: "2-digit",
                   hour12: !is24Hour,
+                  meridiem: "narrow",
                 }}
-                dayHeaderFormat={{
-                  weekday: "short",
-                  month: "numeric",
-                  day: "numeric",
-                }}
+                dayHeaderFormat={
+                  calendarView === "dayGridMonth"
+                    ? { weekday: "short" }
+                    : {
+                        weekday: "short",
+                        month: "numeric",
+                        day: "numeric",
+                      }
+                }
                 dayCellClassNames={(arg) =>
                   isSameDay(arg.date, selectedDate)
                     ? ["kridana-cal-selected"]
@@ -489,6 +533,14 @@ export default function AdminCalendarShell({
                   setCalendarTitle(info.view.title);
                   setCalendarView(info.view.type);
                   onCalendarReady?.(info.view.calendar);
+                  // Ensure time-grid gets a real scrollable height after view changes
+                  requestAnimationFrame(() => {
+                    try {
+                      info.view.calendar.updateSize();
+                    } catch {
+                      /* ignore */
+                    }
+                  });
                   const current = info.view.calendar.getDate();
                   setSelectedDate((prev) => {
                     if (
@@ -517,34 +569,41 @@ export default function AdminCalendarShell({
                   renderEventChip ? (
                     renderEventChip(info)
                   ) : (
-                    <DefaultEventChip event={info.event} viewType={info.view.type} />
+                    <DefaultEventChip
+                      event={info.event}
+                      viewType={info.view.type}
+                    />
                   )
                 }
               />
             </div>
-          )}
+          </div>
 
           {footerStats ? (
-            <div className="shrink-0 px-3 sm:px-4 py-2.5 bg-[#f6f7fb] border-t border-gray-100 flex items-center justify-between gap-2">
+            <div className="shrink-0 px-2.5 sm:px-3 py-1.5 bg-[#f6f7fb] border-t border-gray-100 flex items-center justify-between gap-2 text-[11px]">
               {footerStats}
             </div>
           ) : null}
         </div>
 
         {sidePanel ? (
-          <div className="lg:w-[320px] xl:w-[360px] shrink-0 min-h-0 flex flex-col">
+          <div className="xl:w-[280px] 2xl:w-[300px] shrink-0 min-h-0 flex flex-col">
             <button
               type="button"
               onClick={() => setShowSidePanel((v) => !v)}
-              className="lg:hidden mb-2 flex items-center justify-between w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-800"
+              className="xl:hidden mb-1.5 flex items-center justify-between w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs font-semibold text-gray-800"
             >
               <span>Day schedule</span>
-              {showSidePanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {showSidePanel ? (
+                <ChevronUp size={14} />
+              ) : (
+                <ChevronDown size={14} />
+              )}
             </button>
             <div
               className={`${
-                showSidePanel ? "flex" : "hidden lg:flex"
-              } flex-col min-h-[200px] max-h-[42vh] lg:max-h-none lg:h-full flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden`}
+                showSidePanel ? "flex" : "hidden xl:flex"
+              } flex-col min-h-[160px] max-h-[36vh] xl:max-h-none xl:h-full flex-1 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden`}
             >
               {sidePanel}
             </div>

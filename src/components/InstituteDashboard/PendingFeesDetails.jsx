@@ -4,6 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../../firebase";
 import { useAuth } from "../../context/AuthContext";
 import { collection, query, where, getDocs } from "firebase/firestore";
+import { isPersonActiveInMonth, isPersonCurrentlyActive } from "../../utils/personStatus";
 
 const PendingFeesDetails = () => {
   const { branch } = useParams();
@@ -76,14 +77,14 @@ const PendingFeesDetails = () => {
         fees = fees.filter((f) => f.month === filterKey);
       }
 
-      // JOIN DATE FILTER
+      // MONTH / MEMBERSHIP FILTER
+      // Past month → students active that month; no month → current members only
       if (filterKey) {
-        const selectedDate = new Date(`${filterKey}-01`);
-
-        students = students.filter((s) => {
-          if (!s.joiningDate) return true;
-          return new Date(s.joiningDate) <= selectedDate;
-        });
+        students = students.filter((s) =>
+          isPersonActiveInMonth(s, selectedYear, selectedMonth),
+        );
+      } else {
+        students = students.filter((s) => isPersonCurrentlyActive(s));
       }
 
       let final = students.map((s) => {

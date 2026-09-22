@@ -14,6 +14,7 @@ import { useAuth } from "../../context/AuthContext";
 import { updateDoc, getDocs } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import { ChevronDown, Download } from "lucide-react";
+import { isPersonActiveOnDate } from "../../utils/personStatus";
 const absenceReasons = [
   "On Leave",
   "Not Working Day",
@@ -256,20 +257,24 @@ const EmployeeAttendancePage = () => {
     return unsub;
   }, [user, selectedDate]);
 
-  /* 🔹 Filter + Sort by name */
+  /* 🔹 Filter + Sort — show trainers active on the selected date (history-aware) */
   const filteredEmployees = useMemo(() => {
     const searchText = search.toLowerCase();
 
     return employees
-      .filter((emp) =>
-        `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(searchText),
-      )
+      .filter((emp) => {
+        const nameOk = `${emp.firstName || ""} ${emp.lastName || ""}`
+          .toLowerCase()
+          .includes(searchText);
+        if (!nameOk) return false;
+        return isPersonActiveOnDate(emp, selectedDate);
+      })
       .sort((a, b) =>
         `${a.firstName} ${a.lastName}`.localeCompare(
           `${b.firstName} ${b.lastName}`,
         ),
       );
-  }, [employees, search]);
+  }, [employees, search, selectedDate]);
 
   /* 🔹 Save Attendance */
   const saveAttendance = (emp, status, reason = "") => {
